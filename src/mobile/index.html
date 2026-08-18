@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+	<meta name="referrer" content="no-referrer" />
+	<title>移动远程 / Mobile Remote</title>
+	<style>
+		:root {
+			color-scheme: light;
+			font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+		}
+		* { box-sizing: border-box; }
+		html, body {
+			margin: 0;
+			height: 100%;
+			background: #f6f7f9;
+			color: #1f1f1f;
+		}
+		body {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			padding: 24px;
+		}
+		body.connected {
+			display: block;
+			padding: 0;
+			background: #fff;
+		}
+		#app {
+			width: 100%;
+			max-width: 28rem;
+			padding: 28px 24px;
+			background: #ffffff;
+			border: 1px solid #e4e6ea;
+			border-radius: 16px;
+			box-shadow: 0 8px 24px rgba(17, 24, 39, 0.08);
+			white-space: pre-wrap;
+			line-height: 1.6;
+			font-size: 16px;
+			word-break: break-word;
+		}
+		body.connected #app {
+			max-width: none;
+			height: 100%;
+			padding: 0;
+			border: 0;
+			border-radius: 0;
+			box-shadow: none;
+			white-space: normal;
+			display: flex;
+			flex-direction: column;
+		}
+		.bar {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			padding: 12px 14px;
+			border-bottom: 1px solid #e4e6ea;
+			background: #fafbfc;
+		}
+		.bar .err { color: #b3261e; font-size: 13px; }
+		.col { display: flex; flex-direction: column; gap: 8px; padding: 12px; flex: 1; min-height: 0; }
+		.col.session { padding-bottom: 0; }
+		.row {
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 2px;
+			width: 100%;
+			padding: 12px;
+			border: 1px solid #e4e6ea;
+			border-radius: 12px;
+			background: #fff;
+			text-align: left;
+			font: inherit;
+		}
+		.row .title { font-weight: 600; }
+		.row .meta, .muted { color: #667085; font-size: 13px; }
+		.transcript {
+			flex: 1;
+			overflow: auto;
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+		}
+		.bubble {
+			padding: 8px 10px;
+			border-radius: 10px;
+			background: #f2f4f7;
+			white-space: pre-wrap;
+			font-size: 14px;
+		}
+		.bubble.user { background: #e8f1ff; }
+		.bubble.tool { background: #fff6e5; }
+		.composer {
+			display: grid;
+			grid-template-columns: 1fr auto auto;
+			gap: 8px;
+			padding: 10px 0 12px;
+		}
+		textarea, input[type="text"] {
+			width: 100%;
+			min-height: 44px;
+			padding: 8px;
+			border: 1px solid #d0d5dd;
+			border-radius: 10px;
+			font: inherit;
+		}
+		button {
+			border: 0;
+			border-radius: 10px;
+			padding: 8px 12px;
+			background: #1f6feb;
+			color: #fff;
+			font: inherit;
+		}
+		button.ghost { background: #eef2f6; color: #1f1f1f; }
+		button:disabled { opacity: 0.55; }
+		.inbox { display: flex; flex-direction: column; gap: 8px; }
+		.card {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			padding: 12px;
+			border: 1px solid #f2c4c0;
+			border-radius: 12px;
+			background: #fff8f7;
+		}
+		.actions, .opt { display: flex; gap: 8px; align-items: center; }
+	</style>
+</head>
+<body>
+	<main id="app">加载中…</main>
+	<script src="app.js"></script>
+</body>
+</html>

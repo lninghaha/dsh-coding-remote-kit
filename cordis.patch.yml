@@ -1,0 +1,9 @@
+# Mount the mobile-remote server plugin when this package is registered as a
+# DeepSeek Harness profile bundle (`dsh plugin add`).
+- insert:
+    - id: mobile-remote
+      name: dsh-mobile-remote
+      config:
+        enabled: true
+        bind: "127.0.0.1"
+        port: 6879
