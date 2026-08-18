@@ -1,0 +1,16 @@
+node_modules/
+dist/
+lib/
+output/
+.next/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+.dsh/
+DSH_HOME/
+/tmp/
+*.tgz
