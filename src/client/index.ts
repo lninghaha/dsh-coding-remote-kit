@@ -72,13 +72,30 @@ function MobileRemoteSettings() {
 	const [error, setError] = useState<string | null>(null);
 	const [remainingMs, setRemainingMs] = useState<number | null>(null);
 
+	const formatApiError = (
+		response: Response,
+		payload: { error?: { message?: string } } | null,
+		fallback: string,
+	): string => {
+		const detail = payload?.error?.message;
+		if (typeof detail === "string" && detail.length > 0) {
+			return `${fallback}（${String(response.status)}: ${detail}）`;
+		}
+		return `${fallback}（HTTP ${String(response.status)}）`;
+	};
+
 	const refreshStatus = () => {
 		void (async () => {
 			try {
 				const response = await fetch("/api/mobile-remote/status", {
 					headers: { "x-dsh-mobile-remote": "1" },
 				});
-				setStatus((await response.json()) as StatusInfo);
+				const payload = (await response.json()) as StatusInfo & { error?: { message?: string } };
+				if (!response.ok || typeof payload.bind !== "string") {
+					setError(formatApiError(response, payload, "无法读取移动远程状态"));
+					return;
+				}
+				setStatus(payload);
 			} catch {
 				setError("无法读取移动远程状态");
 			}
@@ -91,7 +108,11 @@ function MobileRemoteSettings() {
 				const response = await fetch("/api/mobile-remote/devices", {
 					headers: { "x-dsh-mobile-remote": "1" },
 				});
-				const payload = (await response.json()) as { devices?: DeviceInfo[] };
+				const payload = (await response.json()) as { devices?: DeviceInfo[]; error?: { message?: string } };
+				if (!response.ok) {
+					setError(formatApiError(response, payload, "无法读取已配对设备"));
+					return;
+				}
 				setDevices(Array.isArray(payload.devices) ? payload.devices : []);
 			} catch {
 				setError("无法读取已配对设备");
@@ -153,9 +174,10 @@ function MobileRemoteSettings() {
 					offer: { expiresAt: number };
 					qrText: string;
 					candidates: string[];
+					error?: { message?: string };
 				};
 				if (!response.ok) {
-					setError("生成配对二维码失败");
+					setError(formatApiError(response, payload, "生成配对二维码失败"));
 					return;
 				}
 				setOfferInfo({

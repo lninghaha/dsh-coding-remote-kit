@@ -89,6 +89,31 @@ test("browser-context guard rejects cross-site and mismatched origin", () => {
 	);
 });
 
+test("Caddy-rewritten Origin plus public Referer is allowed", () => {
+	assert.equal(
+		passesBrowserContextGuard({
+			headers: {
+				host: "127.0.0.1:3080",
+				origin: "http://127.0.0.1:3080",
+				referer: "https://dsh-x13.prepop.net/",
+			},
+		}),
+		true,
+	);
+	assert.equal(
+		passesBrowserContextGuard(
+			{
+				headers: {
+					host: "127.0.0.1:3080",
+					referer: "https://dsh-x13.prepop.net/",
+				},
+			},
+			["dsh-x13.prepop.net"],
+		),
+		true,
+	);
+});
+
 function mockRequest(chunks) {
 	const listeners = {};
 	return {

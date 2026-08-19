@@ -101,7 +101,7 @@ function guard(
 		reject(response, 403, "forbidden", "management API is available only on loopback");
 		return false;
 	}
-	if (!passesBrowserContextGuard(request)) {
+	if (!passesBrowserContextGuard(request, trustedHosts)) {
 		reject(response, 403, "forbidden", "request failed the browser-context guard");
 		return false;
 	}

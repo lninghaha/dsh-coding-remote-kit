@@ -128,19 +128,38 @@ function headerMatchesHost(originValue: unknown, hostHeader: string): boolean {
 	return authority.port === (portOfHost(hostHeader) || defaultPort(authority.protocol));
 }
 
+function hostnameInTrustedList(urlValue: unknown, trustedHosts: readonly string[]): boolean {
+	const authority = originAuthority(urlValue);
+	if (authority === null) return false;
+	const allowed = new Set(trustedHosts.map((value) => value.toLowerCase()));
+	return allowed.has(authority.hostname);
+}
+
 /**
- * Browser-context guard: `sec-fetch-site: cross-site` is always rejected; a
- * present Origin or Referer must match the request Host (an absent Origin and
- * Referer is allowed for non-browser callers that already passed the loopback
- * peer guard).
+ * Browser-context guard: `sec-fetch-site: cross-site` is always rejected.
+ *
+ * Origin is the fetch CSRF signal. Caddy on this host rewrites Origin to
+ * `http://127.0.0.1:3080` but leaves Referer as `https://<trusted-host>/`;
+ * when Origin matches Host we therefore ignore Referer. Referer is only
+ * checked when Origin is absent (or as a trusted-host fallback).
  */
-export function passesBrowserContextGuard(request: IncomingMessage): boolean {
+export function passesBrowserContextGuard(
+	request: IncomingMessage,
+	trustedHosts: readonly string[] = [],
+): boolean {
 	const site = request.headers["sec-fetch-site"];
 	if (typeof site === "string" && site.trim().toLowerCase() === "cross-site") return false;
 	const host = request.headers.host;
 	if (typeof host !== "string") return false;
-	if (request.headers.origin !== undefined && !headerMatchesHost(request.headers.origin, host)) return false;
-	if (request.headers.referer !== undefined && !headerMatchesHost(request.headers.referer, host)) return false;
+	const origin = request.headers.origin;
+	if (origin !== undefined) {
+		if (headerMatchesHost(origin, host) || hostnameInTrustedList(origin, trustedHosts)) return true;
+		return false;
+	}
+	const referer = request.headers.referer;
+	if (referer !== undefined) {
+		return headerMatchesHost(referer, host) || hostnameInTrustedList(referer, trustedHosts);
+	}
 	return true;
 }
 
