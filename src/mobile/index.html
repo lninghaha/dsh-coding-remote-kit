@@ -4,7 +4,13 @@
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 	<meta name="referrer" content="no-referrer" />
-	<title>远程控制</title>
+	<meta name="theme-color" content="#121212" />
+	<meta name="mobile-web-app-capable" content="yes" />
+	<meta name="apple-mobile-web-app-capable" content="yes" />
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+	<link rel="manifest" href="/m/manifest.webmanifest" />
+	<link rel="apple-touch-icon" href="/m/icons/icon-192.png" />
+	<title>DSH 远程</title>
 	<style>
 		:root {
 			color-scheme: dark;
@@ -19,7 +25,7 @@
 			font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 		}
 		* { box-sizing: border-box; }
-		html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+		html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
 		body { display: flex; align-items: center; justify-content: center; padding: 24px; }
 		html.connected, body.connected { height: 100dvh; max-height: 100dvh; overflow: hidden; }
 		body.connected { display: block; padding: 0; }
@@ -28,18 +34,22 @@
 			background: var(--bg-card); border: 1px solid var(--line); border-radius: 16px;
 			white-space: pre-wrap; line-height: 1.55; font-size: 16px; word-break: break-word;
 		}
-		body.connected #app {
+		body.connected #app, #app.shell {
 			position: fixed; inset: 0; max-width: none; height: 100dvh; max-height: 100dvh;
 			padding: 0; border: 0; border-radius: 0;
 			white-space: normal; display: flex; flex-direction: column; background: var(--bg);
 			overflow: hidden;
 		}
 		.bar {
-			display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+			display: flex; align-items: center; gap: 10px;
+			padding: calc(10px + env(safe-area-inset-top)) 16px 12px;
 			border-bottom: 1px solid var(--line); flex: 0 0 auto;
 		}
-		.bar .sub { color: var(--muted); font-size: 13px; font-weight: 400; }
-		.bar .err { color: #f87171; font-size: 13px; }
+		.bar-title { flex: 1 1 auto; min-width: 0; }
+		.bar-title strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.bar .sub { color: var(--muted); font-size: 13px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.bar-actions { flex: 0 0 auto; display: flex; gap: 8px; }
+		.bar-err { padding: 6px 16px; color: #f87171; font-size: 13px; flex: 0 0 auto; }
 		.col {
 			display: flex; flex-direction: column; gap: 12px; padding: 16px;
 			flex: 1 1 0; min-height: 0; overflow-x: hidden; overflow-y: scroll;
@@ -47,32 +57,40 @@
 		}
 		.col > * { flex: 0 0 auto; }
 		.col.session { padding: 0; overflow: hidden; }
-		.hero { color: var(--muted); font-size: 13px; line-height: 1.5; padding: 12px 14px; background: var(--bg-elev); border-radius: 12px; }
+		.hero { color: var(--muted); font-size: 13px; line-height: 1.5; padding: 12px 14px; background: var(--bg-elev); border-radius: 12px; display: flex; gap: 8px; align-items: flex-start; }
+		.hero p { margin: 0; flex: 1; }
 		.section-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 		.section-h h2 { margin: 0; font-size: 16px; font-weight: 600; }
+		.search {
+			width: 100%; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line);
+			border-radius: 10px; font: inherit; background: var(--bg-elev); color: var(--text);
+		}
 		.ws {
 			flex: 0 0 auto;
 			background: var(--bg-card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
 		}
-		.ws-head {
-			display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;
-			width: 100%; padding: 12px 14px; background: transparent; border: 0; color: inherit; text-align: left; font: inherit;
+		.ws-head { display: flex; align-items: stretch; }
+		.ws-toggle {
+			flex: 1 1 auto; min-width: 0; padding: 12px 14px; border: 0; background: transparent;
+			color: inherit; text-align: left; font: inherit;
 		}
 		.ws-name { font-weight: 600; }
-		.badge { font-size: 11px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); margin-left: 6px; }
-		.ws-path, .muted { color: var(--muted); font-size: 12px; }
+		.badge { font-size: 11px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); margin-left: 6px; white-space: nowrap; }
+		.ws-path, .muted { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 		.icon-btn {
-			width: 36px; height: 36px; border: 0; border-radius: 10px; background: var(--bg-elev); color: var(--text); font: inherit;
+			flex: 0 0 auto; width: 44px; border: 0; border-left: 1px solid var(--line);
+			background: transparent; color: var(--text); font: inherit; font-size: 20px;
 		}
 		.task {
 			display: flex; align-items: center; justify-content: space-between; gap: 8px;
 			width: 100%; padding: 12px 14px; border: 0; border-top: 1px solid var(--line);
 			background: transparent; color: inherit; text-align: left; font: inherit;
 		}
-		.task .title { font-weight: 500; }
-		.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #16351f; color: var(--ok); }
+		.task-main { flex: 1 1 auto; min-width: 0; }
+		.task .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.pill { flex: 0 0 auto; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--bg-elev); color: var(--muted); white-space: nowrap; }
 		.pill.run { background: #1e3a5f; color: #93c5fd; }
-		.row { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-card); text-align: left; font: inherit; color: inherit; }
+		.more-tasks { width: 100%; border: 0; border-top: 1px solid var(--line); padding: 10px; background: transparent; color: var(--muted); font: inherit; }
 		.transcript {
 			flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
 			display: flex; flex-direction: column; gap: 10px; padding: 12px 16px;
@@ -80,7 +98,7 @@
 		}
 		.sheet-mask { position: fixed; inset: 0; background: #0008; z-index: 20; }
 		.sheet {
-			position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 21;
+			position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 21;
 			background: var(--bg-card); border: 1px solid var(--line); border-radius: 16px; padding: 16px;
 		}
 		.sheet h3 { margin: 0 0 6px; font-size: 18px; }
@@ -92,7 +110,8 @@
 		.bubble.user { background: #1e3a5f; }
 		.bubble.tool { color: var(--muted); font-size: 13px; }
 		.bubble code, .inline-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: #0006; padding: 0 4px; border-radius: 4px; }
-		.composer { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+		.composer { display: flex; flex-direction: column; gap: 8px; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+		.composer-row { display: flex; gap: 8px; align-items: flex-end; }
 		textarea, input[type="text"] {
 			width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--line);
 			border-radius: 12px; font: inherit; background: var(--bg-elev); color: var(--text);

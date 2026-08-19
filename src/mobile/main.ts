@@ -26,10 +26,20 @@ function root(): HTMLElement {
 }
 
 function render(title: string, body: string, isError = false): void {
+	document.documentElement.classList.add("connected");
+	document.body.classList.add("connected");
 	const app = root();
-	app.className = "";
+	app.className = "shell";
 	app.textContent = `${title}\n\n${body}`;
-	app.style.color = isError ? "#b3261e" : "#1f1f1f";
+	app.style.color = isError ? "#f87171" : "";
+}
+
+function registerShellWorker(): void {
+	if (!("serviceWorker" in navigator)) return;
+	const host = location.hostname;
+	const secure = location.protocol === "https:" || host === "localhost" || host === "127.0.0.1";
+	if (!secure) return;
+	void navigator.serviceWorker.register("/m/sw.js", { scope: "/m/" });
 }
 
 function loadOrCreateKey(): { secretKey: Uint8Array; publicKey: Uint8Array } {
@@ -202,7 +212,7 @@ function connect(offer: PairingOffer): void {
 function bootE2eList(): void {
 	const now = Date.now();
 	const items: Array<Record<string, unknown>> = [];
-	for (let workspace = 0; workspace < 8; workspace += 1) {
+	for (let workspace = 0; workspace < 12; workspace += 1) {
 		const cwd = `/home/lning/dev/ws-${String(workspace)}`;
 		for (let task = 0; task < 4; task += 1) {
 			items.push({
@@ -230,6 +240,7 @@ function bootE2eList(): void {
 }
 
 function boot(): void {
+	registerShellWorker();
 	if (new URLSearchParams(location.search).get("e2e") === "list") {
 		bootE2eList();
 		return;

@@ -72,11 +72,19 @@ const MIME: Record<string, string> = {
 	".mjs": "application/javascript; charset=utf-8",
 	".css": "text/css; charset=utf-8",
 	".json": "application/json; charset=utf-8",
+	".webmanifest": "application/manifest+json; charset=utf-8",
 	".svg": "image/svg+xml",
 	".png": "image/png",
 	".ico": "image/x-icon",
 	".txt": "text/plain; charset=utf-8",
 };
+
+export function cacheControlForMobile(relative: string): string {
+	if (relative === "sw.js" || relative === "index.html" || relative === "") return "no-store";
+	if (relative.endsWith(".png") || relative.endsWith(".webmanifest")) return "public, max-age=86400";
+	if (relative === "app.js") return "public, max-age=300";
+	return "no-store";
+}
 
 export class MobileDataPlane {
 	readonly #deps: DataPlaneDeps;
@@ -166,7 +174,11 @@ export class MobileDataPlane {
 		}
 		const body = readFileSync(filePath);
 		const ext = filePath.slice(filePath.lastIndexOf("."));
-		response.writeHead(200, { ...headers, "content-type": MIME[ext] ?? "application/octet-stream" });
+		response.writeHead(200, {
+			...headers,
+			"cache-control": cacheControlForMobile(relative),
+			"content-type": MIME[ext] ?? "application/octet-stream",
+		});
 		response.end(request.method === "HEAD" ? undefined : body);
 	}
 

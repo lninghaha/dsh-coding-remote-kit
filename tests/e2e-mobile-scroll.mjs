@@ -56,6 +56,10 @@ if (!metrics.canScroll) {
 	console.error("FAIL: list is not a scrollport (cards are likely flex-shrunk)");
 	process.exit(1);
 }
+if (metrics.manifestStatus !== 200) {
+	console.error("FAIL: manifest.webmanifest was not 200");
+	process.exit(1);
+}
 if (metrics.afterTop < 100) {
 	console.error("FAIL: setting scrollTop did not move the list");
 	process.exit(1);
@@ -73,6 +77,7 @@ function measureScroll() {
 		afterTop: col.scrollTop,
 		canScroll: col.scrollHeight > col.clientHeight + 40,
 		workspaces: document.querySelectorAll(".ws").length,
+		tasks: document.querySelectorAll(".task").length,
 	};
 }
 
@@ -103,7 +108,38 @@ async function runViaCdp(cdpOrigin, targetUrl) {
 				returnByValue: true,
 			});
 			last = result.result?.value ?? last;
-			if (last.ok) return last;
+			if (last.ok) {
+				if (last.tasks !== 0) {
+					return { ...last, ok: false, reason: "workspaces should start collapsed" };
+				}
+				await chrome.send("Runtime.evaluate", {
+					expression: `document.querySelector(".ws-toggle")?.click(); "ok"`,
+					returnByValue: true,
+				});
+				await sleep(200);
+				const expanded = await chrome.send("Runtime.evaluate", {
+					expression: `(${measureScroll.toString()})()`,
+					returnByValue: true,
+				});
+				const after = expanded.result?.value ?? {};
+				const manifest = await chrome.send("Runtime.evaluate", {
+					expression: `fetch("/m/manifest.webmanifest").then((r) => r.status)`,
+					awaitPromise: true,
+					returnByValue: true,
+				});
+				return {
+					...after,
+					ok: after.ok === true && after.tasks > 0 && after.canScroll === true,
+					collapsedTasks: last.tasks,
+					manifestStatus: manifest.result?.value,
+					reason:
+						after.tasks > 0
+							? after.canScroll
+								? undefined
+								: "expanded list is not a scrollport"
+							: "expand did not show tasks",
+				};
+			}
 			await sleep(200);
 		}
 		const dump = await chrome.send("Runtime.evaluate", {

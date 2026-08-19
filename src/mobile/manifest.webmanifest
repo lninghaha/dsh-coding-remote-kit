@@ -1,0 +1,16 @@
+{
+	"id": "/m/",
+	"name": "DSH 远程",
+	"short_name": "DSH 远程",
+	"description": "DeepSeek Harness 手机远程控制",
+	"start_url": "/m/",
+	"scope": "/m/",
+	"display": "standalone",
+	"background_color": "#121212",
+	"theme_color": "#121212",
+	"lang": "zh-CN",
+	"icons": [
+		{ "src": "/m/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+		{ "src": "/m/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+	]
+}
