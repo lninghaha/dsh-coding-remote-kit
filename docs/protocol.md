@@ -15,6 +15,7 @@
 | `host.subscribe` | `{}` | `{ accepted: true }`，开始接收 host 推送 |
 | `session.prompt` | `{ sessionId, mode?: 'queue'\|'steer', text }` | 转 `content:[{ type:'text', text }]`，默认 `queue`；空 text → `invalid_params` |
 | `session.cancel` | `{ sessionId }` | 上游 `accepted` |
+| `session.create` | `{ cwd? }` | 上游 `sessions.create`；审计只记 method + cwd basename |
 | `respond` | 见下 | `{ accepted: true }` |
 
 `session.prompt` / `session.cancel` / `respond` 记审计 `rpc_write`，`detail` 只有 `{ method, sessionId }`。

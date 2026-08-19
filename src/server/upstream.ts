@@ -100,6 +100,7 @@ export interface UpstreamHub {
 	history(params: HistoryParams): Promise<FoldedResult<HistoryResult>>;
 	prompt(params: PromptParams): Promise<FoldedResult<unknown>>;
 	cancel(sessionId: string): Promise<FoldedResult<unknown>>;
+	create(params: { cwd?: string }): Promise<FoldedResult<{ sessionId: string }>>;
 	respond(input: RespondInput): Promise<FoldedResult<unknown>>;
 	stop(): void;
 }
@@ -176,7 +177,14 @@ export function createUpstreamHub(apiProxy: HostApiProxy | undefined, logger: Mo
 		const folded = await callUnary(apiProxy.sessions.list.bind(apiProxy.sessions), {});
 		if (!folded.ok) return folded;
 		const items = Array.isArray(folded.value.items) ? folded.value.items : [];
-		return { ok: true, value: { items: items.map(mapSessionItem).filter((item) => item !== null) } };
+		return {
+			ok: true,
+			value: {
+				items: items
+					.map(mapSessionItem)
+					.filter((item): item is SessionListItem => item !== null && item.blank !== true),
+			},
+		};
 	};
 
 	const history = async (params: HistoryParams): Promise<FoldedResult<HistoryResult>> => {
@@ -209,6 +217,23 @@ export function createUpstreamHub(apiProxy: HostApiProxy | undefined, logger: Mo
 	const cancel = async (sessionId: string): Promise<FoldedResult<unknown>> => {
 		if (apiProxy === undefined) return { ok: false, error: unavailable("apiProxy") };
 		return callUnary(apiProxy.sessions.cancel.bind(apiProxy.sessions), { sessionId });
+	};
+
+	const create = async (params: { cwd?: string }): Promise<FoldedResult<{ sessionId: string }>> => {
+		if (apiProxy === undefined) return { ok: false, error: unavailable("apiProxy") };
+		const createFn = apiProxy.sessions.create;
+		if (typeof createFn !== "function") {
+			return { ok: false, error: { code: "upstream_error", message: "session.create is unavailable" } };
+		}
+		const payload: { cwd?: string } = {};
+		if (typeof params.cwd === "string" && params.cwd.length > 0) payload.cwd = params.cwd;
+		const folded = await callUnary(createFn.bind(apiProxy.sessions), payload);
+		if (!folded.ok) return folded;
+		const sessionId = (folded.value as { sessionId?: unknown }).sessionId;
+		if (typeof sessionId !== "string" || sessionId.length === 0) {
+			return { ok: false, error: { code: "upstream_error", message: "create returned no sessionId" } };
+		}
+		return { ok: true, value: { sessionId } };
 	};
 
 	const respond = async (input: RespondInput): Promise<FoldedResult<unknown>> => {
@@ -248,6 +273,7 @@ export function createUpstreamHub(apiProxy: HostApiProxy | undefined, logger: Mo
 		history,
 		prompt,
 		cancel,
+		create,
 		respond,
 		stop,
 	};
@@ -297,11 +323,28 @@ function sessionIdOf(data: unknown): string | null {
 	return typeof record?.sessionId === "string" && record.sessionId.length > 0 ? record.sessionId : null;
 }
 
+function coerceTitle(value: unknown): string | undefined {
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		return trimmed.length > 0 ? trimmed : undefined;
+	}
+	const record = asRecord(value);
+	if (record === null) return undefined;
+	for (const key of ["title", "value", "text"] as const) {
+		const nested = record[key];
+		if (typeof nested === "string" && nested.trim().length > 0) return nested.trim();
+	}
+	return undefined;
+}
+
 export function extractSessionTitle(projections: unknown): string | undefined {
 	const block = asRecord(projections);
 	const values = asRecord(block?.values);
-	const title = values?.title;
-	return typeof title === "string" && title.length > 0 ? title : undefined;
+	return (
+		coerceTitle(values?.title) ??
+		coerceTitle(values?.sessionTitle) ??
+		coerceTitle(block?.title)
+	);
 }
 
 export function mapSessionItem(raw: unknown): SessionListItem | null {

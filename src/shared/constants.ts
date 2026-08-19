@@ -90,6 +90,7 @@ export const MOBILE_RPC_METHOD_ALLOWLIST = [
 	"host.subscribe",
 	"session.prompt",
 	"session.cancel",
+	"session.create",
 	"respond",
 ] as const;
 export type MobileRpcMethod = (typeof MOBILE_RPC_METHOD_ALLOWLIST)[number];

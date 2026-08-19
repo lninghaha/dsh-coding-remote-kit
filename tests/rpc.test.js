@@ -12,6 +12,7 @@ const ALLOWED = [
 	"host.subscribe",
 	"session.prompt",
 	"session.cancel",
+	"session.create",
 	"respond",
 ];
 
@@ -34,7 +35,7 @@ test("status.get is allowed and returns the frozen status result", async () => {
 	assert.equal(result.result.deviceScope, "mobile");
 });
 
-test("allowlist matrix: nine methods are not forbidden", async () => {
+test("allowlist matrix: ten methods are not forbidden", async () => {
 	assert.deepEqual([...MOBILE_RPC_METHOD_ALLOWLIST], ALLOWED);
 	for (const method of ALLOWED) {
 		assert.equal(isMethodAllowed(method), true, method);

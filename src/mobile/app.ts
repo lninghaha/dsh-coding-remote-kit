@@ -13,6 +13,13 @@ export interface SessionRow {
 	cwd?: string;
 }
 
+interface WorkspaceGroup {
+	key: string;
+	label: string;
+	cwd?: string;
+	sessions: SessionRow[];
+}
+
 interface TranscriptLine {
 	key: string;
 	role: "user" | "assistant" | "tool" | "system";
@@ -51,6 +58,8 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		events: [] as unknown[],
 		busy: false,
 		error: null as string | null,
+		toast: null as string | null,
+		collapsed: new Set<string>(),
 		approvals: [] as PendingApproval[],
 		questions: [] as PendingQuestion[],
 	};
@@ -67,15 +76,32 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		const header = el("header", { className: "bar" });
 		const view = state.view;
 		if (view.name === "session") {
-			const back = el("button", { className: "ghost", type: "button" }, "返回");
+			const back = el("button", { className: "ghost", type: "button" }, "←");
 			back.addEventListener("click", () => {
 				void leaveSession();
 			});
 			header.appendChild(back);
 			const current = state.sessions.find((row) => row.sessionId === view.sessionId);
-			header.appendChild(el("strong", {}, current?.title ?? shortId(view.sessionId)));
+			const titles = el("div");
+			titles.appendChild(el("strong", {}, "任务会话"));
+			titles.appendChild(el("div", { className: "sub" }, current?.title ?? "未命名会话"));
+			header.appendChild(titles);
+			const more = el("button", { className: "ghost", type: "button" }, "⋯");
+			more.addEventListener("click", () => {
+				state.toast = "审查 / 终端请在桌面 DSH 打开";
+				render();
+			});
+			header.appendChild(more);
 		} else {
-			header.appendChild(el("strong", {}, "会话"));
+			const block = el("div");
+			block.appendChild(el("strong", {}, "远程控制"));
+			block.appendChild(el("div", { className: "sub" }, "已连接到当前 DSH 窗口"));
+			header.appendChild(block);
+			const refresh = el("button", { className: "ghost", type: "button" }, "刷新");
+			refresh.addEventListener("click", () => {
+				void refreshList();
+			});
+			header.appendChild(refresh);
 		}
 		if (state.error !== null) header.appendChild(el("span", { className: "err" }, state.error));
 		return header;
@@ -83,23 +109,75 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 
 	const renderList = (): HTMLElement => {
 		const wrap = el("div", { className: "col" });
+		wrap.appendChild(
+			el(
+				"p",
+				{ className: "hero" },
+				"本次连接可以查看当前设备上已打开的项目和会话；二维码失效后需要回到桌面重新连接。",
+			),
+		);
 		wrap.appendChild(renderInbox());
-		if (state.sessions.length === 0) {
+		const groups = groupByCwd(state.sessions);
+		const section = el("div", { className: "section-h" });
+		section.appendChild(el("h2", {}, "当前设备上的工作区和任务"));
+		section.appendChild(el("span", { className: "muted" }, `${String(groups.length)} 个工作区 · ${String(state.sessions.length)} 个任务`));
+		wrap.appendChild(section);
+		if (state.toast !== null) wrap.appendChild(el("p", { className: "toast" }, state.toast));
+		if (groups.length === 0) {
 			wrap.appendChild(el("p", { className: "muted" }, "暂无会话"));
 			return wrap;
 		}
-		for (const session of state.sessions) {
-			const row = el("button", { className: "row", type: "button" });
-			row.appendChild(el("span", { className: "title" }, session.title ?? shortId(session.sessionId)));
-			row.appendChild(
-				el("span", { className: "meta" }, `${session.running ? "运行中" : "空闲"}${session.blank ? " · 空白" : ""}`),
-			);
-			row.addEventListener("click", () => {
-				void openSession(session.sessionId);
-			});
-			wrap.appendChild(row);
+		for (const group of groups) {
+			wrap.appendChild(renderWorkspace(group));
 		}
 		return wrap;
+	};
+
+	const renderWorkspace = (group: WorkspaceGroup): HTMLElement => {
+		const card = el("div", { className: "ws" });
+		const collapsed = state.collapsed.has(group.key);
+		const head = el("button", { className: "ws-head", type: "button" });
+		const name = el("div");
+		const titleLine = el("div");
+		titleLine.appendChild(el("span", { className: "ws-name" }, group.label));
+		titleLine.appendChild(el("span", { className: "badge" }, "本地"));
+		name.appendChild(titleLine);
+		if (group.cwd !== undefined) name.appendChild(el("div", { className: "ws-path" }, group.cwd));
+		name.appendChild(el("div", { className: "muted" }, `${String(group.sessions.length)} 个任务`));
+		head.appendChild(name);
+		head.appendChild(el("span", { className: "muted" }, collapsed ? "▸" : "▾"));
+		head.addEventListener("click", () => {
+			if (state.collapsed.has(group.key)) state.collapsed.delete(group.key);
+			else state.collapsed.add(group.key);
+			render();
+		});
+		const add = el("button", { className: "icon-btn", type: "button" }, "+");
+		add.addEventListener("click", (event) => {
+			event.stopPropagation();
+			void createSession(group.cwd);
+		});
+		head.appendChild(add);
+		card.appendChild(head);
+		if (!collapsed) {
+			if (group.sessions.length === 0) {
+				card.appendChild(el("p", { className: "muted" }, "这个工作区暂无任务"));
+			}
+			for (const session of group.sessions) {
+				const row = el("button", { className: "task", type: "button" });
+				const left = el("div");
+				left.appendChild(el("div", { className: "title" }, session.title ?? "未命名会话"));
+				left.appendChild(el("div", { className: "muted" }, formatAgo(session.updatedAt)));
+				row.appendChild(left);
+				row.appendChild(
+					el("span", { className: session.running ? "pill run" : "pill" }, session.running ? "运行中" : "已完成"),
+				);
+				row.addEventListener("click", () => {
+					void openSession(session.sessionId);
+				});
+				card.appendChild(row);
+			}
+		}
+		return card;
 	};
 
 	const renderSession = (sessionId: string): HTMLElement => {
@@ -112,7 +190,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		wrap.appendChild(scroller);
 		const composer = el("form", { className: "composer" });
 		const input = el("textarea");
-		input.placeholder = "短回复…";
+		input.placeholder = "提出后续修改要求";
 		const send = el("button", { type: "submit" }, state.busy ? "发送中…" : "发送");
 		send.disabled = state.busy;
 		const stop = el("button", { type: "button", className: "ghost" }, "停止");
@@ -243,16 +321,40 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		});
 	};
 
+	const refreshList = async (): Promise<void> => {
+		await run(async () => {
+			const listed = asRecord(await rpc.request("session.list", {}));
+			state.sessions = Array.isArray(listed?.items)
+				? listed.items.map(parseSession).filter((row): row is SessionRow => row !== null && !row.blank)
+				: [];
+		});
+	};
+
+	const createSession = async (cwd?: string): Promise<void> => {
+		await run(async () => {
+			const created = asRecord(await rpc.request("session.create", cwd === undefined ? {} : { cwd }));
+			const listed = asRecord(await rpc.request("session.list", {}));
+			state.sessions = Array.isArray(listed?.items)
+				? listed.items.map(parseSession).filter((row): row is SessionRow => row !== null && !row.blank)
+				: [];
+			if (typeof created?.sessionId === "string") await loadSession(created.sessionId);
+		});
+	};
+
+	const loadSession = async (sessionId: string): Promise<void> => {
+		const current = state.view;
+		if (current.name === "session" && current.sessionId !== sessionId) {
+			await rpc.request("session.unsubscribe", { sessionId: current.sessionId }).catch(() => undefined);
+		}
+		const history = asRecord(await rpc.request("session.history", { sessionId }));
+		state.events = Array.isArray(history?.events) ? history.events : [];
+		await rpc.request("session.subscribe", { sessionId });
+		state.view = { name: "session", sessionId };
+	};
+
 	const openSession = async (sessionId: string): Promise<void> => {
 		await run(async () => {
-			const current = state.view;
-			if (current.name === "session" && current.sessionId !== sessionId) {
-				await rpc.request("session.unsubscribe", { sessionId: current.sessionId }).catch(() => undefined);
-			}
-			const history = asRecord(await rpc.request("session.history", { sessionId }));
-			state.events = Array.isArray(history?.events) ? history.events : [];
-			await rpc.request("session.subscribe", { sessionId });
-			state.view = { name: "session", sessionId };
+			await loadSession(sessionId);
 		});
 	};
 
@@ -330,7 +432,9 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 	void run(async () => {
 		await rpc.request("host.subscribe", {});
 		const listed = asRecord(await rpc.request("session.list", {}));
-		state.sessions = Array.isArray(listed?.items) ? listed.items.map(parseSession).filter((row) => row !== null) : [];
+		state.sessions = Array.isArray(listed?.items)
+			? listed.items.map(parseSession).filter((row): row is SessionRow => row !== null && !row.blank)
+			: [];
 	});
 	render();
 }
@@ -459,8 +563,37 @@ function labelOf(role: TranscriptLine["role"]): string {
 	return "";
 }
 
-function shortId(id: string): string {
-	return id.length > 12 ? `${id.slice(0, 8)}…` : id;
+function basenameOf(cwd: string): string {
+	const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
+	return parts[parts.length - 1] ?? cwd;
+}
+
+function groupByCwd(sessions: SessionRow[]): WorkspaceGroup[] {
+	const map = new Map<string, WorkspaceGroup>();
+	for (const session of sessions) {
+		const key = session.cwd ?? "__none__";
+		let group = map.get(key);
+		if (group === undefined) {
+			group = {
+				key,
+				label: session.cwd === undefined ? "未绑定工作区" : basenameOf(session.cwd),
+				...(session.cwd === undefined ? {} : { cwd: session.cwd }),
+				sessions: [],
+			};
+			map.set(key, group);
+		}
+		group.sessions.push(session);
+	}
+	return [...map.values()];
+}
+
+function formatAgo(timestamp: number): string {
+	if (timestamp <= 0) return "";
+	const delta = Date.now() - timestamp;
+	if (delta < 60_000) return "刚刚";
+	if (delta < 3_600_000) return `${String(Math.floor(delta / 60_000))} 分钟前`;
+	if (delta < 86_400_000) return `${String(Math.floor(delta / 3_600_000))} 小时前`;
+	return `${String(Math.floor(delta / 86_400_000))} 天前`;
 }
 
 function el(tag: string, attrs: Record<string, string> = {}, text?: string): HTMLElement {

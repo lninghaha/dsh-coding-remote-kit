@@ -53,6 +53,9 @@ export interface HostApiProxy {
 			}>,
 		): Promise<HostRpcResponse<unknown>>;
 		cancel(request: HostRpcRequest<{ sessionId: string }>): Promise<HostRpcResponse<unknown>>;
+		create?(
+			request: HostRpcRequest<{ cwd?: string; workspaceId?: string }>,
+		): Promise<HostRpcResponse<{ sessionId: string }>>;
 	};
 	readonly events: {
 		mux(

@@ -149,6 +149,19 @@ async function dispatchAllowed(
 			auditWrite(ctx, method, sessionId);
 			return foldUpstream(id, await ctx.upstream.cancel(sessionId));
 		}
+		case "session.create": {
+			if (ctx.upstream === undefined) return error(id, "upstream_error", "apiProxy is unavailable");
+			const cwd = typeof params.cwd === "string" && params.cwd.length > 0 ? params.cwd : undefined;
+			const basename = cwd === undefined ? "" : cwd.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? "";
+			if (ctx.audit !== undefined && ctx.deviceId !== undefined) {
+				ctx.audit.log({
+					event: "rpc_write",
+					deviceId: ctx.deviceId,
+					detail: { method, cwd: basename },
+				});
+			}
+			return foldUpstream(id, await ctx.upstream.create(cwd === undefined ? {} : { cwd }));
+		}
 		case "respond":
 			return dispatchRespond(id, params, ctx);
 		default:
