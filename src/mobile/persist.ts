@@ -11,6 +11,7 @@ export const OFFER_STORAGE_KEY = "dshmr.offer";
 export interface StorageLike {
 	getItem(key: string): string | null;
 	setItem(key: string, value: string): void;
+	removeItem?(key: string): void;
 }
 
 export function persistOffer(storage: StorageLike, offer: PairingOffer): void {
@@ -30,8 +31,13 @@ export function loadPersistedOffer(storage: StorageLike): PairingOffer | null {
 
 export function clearPersistedOffer(storage: StorageLike): void {
 	try {
-		storage.removeItem(HOST_STORAGE_KEY);
-		storage.removeItem(OFFER_STORAGE_KEY);
+		if (typeof storage.removeItem === "function") {
+			storage.removeItem(HOST_STORAGE_KEY);
+			storage.removeItem(OFFER_STORAGE_KEY);
+		} else {
+			storage.setItem(HOST_STORAGE_KEY, "");
+			storage.setItem(OFFER_STORAGE_KEY, "");
+		}
 	} catch {
 		// ignore
 	}
