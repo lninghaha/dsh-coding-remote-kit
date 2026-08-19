@@ -32,7 +32,8 @@
     "build:client": "node scripts/build-client.mjs",
     "build:mobile": "node scripts/build-mobile.mjs",
     "build": "node scripts/build-server.mjs && node scripts/build-client.mjs && node scripts/build-mobile.mjs",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "test:sandbox": "bash scripts/sandbox-check.sh"
   },
   "dependencies": {
     "js-sha256": "^1.0.0",

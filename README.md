@@ -29,7 +29,13 @@ DeepSeek Harness（DSH）**远程手机访问**插件。
 ## 开发
 
 ```bash
-pnpm install && pnpm build
+pnpm install && pnpm build && pnpm test
+```
+
+安装 / 挂回 profile 之前必须过 Docker 沙箱门禁（不碰本机 3080 / `~/.dsh`）：
+
+```bash
+pnpm test:sandbox
 ```
 
 构建产物：
@@ -39,11 +45,7 @@ pnpm install && pnpm build
 - `lib/mobile/` — 手机页（`/m` + E2EE 握手 + 会话列表 / 审批 / 短回复）
 - [`docs/protocol.md`](docs/protocol.md) — 白名单、推送信封、`respond` 两种 payload
 
-安装到本机 DSH profile（数据面默认 `127.0.0.1:6879`；配对时 widen 到 `0.0.0.0`）。手机页可列会话、处理审批/提问并发送短回复：
-
-```bash
-dsh plugin add /absolute/path/to/dsh-mobile-remote
-```
+沙箱绿了之后再挂回 profile。用 **`file:` tarball**，不要 `link:` 工作树（一个入口 import 失败会拖死整棵 `dsh web`）。数据面默认 `127.0.0.1:6879`，配对时 widen 到 `0.0.0.0`。
 
 ## 与现有项目的关系
 

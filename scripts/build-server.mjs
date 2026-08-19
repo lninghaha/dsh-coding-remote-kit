@@ -1,7 +1,8 @@
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { assertServerBundle } from "./assert-server-bundle.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverOut = resolve(root, "lib/server");
@@ -19,10 +20,17 @@ await build({
 	sourcemap: "external",
 	sourcesContent: true,
 	legalComments: "none",
-	// `ws` loads optional native addons (bufferutil/utf-8-validate) inside a
-	// try/catch; keep it external so bundling never trips on those requires.
-	external: ["ws"],
+	// Never pack node_modules into this ESM entry. tweetnacl 1.x does a
+	// conditional `require("crypto")`; esbuild's CJS-in-ESM stub throws
+	// "Dynamic require of crypto is not supported" and DSH's plugin tree
+	// fail-fasts the whole `dsh web` process. Leaving packages external lets
+	// Node load tweetnacl as CJS so its own require works. `ws` is the same
+	// class of problem (optional native addons).
+	packages: "external",
 });
+
+const bundled = await readFile(resolve(serverOut, "index.js"), "utf8");
+assertServerBundle(bundled, resolve(serverOut, "index.js"));
 
 // 2. Transpile the source tree (shared + server internals + mobile/e2ee) into
 // lib/ so the unit tests can import the built artifacts directly. The three
