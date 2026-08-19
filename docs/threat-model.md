@@ -40,8 +40,14 @@
 缓解（按优先级）：
 
 - 推荐把数据面放在 Tailscale / WireGuard 等加密 overlay 内，而不是裸 LAN。
+- **Cloudflare Quick Tunnel（方案 1，本里程碑）**，设置页显式开启，只暴露数据面：
+  - **`/m` 会公开可达**：任何人持有 `https://<随机>.trycloudflare.com` 即可加载手机页。TLS 在 Cloudflare 边缘终结，回源 `http://127.0.0.1:6879`。
+  - **配对仍是 fragment + E2EE**：`/m` 静态页面本身不含会话秘密；没有 fragment 令牌（+ 共享密钥）仍不能完成 `e2ee_auth`。URL 等同临时钥匙，勿转发。
+  - **必须随 unload /「停止」杀掉 `cloudflared` 子进程**（`ctx.effect` disposer）。
+  - **禁止**把 `3080` / `dsh web` 送进隧道；隧道 `--url` 只指向 `127.0.0.1:<数据面端口>`。
 - M4 可选：自签 HTTPS + 二维码钉死证书哈希（TOFU）。
 - 未来选项：路线 C 原生 App，用签名包投递客户端，彻底离开「首次 HTTP 下发」模型。
+- 方案 2（自建会合中继）见 [`todo-cloud-relay.md`](todo-cloud-relay.md)，未实现。
 
 **明确出界（v0 不防、不声称防）：**
 
@@ -55,7 +61,7 @@
 
 - **不共享他人凭据。** Do not share another person's credentials.
 - **不监测未授权账户。** Do not monitor accounts you are not authorized to access.
-- **不裸暴露公网端口。** Do not expose the data-plane port on the public Internet without an overlay or equivalent control.
+- **不裸暴露公网端口。** Do not bind the data-plane port on `0.0.0.0` to the public Internet. A user-started Cloudflare Quick Tunnel (HTTPS at the edge, localhost origin) is an explicit exception; never tunnel `3080`.
 - **不暗示 DeepSeek 官方背书。** This plugin is not affiliated with, and is not endorsed by, DeepSeek.
 
 错误示例（禁止照抄到生产）：`ws://203.0.113.10:6879?token=s3cret`  

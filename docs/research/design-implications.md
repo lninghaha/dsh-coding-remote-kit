@@ -59,4 +59,6 @@
 - [ ] 细读 DSH Web 的 session / approval / events 宿主 API（版本钉死某 `dsh` rc）  
 - [ ] 实测 `dsh-pocket` 与 `dsh-web-remote` 安装与权限面（隔离 profile）  
 - [ ] 决定 MVP 走路线 A 还是 B  
-- [ ] 写出威胁模型与「禁止事项」清单（中英用户可见文案）  
+- [ ] 写出威胁模型与「禁止事项」清单（中英用户可见文案）
+- [x] **方案 1：Cloudflare Quick Tunnel（只暴露数据面 6879）**。已实现于 `src/server/tunnel.ts` + 设置页「公网」入口；文档见 `threat-model.md`。
+- [ ] **方案 2：自建会合中继**（桌面/手机连 Worker，业务 E2EE）。见 [`../todo-cloud-relay.md`](../todo-cloud-relay.md)。非 Quick Tunnel 里程碑。  

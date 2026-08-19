@@ -63,6 +63,13 @@ test("GET /api/mobile-remote/devices omits tokenHash", async () => {
 		port: () => 6879,
 		async widen() {},
 		advertise: () => ({ endpoint: "ws://127.0.0.1/m/ws", pageUrl: "http://127.0.0.1/m", candidates: ["127.0.0.1"] }),
+		tunnel: {
+			snapshot: () => ({ running: false, kind: null, url: null, binaryOk: true }),
+			async start() {
+				throw new Error("not started in this test");
+			},
+			async stop() {},
+		},
 	});
 
 	const chunks = [];

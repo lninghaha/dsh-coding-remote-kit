@@ -27,7 +27,17 @@ interface StatusInfo {
 	listening: boolean;
 	networkReach: string;
 	activeDevices: number;
+	tunnel: TunnelSnapshot;
 }
+
+interface TunnelSnapshot {
+	running: boolean;
+	kind: "cloudflare-quick" | null;
+	url: string | null;
+	binaryOk: boolean;
+}
+
+type Channel = "lan" | "public";
 
 interface OfferInfo {
 	qrText: string;
@@ -67,10 +77,12 @@ function formatRemaining(ms: number): string {
 
 function MobileRemoteSettings() {
 	const [status, setStatus] = useState<StatusInfo | null>(null);
+	const [channel, setChannel] = useState<Channel>("lan");
 	const [offerInfo, setOfferInfo] = useState<OfferInfo | null>(null);
 	const [devices, setDevices] = useState<DeviceInfo[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [remainingMs, setRemainingMs] = useState<number | null>(null);
+	const [tunnelBusy, setTunnelBusy] = useState(false);
 
 	const formatApiError = (
 		response: Response,
@@ -158,6 +170,61 @@ function MobileRemoteSettings() {
 		})();
 	};
 
+	const extractTunnelHost = (url: string | null): string | null => {
+		if (typeof url !== "string" || url.length === 0) return null;
+		try {
+			return new URL(url).host;
+		} catch {
+			return null;
+		}
+	};
+
+	const tunnelAction = (action: "start" | "stop") => {
+		if (tunnelBusy) return;
+		setError(null);
+		setTunnelBusy(true);
+		void (async () => {
+			try {
+				const response = await fetch("/api/mobile-remote/tunnel", {
+					method: "POST",
+					headers: {
+						"content-type": "application/json",
+						"x-dsh-mobile-remote": "1",
+					},
+					body: JSON.stringify({ action, kind: "cloudflare-quick" }),
+				});
+				const payload = (await response.json()) as { url?: string; error?: { message?: string } };
+				if (!response.ok) {
+					setError(formatApiError(response, payload, action === "start" ? "开启公网链接失败" : "停止公网链接失败"));
+					return;
+				}
+				refreshStatus();
+				if (action === "start" && typeof payload.url === "string") {
+					setChannel("public");
+				}
+			} catch {
+				setError(action === "start" ? "开启公网链接失败" : "停止公网链接失败");
+			} finally {
+				setTunnelBusy(false);
+			}
+		})();
+	};
+
+	const copyTunnelUrl = () => {
+		const url = status?.tunnel.url;
+		if (typeof url !== "string" || url.length === 0) return;
+		const clipboard = (navigator as { clipboard?: { writeText(text: string): Promise<void> } }).clipboard;
+		if (clipboard === undefined) {
+			setError("当前浏览器不支持复制链接");
+			return;
+		}
+		void clipboard.writeText(url).then(() => {
+			setError(null);
+		}).catch(() => {
+			setError("复制链接失败");
+		});
+	};
+
 	const createOffer = () => {
 		setError(null);
 		void (async () => {
@@ -191,14 +258,100 @@ function MobileRemoteSettings() {
 		})();
 	};
 
+	const tunnelHost = extractTunnelHost(status?.tunnel.url ?? null);
+	const tunnelRunning = status?.tunnel.running ?? false;
+	const tunnelBinaryOk = status?.tunnel.binaryOk ?? false;
+
 	const statusLine = status === null
 		? "状态加载中…"
-		: `绑定 ${status.bind}:${String(status.port)} · ${status.listening ? "监听中" : "未监听"} · ${status.networkReach} · 已配对设备 ${String(status.activeDevices)}`;
+		: `绑定 ${status.bind}:${String(status.port)} · ${status.listening ? "监听中" : "未监听"} · ${status.networkReach} · 已配对设备 ${String(status.activeDevices)}${tunnelRunning ? ` · 公网隧道 ${tunnelHost ?? "运行中"}` : ""}`;
 
 	return createElement(
 		"section",
 		{ style: { display: "grid", gap: "12px", maxWidth: "40rem", lineHeight: 1.55 } },
 		createElement("p", { style: { margin: 0 } }, statusLine),
+		createElement(
+			"div",
+			{
+				style: {
+					display: "grid",
+					gap: "6px",
+					padding: "10px 12px",
+					border: "1px solid #d0d0d0",
+					borderRadius: "8px",
+				},
+			},
+			createElement(
+				"div",
+				{ style: { display: "flex", gap: "16px", fontSize: "13px" } },
+				createElement(
+					"label",
+					{ style: { display: "flex", gap: "6px", alignItems: "center" } },
+					createElement("input", {
+						type: "radio",
+						name: "channel",
+						checked: !tunnelRunning && channel === "lan",
+						onChange: () => setChannel("lan"),
+					}),
+					"仅局域网",
+				),
+				createElement(
+					"label",
+					{ style: { display: "flex", gap: "6px", alignItems: "center" } },
+					createElement("input", {
+						type: "radio",
+						name: "channel",
+						checked: tunnelRunning || channel === "public",
+						onChange: () => setChannel("public"),
+					}),
+					"公网（Cloudflare Quick Tunnel）",
+				),
+			),
+			channel === "public" && !tunnelRunning
+				? createElement(
+						"p",
+						{ style: { margin: 0, fontSize: "12px", color: "#8a5a00" } },
+						"公网链接等同临时钥匙：知道链接者即可尝试联系此主机，请勿转发；配对仍需端到端密钥。",
+					)
+				: null,
+			!tunnelBinaryOk
+				? createElement(
+						"p",
+						{ style: { margin: 0, fontSize: "12px", color: "#b3261e" } },
+						"未检测到 cloudflared：请将二进制放到 ~/.local/bin/cloudflared 后刷新页面。",
+					)
+				: null,
+			createElement(
+				"div",
+				{ style: { display: "flex", gap: "8px", flexWrap: "wrap" } },
+				!tunnelRunning
+					? createElement(
+							"button",
+							{
+								type: "button",
+								disabled: !tunnelBinaryOk || tunnelBusy,
+								onClick: () => tunnelAction("start"),
+							},
+							"开启公网链接",
+						)
+					: null,
+				tunnelRunning
+					? createElement(
+							"button",
+							{ type: "button", onClick: copyTunnelUrl },
+							"复制链接",
+						)
+					: null,
+				createElement("button", { type: "button", onClick: createOffer }, "刷新二维码"),
+				tunnelRunning
+					? createElement(
+							"button",
+							{ type: "button", disabled: tunnelBusy, onClick: () => tunnelAction("stop") },
+							"停止",
+						)
+					: null,
+			),
+		),
 		createElement(
 			"button",
 			{ type: "button", onClick: createOffer, style: { justifySelf: "start" } },

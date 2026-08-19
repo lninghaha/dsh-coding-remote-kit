@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { base64Encode } from "../shared/base64.js";
 import { type RuntimeConfig, RuntimeConfigSchema } from "./config.js";
 import { trustedHostsFromRuntime } from "./security.js";
@@ -9,6 +10,7 @@ import { networkCandidates } from "./net.js";
 import { AuditLogger, DeviceRegistry, OfferRegistry } from "./registry.js";
 import { ensureStorageDir } from "./storage.js";
 import { registerManagementRoutes } from "./routes.js";
+import { CloudflareQuickTunnel } from "./tunnel.js";
 import { createUpstreamHub } from "./upstream.js";
 
 export const name = "mobile-remote";
@@ -36,6 +38,16 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 	const registry = new DeviceRegistry(storageDirectory);
 	const offers = new OfferRegistry();
 	const audit = new AuditLogger(storageDirectory);
+
+	// Cloudflare Quick Tunnel for the data plane only (never 3080). Persisted so a
+	// fresh instance can detect (and clear) a stale dead child after a crash.
+	const tunnel = new CloudflareQuickTunnel({
+		persistFile: join(storageDirectory, "tunnel.json"),
+	});
+	ctx.effect(
+		() => () => void tunnel.stop(),
+		"mobile-remote: cloudflare quick tunnel (must stop on unload)",
+	);
 
 	const injected = ctx.apiProxy ?? ctx.get?.("apiProxy");
 	const apiProxy = isHostApiProxy(injected) ? injected : undefined;
@@ -105,6 +117,11 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 			port: () => config.port,
 			widen,
 			advertise,
+			tunnel: {
+				snapshot: () => tunnel.snapshot(),
+				start: (options) => tunnel.start(options),
+				stop: () => tunnel.stop(),
+			},
 		});
 		for (const [index, dispose] of disposers.entries()) {
 			ctx.effect(() => dispose, `mobile-remote: route ${index + 1}`);

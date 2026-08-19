@@ -13,6 +13,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { encodeOffer, offerQrText } from "../shared/offer.js";
 import type { AuditLogger, DeviceRecord, DeviceRegistry, OfferRegistry } from "./registry.js";
+import type { CloudflareQuickTunnelSnapshot } from "./tunnel.js";
 import {
 	isTrustedManagementRequest,
 	passesBrowserContextGuard,
@@ -57,6 +58,24 @@ export interface ManagementDeps {
 	widen(): Promise<void>;
 	/** Compute endpoint / pageUrl / candidate addresses for the current bind. */
 	advertise(): AdvertiseResult;
+	/** Cloudflare Quick Tunnel face (start/stop/snapshot). Present only when the plugin owns one. */
+	readonly tunnel: TunnelDeps;
+}
+
+export interface TunnelDeps {
+	snapshot(): CloudflareQuickTunnelSnapshot;
+	start(options: { port: number; timeoutMs?: number }): Promise<string>;
+	stop(): Promise<void>;
+}
+
+/** Advertise the pairing offer through an active tunnel's public URL. */
+export function tunnelAdvertise(url: string): AdvertiseResult {
+	const origin = url.replace(/\/+$/, "");
+	return {
+		endpoint: `${origin.replace(/^https:/u, "wss:")}/m/ws`,
+		pageUrl: `${origin}/m`,
+		candidates: [origin.replace(/^https:\/\//u, "")],
+	};
 }
 
 export interface PublicDevice {
@@ -144,8 +163,18 @@ export function registerManagementRoutes(
 		register("/api/mobile-remote/offers", ["POST"], async (request, response) => {
 			const body = await readJsonBody(request, response);
 			if (body === undefined) return;
-			await deps.widen();
-			const { endpoint, pageUrl, candidates } = deps.advertise();
+			// When the user has an explicit public tunnel running, path /m and /m/ws
+			// are already reachable at its HTTPS origin — do NOT rebind/widen to the LAN,
+			// and advertise the tunnel URL instead of local candidates.
+			const snapshot = deps.tunnel.snapshot();
+			let advertiseResult: AdvertiseResult;
+			if (snapshot.running && snapshot.url !== null) {
+				advertiseResult = tunnelAdvertise(snapshot.url);
+			} else {
+				await deps.widen();
+				advertiseResult = deps.advertise();
+			}
+			const { endpoint, pageUrl, candidates } = advertiseResult;
 			const offer = deps.offers.createOffer({
 				endpoint,
 				pageUrl,
@@ -164,7 +193,39 @@ export function registerManagementRoutes(
 				listening: deps.listening(),
 				networkReach: deps.registry.networkReach,
 				activeDevices: deps.registry.activeDeviceCount(),
+				tunnel: deps.tunnel.snapshot(),
 			});
+		}),
+		register("/api/mobile-remote/tunnel", ["GET"], async (_request, response) => {
+			writeJson(response, 200, deps.tunnel.snapshot());
+		}),
+		register("/api/mobile-remote/tunnel", ["POST"], async (request, response) => {
+			const body = await readJsonBody(request, response);
+			if (body === undefined) return;
+			const record = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+			const action = record?.action;
+			const kind = record?.kind;
+			if (kind !== "cloudflare-quick") {
+				reject(response, 400, "invalid_params", "kind must be 'cloudflare-quick'");
+				return;
+			}
+			if (action === "start") {
+				try {
+					const url = await deps.tunnel.start({ port: deps.port() });
+					writeJson(response, 200, { ok: true, running: true, url });
+				} catch (error) {
+					const message = error instanceof Error ? error.message : "start failed";
+					deps.logger.warn(`cloudflare quick tunnel start failed (${message})`);
+					writeJson(response, 500, { ok: false, error: { code: "tunnel-start-failed", message } });
+				}
+				return;
+			}
+			if (action === "stop") {
+				await deps.tunnel.stop();
+				writeJson(response, 200, { ok: true, snapshot: deps.tunnel.snapshot() });
+				return;
+			}
+			reject(response, 400, "invalid_params", "action must be 'start' or 'stop'");
 		}),
 		register("/api/mobile-remote/devices", ["GET"], async (_request, response) => {
 			writeJson(response, 200, devicesResponseBody(deps.registry));
