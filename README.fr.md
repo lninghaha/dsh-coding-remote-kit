@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.2.0** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.2.1** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
 
 **Accès distant par téléphone pour [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Appariez un téléphone au bureau qui exécute déjà `dsh web`, observez les sessions et effectuez un ensemble restreint d'écritures — sans exposer l'API Web complète.
 
@@ -27,7 +27,7 @@ Développé d'abord sous le nom GitHub `dsh-mobile-remote`. Le nom npm **`dsh-mo
 
 | | Utilisez ceci | Notes |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.2.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.0` |
+| npm | `dsh-coding-remote-kit@0.2.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.1` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | ancien nom de checkout `dsh-mobile-remote` |
 | id du plugin Cordis | `mobile-remote` | inchangé |
 | HTTP de la page Réglages | `/api/mobile-remote/*` | inchangé |
@@ -67,7 +67,7 @@ Ne faites **pas** `dsh plugin add dsh-mobile-remote` — cela installe le plugin
 ## Démarrage rapide
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.2.0
+dsh plugin --profile web add dsh-coding-remote-kit@0.2.1
 ```
 
 Ensuite l'**opérateur** redémarre le processus `dsh web` existant dans sa propre fenêtre. Ouvrez **Settings → 移動远程**, créez une offre d'appariement, scannez le QR (ou saisissez le PIN) sur le téléphone.
@@ -78,8 +78,8 @@ Depuis un checkout source (développement) :
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.2.0.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.0.tgz"
+cp dsh-coding-remote-kit-0.2.1.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.1.tgz"
 ```
 
 Ne faites pas `dsh plugin add ./` depuis cet arbre de travail. pnpm 11 traite certains chemins `file:` de tarball comme source `link:`, et un import d'entrée raté fait tomber toute la GUI.

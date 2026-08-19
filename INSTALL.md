@@ -4,7 +4,7 @@
 
 npm 包名是 **`dsh-coding-remote-kit`**。GitHub：[`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit)。npm 上的 `dsh-mobile-remote` 是另一个微信插件，不要装那个。
 
-当前版本 **`0.2.0`**。
+当前版本 **`0.2.1`**。
 
 ## 前置条件
 
@@ -17,14 +17,14 @@ npm 包名是 **`dsh-coding-remote-kit`**。GitHub：[`lninghaha/dsh-coding-remo
 
 ```bash
 # 普通用户：当前 npm 发布版
-dsh plugin --profile web add dsh-coding-remote-kit@0.2.0
+dsh plugin --profile web add dsh-coding-remote-kit@0.2.1
 
 # 开发者：先过 Docker 沙箱门禁（不碰本机 3080 / $DSH_HOME）
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.2.0.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.0.tgz"
+cp dsh-coding-remote-kit-0.2.1.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.1.tgz"
 ```
 
 目标始终是 `$DSH_HOME`（默认 `~/.dsh`）的 **web profile**，不要写进某个 git checkout 里的 `.dsh`。

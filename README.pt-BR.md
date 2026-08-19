@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.2.0** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.2.1** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
 
 **Acesso remoto pelo celular ao [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Emparelhe um celular ao desktop que já executa `dsh web`, observe sessões e faça um conjunto restrito de escritas — sem expor a API Web completa.
 
@@ -27,7 +27,7 @@ Desenvolvido primeiro como GitHub `dsh-mobile-remote`. O nome npm **`dsh-mobile-
 
 | | Use isto | Notas |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.2.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.0` |
+| npm | `dsh-coding-remote-kit@0.2.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.1` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | nome anterior do checkout `dsh-mobile-remote` |
 | id do plugin Cordis | `mobile-remote` | inalterado |
 | HTTP da página de configurações | `/api/mobile-remote/*` | inalterado |
@@ -67,7 +67,7 @@ Desenvolvido primeiro como GitHub `dsh-mobile-remote`. O nome npm **`dsh-mobile-
 ## Início rápido
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.2.0
+dsh plugin --profile web add dsh-coding-remote-kit@0.2.1
 ```
 
 Depois o **operador** reinicia o processo `dsh web` existente na própria janela. Abra **Settings → 移動远程**, crie uma oferta de emparelhamento, escaneie o QR (ou digite o PIN) no celular.
@@ -78,8 +78,8 @@ A partir de um checkout de código (desenvolvimento):
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.2.0.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.0.tgz"
+cp dsh-coding-remote-kit-0.2.1.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.1.tgz"
 ```
 
 Não execute `dsh plugin add ./` nesta árvore de trabalho. O pnpm 11 trata alguns caminhos `file:` de tarball como fonte `link:`, e um import de entrada ruim derruba a GUI inteira.

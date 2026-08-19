@@ -4,8 +4,13 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+## v0.2.1 - 2026-08-19
+
 ### Changed
 
+- Desktop settings: data-plane status banner (listen state, port, LAN reach, active devices), QR white quiet zone, formatted PIN with copy buttons, expiry progress bar, inline channel errors, device online/revoked badges, and revoke confirmation.
+- Mobile pairing shell: structured notice and PIN cards (replacing plain text), Crockford PIN formatting with auto-submit, retry / change-code / clear-local-pairing on failure or disconnect.
+- Mobile session UI: role-labeled bubbles, block-level fenced code, stop button only while running, session info sheet, approval cards with workspace/task context, debounced search, and clearer empty states.
 - Add `remote` to package.json keywords ahead of the awesome-dsh-plugin listing.
 
 ### Documentation
