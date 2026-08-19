@@ -213,7 +213,7 @@ function bootE2eList(): void {
 	const now = Date.now();
 	const items: Array<Record<string, unknown>> = [];
 	for (let workspace = 0; workspace < 12; workspace += 1) {
-		const cwd = `/home/lning/dev/ws-${String(workspace)}`;
+		const cwd = `/tmp/example-project/ws-${String(workspace)}`;
 		for (let task = 0; task < 4; task += 1) {
 			items.push({
 				sessionId: `s-${String(workspace)}-${String(task)}`,

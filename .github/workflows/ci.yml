@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22.19.0, 24]
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILDKIT: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify inside an isolated Docker sandbox
+        run: |
+          docker build \
+            --target verify \
+            --build-arg NODE_VERSION=${{ matrix.node }} \
+            --tag test-dsh-mobile-remote:verify-${{ matrix.node }} \
+            .
+      - name: Verify a script-disabled isolated consumer install
+        run: |
+          docker build \
+            --target isolated-install \
+            --build-arg NODE_VERSION=${{ matrix.node }} \
+            --tag test-dsh-mobile-remote:install-${{ matrix.node }} \
+            .

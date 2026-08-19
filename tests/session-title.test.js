@@ -25,9 +25,9 @@ test("mapSessionItem keeps blank flag; list consumers hide blank rows", () => {
 		blank: false,
 		running: true,
 		updatedAt: 2,
-		cwd: "/home/lning/dev/dsh-mobile-remote",
+		cwd: "/tmp/example-project",
 		projections: { values: { title: { title: "修复隧道" } } },
 	});
 	assert.equal(named?.title, "修复隧道");
-	assert.equal(named?.cwd, "/home/lning/dev/dsh-mobile-remote");
+	assert.equal(named?.cwd, "/tmp/example-project");
 });

@@ -1,6 +1,6 @@
 # 威胁模型（v0）
 
-> 与 [`adr/0001-mvp-scope.md`](adr/0001-mvp-scope.md) 配套。技术名词保留英文。  
+> 与 [`01-mvp-scope.md`](01-mvp-scope.md) 配套。技术名词保留英文。  
 > 文档示例一律使用 `example.com` / `127.0.0.1` / `YOUR_TOKEN` 占位，不得写入真实 token、私钥或内网主机名。
 
 ## 资产
@@ -47,7 +47,7 @@
   - **禁止**把 `3080` / `dsh web` 送进隧道；隧道 `--url` 只指向 `127.0.0.1:<数据面端口>`。
 - M4 可选：自签 HTTPS + 二维码钉死证书哈希（TOFU）。
 - 未来选项：路线 C 原生 App，用签名包投递客户端，彻底离开「首次 HTTP 下发」模型。
-- 方案 2（自建会合中继）见 [`todo-cloud-relay.md`](todo-cloud-relay.md)，未实现。
+- 方案 2（自建会合中继）见 [`05-cloud-relay.md`](05-cloud-relay.md)，未实现。
 
 **明确出界（v0 不防、不声称防）：**
 

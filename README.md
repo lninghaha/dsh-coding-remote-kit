@@ -1,68 +1,196 @@
+<!-- banner -->
+<div align="center">
+
 # dsh-mobile-remote
 
-DeepSeek Harness（DSH）**远程手机访问**插件。
+**v0.0.0** · DeepSeek Harness `0.1.0-rc.7`
 
-目标：在电脑上跑 `dsh web`，用手机安全地观察与轻量操控 Agent——对标 [Orca Mobile Companion](https://www.onorca.dev/docs/mobile) 的产品意图，并兼容 DSH「Everything is a Plugin」形态。
+**Remote phone access for [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Pair a phone to the desktop that already runs `dsh web`, then observe sessions and perform a narrow set of writes — without exposing the full Web API.
 
-> 宿主版本钉死 `@deepseek-ai/dsh@0.1.0-rc.7`。本仓库是社区插件，**不暗示 DeepSeek 官方背书**。
->
-> 干活前先读 [`AGENTS.md`](AGENTS.md)：**禁止自行重启生产 `dsh-web`**；挂回 profile 与重启由操作者分工。
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-## 状态
+*[English](README.md) · [中文版](README.zh-CN.md)*
 
-| 阶段 | 状态 |
+</div>
+
+---
+
+Community plugin. **Not affiliated with, and not endorsed by, DeepSeek.** Product intent is closer to [Orca Mobile Companion](https://www.onorca.dev/docs/mobile) than to a second copy of the desktop IDE.
+
+Read [`AGENTS.md`](AGENTS.md) before changing this repo: **do not restart production `dsh-web` yourself.** Prepare the tarball; the operator restarts.
+
+## Status
+
+| Milestone | Status |
 | --- | --- |
-| 调研（Orca / DSH 生态） | ✅ 见下方调研文档 |
-| M1 插件骨架 + ADR / 威胁模型 | ✅ |
-| M2 配对 / 局域网数据面 | ✅ |
-| M3 窄 RPC / 审批面 | ✅ 本里程碑 |
+| Research (Orca / DSH ecosystem) | done — [`docs/research/`](docs/research/) |
+| M1 plugin skeleton + ADR / threat model | done |
+| M2 pairing / LAN data plane | done |
+| M3 narrow RPC / approvals | done |
+| M4 signed HTTPS / native app | not started |
 
-## 调研文档
+## Features
 
-- [`docs/research/orca-mobile-connection.md`](docs/research/orca-mobile-connection.md) — Orca 远程手机连接实现拆解
-- [`docs/research/dsh-ecosystem-comparison.md`](docs/research/dsh-ecosystem-comparison.md) — DSH 生态现有远程/手机方案对比
-- [`docs/research/design-implications.md`](docs/research/design-implications.md) — 对本项目的设计启示与非目标
+- **Pair once** — desktop shows a QR code or 8-digit PIN; the phone pins the desktop X25519 public key and holds a `deviceToken` (server stores SHA-256 only).
+- **Dual plane** — management routes stay on loopback `dsh web`; the mobile data plane is a dedicated port (default `6879`) with an RPC allowlist.
+- **E2EE after handshake** — tweetnacl secretbox on `/m/ws`; unauthenticated sockets never see session content.
+- **Narrow writes** — observe sessions, answer approvals/questions, short replies; heavy editing stays on the desktop.
+- **Private-network first** — LAN / Tailscale preferred. Optional Cloudflare Quick Tunnel exposes **only** the data plane, never port `3080`.
+- **Standard plugin shape** — one Cordis server plugin + classic-script Settings page. `dsh plugin --profile web add` a **file tarball**, never a `link:` working tree.
 
-设计冻结：
+## Problems this plugin solves
 
-- [`docs/adr/0001-mvp-scope.md`](docs/adr/0001-mvp-scope.md) — MVP 范围（路线 B：语义窄 RPC + 双平面）
-- [`docs/threat-model.md`](docs/threat-model.md) — 资产、攻击者、不变量与诚实边界
+| You searched / saw | What was actually broken | What this plugin does |
+|---|---|---|
+| “Orca-style phone companion for DSH” | Official DSH has no first-class paired mobile app | Semantic companion: pair + E2EE + allowlisted RPC |
+| `dsh-pocket` / `dsh-web-remote` on a phone | Full `dsh web` surface on LAN/public | Dual plane; unknown RPC methods are `forbidden` |
+| Phone on cellular, desktop on LAN | Raw LAN HTTP page can be MITM’d | Prefer Tailscale; optional Quick Tunnel (TLS at the edge, localhost origin) |
+| Plugin `import` failed and port 3080 died | DSH fail-fasts the whole plugin tree | Sandbox gate + packed tarball copied *outside* the repo; no `link:` |
 
-## 开发
+## Quick start
 
 ```bash
-pnpm install && pnpm build && pnpm test
-```
-
-安装 / 挂回 profile 之前必须过 Docker 沙箱门禁（不碰本机 3080 / `~/.dsh`）：
-
-```bash
+# 1. isolated Docker gate (does not touch host 3080 / $DSH_HOME)
 pnpm test:sandbox
+
+# 2. pack and copy the tarball OUT of this checkout
+pnpm pack
+mkdir -p "$HOME/.dsh/packages"
+cp dsh-mobile-remote-0.0.0.tgz "$HOME/.dsh/packages/"
+
+# 3. install into the web profile
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-mobile-remote-0.0.0.tgz"
 ```
 
-构建产物：
+Then the **operator** restarts the existing `dsh web` process in their own window. Open **Settings → 移动远程**, create a pairing offer, scan the QR (or type the PIN) on the phone.
 
-- `lib/server/index.js` — Cordis 服务端入口（ESM：`name` / `inject` / `Config` / `apply`）
-- `lib/client.js` — DSH Web 设置页 classic-script（`window.__ModuleLoader__.load`）
-- `lib/mobile/` — 手机页（`/m` + E2EE 握手 + 会话列表 / 审批 / 短回复）
-- [`docs/protocol.md`](docs/protocol.md) — 白名单、推送信封、`respond` 两种 payload
+Do not `dsh plugin add ./` from this working tree. pnpm 11 treats some `file:` tarball paths as `link:` source, and a bad entry import takes down the whole GUI.
 
-沙箱绿了之后再挂回 profile。用 **`file:` tarball**，不要 `link:` 工作树（一个入口 import 失败会拖死整棵 `dsh web`）。数据面默认 `127.0.0.1:6879`，配对时 widen 到 `0.0.0.0`。
+## Table of contents
 
-## 与现有项目的关系
+- [Status](#status)
+- [Features](#features)
+- [Problems this plugin solves](#problems-this-plugin-solves)
+- [Quick start](#quick-start)
+- [Install](#install)
+- [How it works](#how-it-works)
+- [Settings page](#settings-page)
+- [Mobile RPC](#mobile-rpc)
+- [Public tunnel](#public-tunnel)
+- [Security](#security)
+- [Architecture](#architecture)
+- [Documentation](#documentation)
+- [Related](#related)
+- [Contributing](#contributing)
+- [License](#license)
 
-- 本项目独立于 [`dsh-hub-oauth-gateway`](https://github.com/lninghaha/dsh-hub-oauth-gateway)（用量中心）。
-- 不替代官方 `@deepseek-ai/dsh`；仅为社区插件方向的预研与实现载体。
+## Install
 
-## 安全原则（草案）
+Requires DeepSeek Harness `0.1.0-rc.7` (pinned) and Node.js 22.19+. Full steps, pairing, and tunnel notes: [INSTALL.md](INSTALL.md).
 
-- 默认本地优先：优先 LAN / Tailscale 等私网路径，不鼓励裸暴露公网端口。
-- 凭据与会话不得写入公开日志、截图或仓库。
-- 手机端能力应受 allowlist 约束（只读为主 + 显式审批类写操作）。
-- 示例统一使用 `example.com`、`127.0.0.1`、`YOUR_TOKEN` 等占位符。
+Development:
 
-完整不变量与禁止事项见 [`docs/threat-model.md`](docs/threat-model.md)。
+```bash
+pnpm install && pnpm build && pnpm test   # inside the Docker sandbox, not on a live GUI host
+pnpm test:sandbox                         # Dockerfile targets check / isolated-install / verify
+```
 
-## 许可
+Build outputs:
 
-MIT（见 [`LICENSE`](LICENSE)）。
+- `lib/server/index.js` — Cordis entry (`name` / `inject` / `Config` / `apply`)
+- `lib/client.js` — Settings classic-script
+- `lib/mobile/` — phone page served at `/m`
+
+## How it works
+
+```text
+Settings (loopback)          Phone browser
+        │                            │
+        │  QR / PIN  ────────────────┤
+        ▼                            ▼
+ /api/mobile-remote/*          GET /m  +  WS /m/ws
+   (dsh web, :3080)            (data plane, :6879, E2EE)
+```
+
+Management stays behind the host Web loopback fence. The data plane is a separate `node:http` + `ws` server. Pairing may rebind it from `127.0.0.1` to `0.0.0.0` so LAN clients can connect; an active Quick Tunnel advertises its HTTPS origin instead of widening.
+
+## Settings page
+
+Open **Settings → 移动远程**:
+
+- status (bind, port, listening, active devices, tunnel)
+- **LAN** vs **public** channel
+- create offer → QR + 8-digit PIN
+- device list and revoke
+- optional official `cloudflared` install (never runs at plugin `apply()`)
+
+## Mobile RPC
+
+Allowlisted methods (everything else is `forbidden`):
+
+`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond`
+
+Pushes include session events plus `approval.requested` / `question.requested` (with `rpcId` for `respond`). Wire format: [docs/03-protocol.md](docs/03-protocol.md).
+
+## Public tunnel
+
+Default **off**. When started from Settings, `cloudflared` Quick Tunnel points **only** at `127.0.0.1:<data-plane-port>`. `/m` becomes reachable on a `https://<random>.trycloudflare.com` URL; pairing still needs the fragment token (or PIN) and E2EE. The child process is killed on plugin unload / Stop.
+
+Never tunnel port `3080` / `dsh web`. A self-hosted rendezvous relay is **not** implemented; see [docs/05-cloud-relay.md](docs/05-cloud-relay.md).
+
+## Security
+
+Invariants (full model: [docs/04-threat-model.md](docs/04-threat-model.md)):
+
+1. Unauthenticated connections handle handshake only.
+2. `deviceToken` is stored as SHA-256; keys and registry files are `0600`.
+3. RPC allowlist, default deny; writes are audited to `deviceId`.
+4. Management plane is loopback + Host + CSRF.
+5. The plugin does not weaken `dsh web` `/api` and does not take over `api-proxy` providers.
+
+**Honest v0 boundary:** the first HTTP download of `/m` on a raw LAN can be MITM’d. Prefer an overlay VPN.
+
+Prohibitions:
+
+- Do not share another person's credentials.
+- Do not monitor accounts you are not authorized to access.
+- Do not bind the data-plane port on `0.0.0.0` to the public Internet (Quick Tunnel is an explicit, user-started exception).
+- Do not imply DeepSeek official endorsement.
+
+Examples in docs use `example.com`, `127.0.0.1`, and `YOUR_TOKEN` only.
+
+## Architecture
+
+Dual plane, module map, storage, and handshake: [docs/02-architecture.md](docs/02-architecture.md) · [中文](docs/02-architecture.zh-CN.md).
+
+MVP decision (route B): [docs/01-mvp-scope.md](docs/01-mvp-scope.md).
+
+## Documentation
+
+| Doc | Purpose |
+|---|---|
+| [INSTALL.md](INSTALL.md) | Install, pair, tunnel |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [docs/00-project-rules.md](docs/00-project-rules.md) | Versioning, publish vs local-only, host DSH boundary |
+| [docs/01-mvp-scope.md](docs/01-mvp-scope.md) | ADR: MVP scope (Chinese) |
+| [docs/02-architecture.md](docs/02-architecture.md) | Internal architecture · [中文](docs/02-architecture.zh-CN.md) |
+| [docs/03-protocol.md](docs/03-protocol.md) | RPC allowlist and push envelopes (Chinese) |
+| [docs/04-threat-model.md](docs/04-threat-model.md) | Assets, attackers, invariants (Chinese) |
+| [docs/05-cloud-relay.md](docs/05-cloud-relay.md) | Future rendezvous relay (not implemented) |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guide |
+| [AGENTS.md](AGENTS.md) | Agent/operator rules (no production restart) |
+
+## Related
+
+- [dsh-coding-subscription-oauth](https://github.com/lninghaha/dsh-coding-subscription-oauth) — sibling plugin; documentation layout is modelled on it.
+- This plugin is independent of the usage-centre plugin `dsh-hub-oauth-gateway`.
+- It does not replace `@deepseek-ai/dsh`.
+
+## Contributing
+
+Issues and PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the Docker sandbox, commit conventions, and the document layers.
+
+## License
+
+[MIT](LICENSE).

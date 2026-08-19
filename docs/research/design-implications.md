@@ -1,7 +1,8 @@
-# 设计启示与非目标（草案）
+# 设计启示与非目标（调研史）
 
-> 基于 `orca-mobile-connection.md` 与 `dsh-ecosystem-comparison.md`。  
-> 本文件是**产品/架构笔记**，不是已实现规格；实现前需再冻结一版 ADR。
+> **历史文档。** 路线 A/B/C 的取舍已由 [`../01-mvp-scope.md`](../01-mvp-scope.md) 冻结为路线 B；威胁模型见 [`../04-threat-model.md`](../04-threat-model.md)。下文保留调研当时的表述，不再当作现行规格。
+>
+> 基于 `orca-mobile-connection.md` 与 `dsh-ecosystem-comparison.md`。
 
 ## 1. 建议产品意图
 
@@ -58,7 +59,7 @@
 
 - [ ] 细读 DSH Web 的 session / approval / events 宿主 API（版本钉死某 `dsh` rc）  
 - [ ] 实测 `dsh-pocket` 与 `dsh-web-remote` 安装与权限面（隔离 profile）  
-- [ ] 决定 MVP 走路线 A 还是 B  
-- [ ] 写出威胁模型与「禁止事项」清单（中英用户可见文案）
-- [x] **方案 1：Cloudflare Quick Tunnel（只暴露数据面 6879）**。已实现于 `src/server/tunnel.ts` + 设置页「公网」入口；文档见 `threat-model.md`。
-- [ ] **方案 2：自建会合中继**（桌面/手机连 Worker，业务 E2EE）。见 [`../todo-cloud-relay.md`](../todo-cloud-relay.md)。非 Quick Tunnel 里程碑。  
+- [x] 决定 MVP 走路线 B（见 [`../01-mvp-scope.md`](../01-mvp-scope.md)）
+- [x] 写出威胁模型与「禁止事项」清单（[`../04-threat-model.md`](../04-threat-model.md)）
+- [x] **方案 1：Cloudflare Quick Tunnel（只暴露数据面 6879）**。已实现于 `src/server/tunnel.ts` + 设置页「公网」入口。
+- [ ] **方案 2：自建会合中继**（桌面/手机连 Worker，业务 E2EE）。见 [`../05-cloud-relay.md`](../05-cloud-relay.md)。非 Quick Tunnel 里程碑。  

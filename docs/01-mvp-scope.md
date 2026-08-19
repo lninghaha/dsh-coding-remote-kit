@@ -7,11 +7,11 @@
 
 ## 背景
 
-三篇调研（见 [`docs/research/`](../research/)）给出的事实：
+三篇调研（见 [`docs/research/`](research/)）给出的事实：
 
-- [`orca-mobile-connection.md`](../research/orca-mobile-connection.md)：Orca Mobile Companion 是「桌面跑 Agent、手机做 companion」；信任锚是配对时交换的桌面公钥钉死 + `deviceToken`；可选 Relay 只做跨网 WSS，业务载荷走 E2EE。
-- [`dsh-ecosystem-comparison.md`](../research/dsh-ecosystem-comparison.md)：DSH 官方没有一等公民的配对手机 App；社区方案多为透传 `dsh web`（`dsh-pocket` / `dsh-web-remote`）或独立语义遥控（Phone Harness）。本仓库与用量中心插件解耦。
-- [`design-implications.md`](../research/design-implications.md)：候选路线 A（Web 透传）、B（语义窄 RPC）、C（原生 App + E2EE）；v0 非目标包括跨用户凭据共享、未授权监测、暗示官方背书、把用量中心扩成远程壳。
+- [`orca-mobile-connection.md`](research/orca-mobile-connection.md)：Orca Mobile Companion 是「桌面跑 Agent、手机做 companion」；信任锚是配对时交换的桌面公钥钉死 + `deviceToken`；可选 Relay 只做跨网 WSS，业务载荷走 E2EE。
+- [`dsh-ecosystem-comparison.md`](research/dsh-ecosystem-comparison.md)：DSH 官方没有一等公民的配对手机 App；社区方案多为透传 `dsh web`（`dsh-pocket` / `dsh-web-remote`）或独立语义遥控（Phone Harness）。本仓库与用量中心插件解耦。
+- [`design-implications.md`](research/design-implications.md)：候选路线 A（Web 透传）、B（语义窄 RPC）、C（原生 App + E2EE）；v0 非目标包括跨用户凭据共享、未授权监测、暗示官方背书、把用量中心扩成远程壳。
 
 DSH Web 的安全模型以回环绑定、Host 校验与浏览器上下文为前提。任何「手机远程」若直接把完整 `/api` 面透传到 LAN / 公网，权限面会放大到接近桌面 Web。
 
@@ -35,7 +35,7 @@ DSH Web 的安全模型以回环绑定、Host 校验与浏览器上下文为前�
 
 ## 后果
 
-- 必须自建鉴权（`deviceToken` 只存 SHA-256）与会话 E2EE（服务端 X25519 私钥 0600）。细节见 [`docs/threat-model.md`](../threat-model.md)。
+- 必须自建鉴权（`deviceToken` 只存 SHA-256）与会话 E2EE（服务端 X25519 私钥 0600）。细节见 [`04-threat-model.md`](04-threat-model.md)。
 - 手机端为浏览器页，存在 **LAN MITM 投递层边界**：E2EE 管不到页面首次 HTTP 下发。这是相对签名原生 App 的固有差距，不是实现疏漏。缓解见威胁模型（推荐 Tailscale / WireGuard；M4 可选自签 HTTPS + QR 钉死证书哈希）。
 - 不得修改、不得削弱 `dsh web` `/api` 围栏与绑定；不得抢 `api-proxy` 的审批/提问 provider。
 - 宿主版本钉死 **rc.7**。Cordis 插件契约（`name` / `inject` / `Config` / `apply`、`dsh.bundle.patch`、classic-script 客户端）以该版本的类型与加载器为准。

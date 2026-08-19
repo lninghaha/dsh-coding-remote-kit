@@ -18,4 +18,4 @@
 ## 非目标
 
 - 微信 / 飞书 Bot Channel
-- 用 Caddy 把 `dsh-x13.prepop.net` 的路径挂成 `/m`（与 GUI 同源混权）
+- 用反向代理把 GUI 同源路径挂成 `/m`（与 `dsh web` 混权；示例：`https://example.com/m`）

@@ -97,7 +97,7 @@ export function isLoopbackRequest(request: IncomingMessage): boolean {
  * Management-plane trust: TCP peer must be loopback (Caddy on this machine),
  * and Host must be loopback/localhost **or** an explicit trusted host
  * (`dsh web --trusted-host`, plus plugin config). This is how the settings
- * page on `https://dsh-x13.prepop.net` reaches `/api/mobile-remote/*`.
+ * page on `https://gui.example.com` reaches `/api/mobile-remote/*`.
  */
 export function isTrustedManagementRequest(
 	request: IncomingMessage,

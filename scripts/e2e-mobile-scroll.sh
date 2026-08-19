@@ -3,7 +3,7 @@
 # Host only maps CDP 19082. No 3080/7890, no --network host.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-node scripts/build-mobile.mjs
+node build/build-mobile.mjs
 chmod a+rX lib/mobile lib/mobile/*
 NET=test-dsh-mr-e2e
 cleanup() {
@@ -14,8 +14,8 @@ trap cleanup EXIT
 cleanup
 docker network create "$NET" >/dev/null
 docker run -d --name test-dsh-mobile-static --network "$NET" \
-	-v /home/lning/dev/dsh-mobile-remote/lib/mobile:/usr/share/nginx/html:ro \
-	-v /home/lning/dev/dsh-mobile-remote/tests/e2e-nginx.conf:/etc/nginx/conf.d/default.conf:ro \
+	-v "$PWD/lib/mobile:/usr/share/nginx/html:ro" \
+	-v "$PWD/tests/e2e-nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
 	nginx:alpine >/dev/null
 docker run -d --name test-dsh-mobile-scroll --network "$NET" \
 	-p 19082:9222 \

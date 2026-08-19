@@ -36,23 +36,23 @@ test("non-loopback remote address → rejected (403 path)", () => {
 test("Caddy trusted-host + loopback peer is allowed", () => {
 	const viaCaddy = {
 		socket: { remoteAddress: "127.0.0.1" },
-		headers: { host: "dsh-x13.prepop.net" },
+		headers: { host: "gui.example.com" },
 	};
 	assert.equal(isTrustedManagementRequest(viaCaddy, []), false);
-	assert.equal(isTrustedManagementRequest(viaCaddy, ["dsh-x13.prepop.net"]), true);
+	assert.equal(isTrustedManagementRequest(viaCaddy, ["gui.example.com"]), true);
 	assert.equal(
-		isTrustedManagementRequest({ socket: { remoteAddress: "8.8.8.8" }, headers: { host: "dsh-x13.prepop.net" } }, [
-			"dsh-x13.prepop.net",
+		isTrustedManagementRequest({ socket: { remoteAddress: "8.8.8.8" }, headers: { host: "gui.example.com" } }, [
+			"gui.example.com",
 		]),
 		false,
 	);
-	assert.deepEqual(trustedHostsFromRuntime({ trustedHosts: ["dsh-x13.prepop.net"] }), ["dsh-x13.prepop.net"]);
+	assert.deepEqual(trustedHostsFromRuntime({ trustedHosts: ["gui.example.com"] }), ["gui.example.com"]);
 });
 
 test("browser-context accepts https origin matching trusted Host", () => {
 	assert.equal(
 		passesBrowserContextGuard({
-			headers: { host: "dsh-x13.prepop.net", origin: "https://dsh-x13.prepop.net" },
+			headers: { host: "gui.example.com", origin: "https://gui.example.com" },
 		}),
 		true,
 	);
@@ -95,7 +95,7 @@ test("Caddy-rewritten Origin plus public Referer is allowed", () => {
 			headers: {
 				host: "127.0.0.1:3080",
 				origin: "http://127.0.0.1:3080",
-				referer: "https://dsh-x13.prepop.net/",
+				referer: "https://gui.example.com/",
 			},
 		}),
 		true,
@@ -105,10 +105,10 @@ test("Caddy-rewritten Origin plus public Referer is allowed", () => {
 			{
 				headers: {
 					host: "127.0.0.1:3080",
-					referer: "https://dsh-x13.prepop.net/",
+					referer: "https://gui.example.com/",
 				},
 			},
-			["dsh-x13.prepop.net"],
+			["gui.example.com"],
 		),
 		true,
 	);
