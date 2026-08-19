@@ -27,3 +27,12 @@ export function loadPersistedOffer(storage: StorageLike): PairingOffer | null {
 		return null;
 	}
 }
+
+export function clearPersistedOffer(storage: StorageLike): void {
+	try {
+		storage.removeItem(HOST_STORAGE_KEY);
+		storage.removeItem(OFFER_STORAGE_KEY);
+	} catch {
+		// ignore
+	}
+}

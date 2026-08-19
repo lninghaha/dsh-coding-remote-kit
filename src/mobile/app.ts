@@ -50,6 +50,8 @@ interface QuestionItem {
 
 type View = { name: "list" } | { name: "session"; sessionId: string };
 
+const SEARCH_DEBOUNCE_MS = 200;
+
 export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void {
 	document.documentElement.classList.add("connected");
 	document.body.classList.add("connected");
@@ -62,11 +64,34 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		toast: null as string | null,
 		sheet: false,
 		query: "",
+		filterQuery: "",
 		hintHidden: readHintHidden(),
 		expanded: new Set<string>(),
 		showAll: new Set<string>(),
 		approvals: [] as PendingApproval[],
 		questions: [] as PendingQuestion[],
+	};
+
+	let toastTimer: ReturnType<typeof setTimeout> | null = null;
+	let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+	const showToast = (message: string): void => {
+		state.toast = message;
+		render();
+		if (toastTimer !== null) clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => {
+			state.toast = null;
+			render();
+		}, 2200);
+	};
+
+	const sessionContext = (sessionId: string): { title: string; workspace: string } => {
+		const session = state.sessions.find((row) => row.sessionId === sessionId);
+		if (session === undefined) return { title: "未知任务", workspace: "未知工作区" };
+		return {
+			title: session.title ?? "未命名会话",
+			workspace: session.cwd === undefined ? "未绑定工作区" : basenameOf(session.cwd),
+		};
 	};
 
 	const render = (): void => {
@@ -84,6 +109,10 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		if (view.name === "list") root.appendChild(renderList());
 		else root.appendChild(renderSession(view.sessionId));
 		if (state.sheet) root.appendChild(renderSheet());
+		if (state.toast !== null) {
+			const toast = el("div", { className: "toast show" }, state.toast);
+			root.appendChild(toast);
+		}
 		const nextList = root.querySelector(".col:not(.session)");
 		const nextTrans = root.querySelector(".transcript");
 		if (nextList instanceof HTMLElement) nextList.scrollTop = listTop;
@@ -104,10 +133,16 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			const current = state.sessions.find((row) => row.sessionId === view.sessionId);
 			const titles = el("div", { className: "bar-title" });
 			titles.appendChild(el("strong", {}, current?.title ?? "未命名会话"));
-			titles.appendChild(el("div", { className: "sub" }, "任务会话"));
+			const sub =
+				current?.running === true
+					? "任务会话 · 运行中"
+					: current?.cwd !== undefined
+						? `任务会话 · ${basenameOf(current.cwd)}`
+						: "任务会话";
+			titles.appendChild(el("div", { className: "sub" }, sub));
 			header.appendChild(titles);
 			const actions = el("div", { className: "bar-actions" });
-			const more = el("button", { className: "ghost", type: "button" }, "⋯");
+			const more = el("button", { className: "ghost", type: "button" }, "信息");
 			more.addEventListener("click", () => {
 				state.sheet = true;
 				render();
@@ -117,7 +152,14 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		} else {
 			const block = el("div", { className: "bar-title" });
 			block.appendChild(el("strong", {}, "DSH 远程"));
-			block.appendChild(el("div", { className: "sub" }, "已连接到当前窗口"));
+			const pending = state.approvals.length + state.questions.length;
+			block.appendChild(
+				el(
+					"div",
+					{ className: "sub" },
+					pending > 0 ? `已连接 · ${String(pending)} 条待处理` : "已连接到当前窗口",
+				),
+			);
 			header.appendChild(block);
 			const actions = el("div", { className: "bar-actions" });
 			const refresh = el("button", { className: "ghost", type: "button" }, "刷新");
@@ -152,25 +194,38 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		search.value = state.query;
 		search.addEventListener("input", () => {
 			state.query = search.value;
-			render();
-			const next = root.querySelector("input.search");
-			if (next instanceof HTMLInputElement) {
-				next.focus();
-				const end = next.value.length;
-				next.setSelectionRange(end, end);
-			}
+			if (searchTimer !== null) clearTimeout(searchTimer);
+			searchTimer = setTimeout(() => {
+				state.filterQuery = state.query;
+				render();
+				const next = root.querySelector("input.search");
+				if (next instanceof HTMLInputElement) {
+					next.focus();
+					const end = next.value.length;
+					next.setSelectionRange(end, end);
+				}
+			}, SEARCH_DEBOUNCE_MS);
 		});
 		wrap.appendChild(search);
-		const groups = filterGroups(groupByCwd(state.sessions), state.query);
+		const groups = filterGroups(groupByCwd(state.sessions), state.filterQuery);
 		const section = el("div", { className: "section-h" });
 		section.appendChild(el("h2", {}, "工作区和任务"));
 		section.appendChild(
 			el("span", { className: "muted" }, `${String(groups.length)} 个工作区 · ${String(state.sessions.length)} 个任务`),
 		);
 		wrap.appendChild(section);
-		if (state.toast !== null) wrap.appendChild(el("p", { className: "toast" }, state.toast));
+		if (state.sessions.length === 0) {
+			wrap.appendChild(
+				el(
+					"p",
+					{ className: "empty-hint" },
+					"桌面 DSH 窗口里还没有打开的项目或任务。请先在桌面打开工作区，再点右上角刷新。",
+				),
+			);
+			return wrap;
+		}
 		if (groups.length === 0) {
-			wrap.appendChild(el("p", { className: "muted" }, "没有匹配的会话"));
+			wrap.appendChild(el("p", { className: "empty-hint" }, `没有匹配「${state.filterQuery.trim()}」的会话，试试换个关键词。`));
 			return wrap;
 		}
 		for (const group of groups) {
@@ -179,15 +234,28 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		return wrap;
 	};
 
+	const pendingForGroup = (group: WorkspaceGroup): number => {
+		const ids = new Set(group.sessions.map((session) => session.sessionId));
+		let count = 0;
+		for (const item of [...state.approvals, ...state.questions]) {
+			if (ids.has(item.sessionId)) count += 1;
+		}
+		return count;
+	};
+
 	const renderWorkspace = (group: WorkspaceGroup): HTMLElement => {
 		const card = el("div", { className: "ws" });
 		const open = state.expanded.has(group.key);
+		const pending = pendingForGroup(group);
 		const head = el("div", { className: "ws-head" });
 		const toggle = el("button", { className: "ws-toggle", type: "button" });
 		const name = el("div");
 		const titleLine = el("div");
 		titleLine.appendChild(el("span", { className: "ws-name" }, group.label));
 		titleLine.appendChild(el("span", { className: "badge" }, group.cwd === undefined ? "未绑定" : "本地"));
+		if (pending > 0) {
+			titleLine.appendChild(el("span", { className: "badge pending" }, `${String(pending)} 待处理`));
+		}
 		name.appendChild(titleLine);
 		if (group.cwd !== undefined) name.appendChild(el("div", { className: "ws-path" }, group.cwd));
 		name.appendChild(
@@ -247,50 +315,74 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			render();
 		});
 		const sheet = el("div", { className: "sheet" });
-		sheet.appendChild(el("h3", {}, "桌面功能"));
-		sheet.appendChild(el("p", { className: "muted" }, "审查和终端只在桌面 DSH 侧栏，手机暂不支持。"));
-		const review = el("button", { className: "sheet-item", type: "button" }, "审查（请用桌面）");
-		const term = el("button", { className: "sheet-item", type: "button" }, "终端（请用桌面）");
-		const pick = (label: string) => {
+		const view = state.view;
+		if (view.name === "session") {
+			const current = state.sessions.find((row) => row.sessionId === view.sessionId);
+			sheet.appendChild(el("h3", {}, "会话信息"));
+			const dl = el("dl", { className: "sheet-dl" });
+			const addRow = (label: string, value: string): void => {
+				const row = el("div");
+				row.appendChild(el("dt", {}, label));
+				row.appendChild(el("dd", {}, value));
+				dl.appendChild(row);
+			};
+			addRow("任务", current?.title ?? "未命名会话");
+			addRow("工作区", current?.cwd ?? "未绑定");
+			addRow("状态", current?.running === true ? "运行中" : "空闲");
+			addRow("会话 ID", view.sessionId.slice(0, 12) + "…");
+			sheet.appendChild(dl);
+			sheet.appendChild(
+				el(
+					"p",
+					{ className: "muted" },
+					"审查、终端与完整编辑器仅在桌面 DSH 侧栏提供；手机端负责观察、短回复与审批。",
+				),
+			);
+		} else {
+			sheet.appendChild(el("h3", {}, "连接信息"));
+			sheet.appendChild(
+				el("p", { className: "muted" }, "已与桌面建立端到端加密连接。待处理审批会显示在列表顶部。"),
+			);
+		}
+		const close = el("button", { type: "button", className: "ghost" }, "关闭");
+		close.addEventListener("click", () => {
 			state.sheet = false;
-			state.toast = `${label}请在桌面 DSH 打开`;
 			render();
-		};
-		review.addEventListener("click", () => {
-			pick("审查");
 		});
-		term.addEventListener("click", () => {
-			pick("终端");
-		});
-		sheet.appendChild(review);
-		sheet.appendChild(term);
+		sheet.appendChild(close);
 		wrap.appendChild(mask);
 		wrap.appendChild(sheet);
 		return wrap;
 	};
 
 	const renderSession = (sessionId: string): HTMLElement => {
+		const current = state.sessions.find((row) => row.sessionId === sessionId);
+		const running = current?.running === true;
 		const wrap = el("div", { className: "col session" });
 		wrap.appendChild(renderInbox(sessionId));
 		const scroller = el("div", { className: "transcript" });
 		for (const line of foldTranscript(state.events)) {
-			const bubble = el("div", { className: `bubble ${line.role}` });
-			if (line.role === "tool") bubble.textContent = `工具 ${line.text}`;
-			else appendMarkdown(bubble, line.text);
-			scroller.appendChild(bubble);
+			scroller.appendChild(renderBubbleRow(line, false));
 		}
 		wrap.appendChild(scroller);
 		const composer = el("form", { className: "composer" });
-		const stop = el("button", { type: "button", className: "ghost" }, "停止生成");
-		stop.disabled = state.busy;
-		stop.addEventListener("click", () => {
-			void run(async () => {
-				await rpc.request("session.cancel", { sessionId });
+		if (running) {
+			const stop = el("button", { type: "button", className: "ghost danger" }, state.busy ? "停止中…" : "停止生成");
+			stop.disabled = state.busy;
+			stop.addEventListener("click", () => {
+				void run(async () => {
+					await rpc.request("session.cancel", { sessionId });
+				});
 			});
-		});
+			composer.appendChild(stop);
+		}
 		const row = el("div", { className: "composer-row" });
-		const input = el("textarea");
+		const input = el("textarea") as HTMLTextAreaElement;
 		input.placeholder = "继续给 Agent 发指令";
+		input.addEventListener("input", () => {
+			input.style.height = "auto";
+			input.style.height = `${String(Math.min(input.scrollHeight, 120))}px`;
+		});
 		const send = el("button", { type: "submit" }, state.busy ? "…" : "发送");
 		send.disabled = state.busy;
 		composer.addEventListener("submit", (event) => {
@@ -298,13 +390,13 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			const text = input.value.trim();
 			if (text.length === 0) return;
 			input.value = "";
+			input.style.height = "";
 			void run(async () => {
 				await rpc.request("session.prompt", { sessionId, mode: "queue", text });
 			});
 		});
 		row.appendChild(input);
 		row.appendChild(send);
-		composer.appendChild(stop);
 		composer.appendChild(row);
 		wrap.appendChild(composer);
 		queueMicrotask(() => {
@@ -317,7 +409,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		const box = el("div", { className: "inbox" });
 		for (const approval of state.approvals) {
 			if (sessionId !== undefined && approval.sessionId !== sessionId) continue;
-			box.appendChild(renderApproval(approval));
+			box.appendChild(renderApproval(approval, sessionId === undefined));
 		}
 		for (const question of state.questions) {
 			if (sessionId !== undefined && question.sessionId !== sessionId) continue;
@@ -326,9 +418,20 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		return box;
 	};
 
-	const renderApproval = (approval: PendingApproval): HTMLElement => {
+	const renderApproval = (approval: PendingApproval, showContext: boolean): HTMLElement => {
 		const card = el("div", { className: "card" });
 		card.appendChild(el("strong", {}, `审批 · ${approval.toolName}`));
+		if (showContext) {
+			const ctx = sessionContext(approval.sessionId);
+			const ctxRow = el("p", { className: "ctx" });
+			ctxRow.textContent = `${ctx.workspace} · ${ctx.title}`;
+			const link = el("button", { type: "button", className: "ctx-link" }, "打开任务");
+			link.addEventListener("click", () => {
+				void openSession(approval.sessionId);
+			});
+			card.appendChild(ctxRow);
+			card.appendChild(link);
+		}
 		if (approval.reason !== undefined) card.appendChild(el("p", {}, approval.reason));
 		const actions = el("div", { className: "actions" });
 		const allow = el("button", { type: "button" }, "允许一次");
@@ -347,11 +450,13 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 
 	const renderQuestion = (question: PendingQuestion): HTMLElement => {
 		const card = el("form", { className: "card" });
+		const ctx = sessionContext(question.sessionId);
+		card.appendChild(el("p", { className: "ctx" }, `${ctx.workspace} · ${ctx.title}`));
 		for (const item of question.questions) {
 			card.appendChild(el("strong", {}, item.header ?? item.question));
 			if (item.header !== undefined) card.appendChild(el("p", {}, item.question));
 			if (item.options.length === 0) {
-				const other = el("textarea");
+				const other = el("textarea") as HTMLTextAreaElement;
 				other.placeholder = "回答";
 				other.setAttribute("data-qid", item.id);
 				other.setAttribute("data-kind", "custom");
@@ -359,7 +464,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			} else {
 				for (const option of item.options) {
 					const label = el("label", { className: "opt" });
-					const input = el("input");
+					const input = el("input") as HTMLInputElement;
 					input.type = item.multiSelect ? "checkbox" : "radio";
 					input.name = `q-${question.rpcId}-${item.id}`;
 					input.value = option.label;
@@ -388,6 +493,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 				outcome,
 			});
 			state.approvals = state.approvals.filter((item) => item.rpcId !== approval.rpcId);
+			showToast(outcome === "allowed-once" ? "已允许" : "已拒绝");
 		});
 	};
 
@@ -412,6 +518,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 				answers,
 			});
 			state.questions = state.questions.filter((item) => item.rpcId !== question.rpcId);
+			showToast("已提交回答");
 		});
 	};
 
@@ -421,6 +528,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			state.sessions = Array.isArray(listed?.items)
 				? listed.items.map(parseSession).filter((row): row is SessionRow => row !== null && !row.blank)
 				: [];
+			showToast("已刷新");
 		});
 	};
 
@@ -659,6 +767,18 @@ function labelOf(role: TranscriptLine["role"]): string {
 	return "";
 }
 
+function renderBubbleRow(line: TranscriptLine, streaming: boolean): HTMLElement {
+	const row = el("div", { className: `bubble-row ${line.role}` });
+	if (line.role !== "tool") {
+		row.appendChild(el("div", { className: "bubble-label" }, labelOf(line.role)));
+	}
+	const bubble = el("div", { className: `bubble ${line.role}${streaming ? " streaming" : ""}` });
+	if (line.role === "tool") bubble.textContent = `⚙ ${line.text}`;
+	else appendMarkdown(bubble, line.text);
+	row.appendChild(bubble);
+	return row;
+}
+
 const HINT_KEY = "dshmr.hintDismissed";
 
 function readHintHidden(): boolean {
@@ -699,19 +819,25 @@ function appendTranscriptLine(scroller: HTMLElement, events: unknown[]): boolean
 	const lastRaw = events[events.length - 1];
 	const event = asRecord(asRecord(lastRaw)?.event) ?? asRecord(lastRaw);
 	const stick = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 96;
-	if (event?.type === "assistant/chunk") {
+	const streaming = event?.type === "assistant/chunk";
+	if (streaming && line.role === "assistant") {
 		let last = scroller.lastElementChild;
-		if (!(last instanceof HTMLElement) || !last.classList.contains("assistant")) {
-			last = el("div", { className: "bubble assistant" });
-			scroller.appendChild(last);
+		if (
+			last instanceof HTMLElement &&
+			last.classList.contains("bubble-row") &&
+			last.classList.contains("assistant")
+		) {
+			const bubble = last.querySelector(".bubble");
+			if (bubble instanceof HTMLElement) {
+				bubble.replaceChildren();
+				appendMarkdown(bubble, line.text);
+				bubble.classList.add("streaming");
+			}
+		} else {
+			scroller.appendChild(renderBubbleRow(line, true));
 		}
-		last.replaceChildren();
-		appendMarkdown(last, line.text);
 	} else {
-		const bubble = el("div", { className: `bubble ${line.role}` });
-		if (line.role === "tool") bubble.textContent = `工具 ${line.text}`;
-		else appendMarkdown(bubble, line.text);
-		scroller.appendChild(bubble);
+		scroller.appendChild(renderBubbleRow(line, false));
 	}
 	if (stick) scroller.scrollTop = scroller.scrollHeight;
 	return true;
@@ -748,10 +874,12 @@ function appendMarkdown(root: HTMLElement, text: string): void {
 	const parts = text.split("```");
 	for (const [index, part] of parts.entries()) {
 		if (index % 2 === 1) {
+			const pre = el("pre");
 			const code = el("code");
 			const body = part.replace(/^[^\n]*\n/, "");
 			code.textContent = body.length > 0 ? body : part;
-			root.appendChild(code);
+			pre.appendChild(code);
+			root.appendChild(pre);
 			continue;
 		}
 		const chunks = part.split(/(`[^`]+`)/);
@@ -780,23 +908,25 @@ function el(tag: string, attrs: Record<string, string> = {}, text?: string): HTM
 	const node = document.createElement(tag);
 	for (const [key, value] of Object.entries(attrs)) {
 		if (key === "className") node.className = value;
-		else if (key === "type") node.type = value;
+		else if (key === "type") (node as HTMLInputElement).type = value;
 		else node.setAttribute(key, value);
 	}
 	if (text !== undefined) node.textContent = text;
 	return node;
 }
 
-function collectInputs(root: HTMLElement, visit: (node: HTMLElement) => void): void {
+function collectInputs(root: HTMLElement, visit: (node: HTMLInputElement | HTMLTextAreaElement) => void): void {
 	const walker = [root];
 	while (walker.length > 0) {
 		const current = walker.pop();
 		if (current === undefined) break;
-		visit(current);
+		if (current instanceof HTMLInputElement || current instanceof HTMLTextAreaElement) {
+			visit(current);
+		}
 		const list = current.children;
 		for (let index = 0; index < list.length; index += 1) {
 			const child = list.item(index);
-			if (child !== null) walker.push(child);
+			if (child !== null) walker.push(child as HTMLElement);
 		}
 	}
 }
