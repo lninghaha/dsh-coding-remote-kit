@@ -44,3 +44,5 @@ tarball **不要**放在本仓库根下再 `pnpm add`：pnpm 11 会把 `file:...
 esbuild 把 `tweetnacl` 打进 ESM 入口会导致 `Dynamic require of "crypto" is not supported`。server bundle 必须 `packages: "external"`，构建断言与 `tests/bundle-externals.test.js` 不得删。
 
 缺 `exports["./package.json"]` 时设置里看不到「移动远程」，但 6879 数据面仍在。
+
+DSH `webServer.register` 按 **path** 去重、不认 HTTP method。同一路径 `register` 两次会抛 `duplicate exact route` 并拖死整棵 `dsh web`。一个 path 只能 `register` 一次，GET/POST 在 handler 里分支。`tests/routes-unique.test.js` 不得删。

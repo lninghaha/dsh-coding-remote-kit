@@ -8,6 +8,11 @@
  *
  * Every route runs the guard chain in security.ts and writes JSON with the
  * hardening headers. Route disposers are returned for `ctx.effect`.
+ *
+ * DSH `webServer.register` keys exact routes by `(kind, path)` and **ignores
+ * HTTP method**. Calling `register()` twice for the same path throws
+ * `duplicate exact route` and fail-fasts the whole plugin tree. One path =
+ * one register; branch GET/POST inside the handler (405 via `methods`).
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -196,10 +201,11 @@ export function registerManagementRoutes(
 				tunnel: deps.tunnel.snapshot(),
 			});
 		}),
-		register("/api/mobile-remote/tunnel", ["GET"], async (_request, response) => {
-			writeJson(response, 200, deps.tunnel.snapshot());
-		}),
-		register("/api/mobile-remote/tunnel", ["POST"], async (request, response) => {
+		register("/api/mobile-remote/tunnel", ["GET", "POST"], async (request, response) => {
+			if ((request.method ?? "GET") === "GET") {
+				writeJson(response, 200, deps.tunnel.snapshot());
+				return;
+			}
 			const body = await readJsonBody(request, response);
 			if (body === undefined) return;
 			const record = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
