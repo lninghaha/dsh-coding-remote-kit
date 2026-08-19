@@ -48,6 +48,13 @@
     "docs/04-threat-model.md",
     "docs/05-cloud-relay.md",
     "README.zh-CN.md",
+    "README.ja.md",
+    "README.ko.md",
+    "README.pt-BR.md",
+    "README.es.md",
+    "README.fr.md",
+    "README.de.md",
+    "README.ru.md",
     "LICENSE"
   ],
   "dsh": {

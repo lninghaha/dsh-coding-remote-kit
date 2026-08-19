@@ -4,6 +4,10 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+### Documentation
+
+- README community translations aligned with `dsh-coding-subscription-oauth`: `README.ja.md`, `README.ko.md`, `README.pt-BR.md`, `README.es.md`, `README.fr.md`, `README.de.md`, `README.ru.md`. All nine README files share the same language-switch line.
+
 ## v0.2.0 - 2026-08-19
 
 ### Added

@@ -49,7 +49,7 @@ Every document belongs to one of two layers, and the two never mix:
 
 | Layer | Location | In git / package? | Examples | Requirements |
 |---|---|---|---|---|
-| **Publishable (public)** | Repo root: `README.md` + `README.zh-CN.md`, `CONTRIBUTING.md`, `INSTALL.md`, `CHANGELOG.md`, `LICENSE`, `AGENTS.md`, and explicitly promoted generic `docs/` files listed below | ✅ git; package `files` lists a subset | architecture, install, protocol, threat model, contribution & release rules | privacy-free; external-facing tone |
+| **Publishable (public)** | Repo root: `README.md` + community translations (`README.zh-CN.md`, `README.ja.md`, `README.ko.md`, `README.pt-BR.md`, `README.es.md`, `README.fr.md`, `README.de.md`, `README.ru.md`), `CONTRIBUTING.md`, `INSTALL.md`, `CHANGELOG.md`, `LICENSE`, `AGENTS.md`, and explicitly promoted generic `docs/` files listed below | ✅ git; package `files` lists a subset | architecture, install, protocol, threat model, contribution & release rules | privacy-free; external-facing tone |
 | **Local-only (personal)** | `docs/local/` — investigation, ops notes with host paths; `reference/` (vendored third-party source) | ❌ `.gitignore`, never in `files` | concrete fault debugging, absolute paths, profile names on one machine | ignored by git by default |
 
 **Promoted `docs/` files (git-tracked):**
@@ -78,8 +78,8 @@ Every document belongs to one of two layers, and the two never mix:
 
 ### Language policy
 
-- **`README.md` is English-first.** `README.zh-CN.md` is the community translation. Both carry an identical language-switch line. Keep sections and version references in sync.
-- Additional README translations (ja/ko/…) are welcome after the first public release; do not add a language-switch link until the file exists.
+- **`README.md` is English-first.** It also ships community translations selected for the widest open-source reach: `README.zh-CN.md` (简体中文), `README.ja.md` (日本語), `README.ko.md` (한국어), `README.pt-BR.md` (Português do Brasil), `README.es.md` (Español), `README.fr.md` (Français), `README.de.md` (Deutsch) and `README.ru.md` (Русский). All 9 files carry an identical language-switch line at the top so readers can jump between them, and every translation must be kept in sync with `README.md` (same sections, same version references).
+- Any user-facing change to `README.md` implies updating **all** translations. If that is not feasible for a very-large change, translators can open follow-up PRs, but the language-switch line must never be broken. Do not add a language-switch link until the file exists.
 - Publishable docs under `docs/` are English-first when newly written. Existing Chinese design docs (`01`, `03`, `04`, `05`, research) stay Chinese until a dedicated translation pass. Architecture is bilingual (`02` + `02-architecture.zh-CN.md`).
 - `docs/local/` may stay in whatever language the author prefers.
 
@@ -104,7 +104,7 @@ new document version formed
 CHANGELOG.md updated (entry under Unreleased, or folded into a version)
    │
    ▼
-README.md + README.zh-CN.md synced
+README.md + all community translations synced
    │
    ▼
 pnpm test:sandbox  (Docker check + isolated-install + verify)

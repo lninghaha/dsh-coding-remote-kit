@@ -34,7 +34,7 @@ Image name prefix is `test-dsh-mobile-remote:*`. Host networking is prohibited.
 
 1. Open an issue (or link an existing one) so scope is agreed first.
 2. Branch from the default branch. Keep commits atomic and conventional.
-3. When you change a capability or add a doc, update `README.md` + `README.zh-CN.md` and the matching `docs/` file, **and** add a changelog entry under `Unreleased`.
+3. When you change a capability or add a doc, update `README.md` (and the community translations listed in `docs/00-project-rules.md` §2 if user-facing) and the matching `docs/` file, **and** add a changelog entry under `Unreleased`.
 4. Build Docker `check` and `verify` until green, then commit that passing slice promptly.
 5. Push the branch as a milestone checkpoint and open a PR. Keep `docs/local/` out of the PR.
 
@@ -83,7 +83,7 @@ Do not open a public issue that includes tokens, pairing URLs, or device identif
 
 ## Document layers
 
-- **Publishable**: root README family, `INSTALL.md`, `CHANGELOG.md`, `LICENSE`, `AGENTS.md`, `docs/00-project-rules.md`, `docs/01-mvp-scope.md`, `docs/02-architecture*.md`, `docs/03-protocol.md`, `docs/04-threat-model.md`, `docs/05-cloud-relay.md`, and `docs/research/` (research is git-tracked but not shipped in the npm `files` whitelist).
+- **Publishable**: root `README.md` + the community-language READMEs (`README.zh-CN.md`, `README.ja.md`, `README.ko.md`, `README.pt-BR.md`, `README.es.md`, `README.fr.md`, `README.de.md`, `README.ru.md`), `INSTALL.md`, `CHANGELOG.md`, `LICENSE`, `AGENTS.md`, `docs/00-project-rules.md`, `docs/01-mvp-scope.md`, `docs/02-architecture*.md`, `docs/03-protocol.md`, `docs/04-threat-model.md`, `docs/05-cloud-relay.md`, and `docs/research/` (research is git-tracked but not shipped in the npm `files` whitelist).
 - **Local-only**: `docs/local/` and `reference/` are git-ignored and never shipped.
 
 If you are not sure whether a detail is publishable, keep it in the local-only layer or ask a maintainer.
