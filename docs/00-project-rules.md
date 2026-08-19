@@ -60,6 +60,7 @@ Every document belongs to one of two layers, and the two never mix:
 - `docs/03-protocol.md`
 - `docs/04-threat-model.md`
 - `docs/05-cloud-relay.md`
+- `docs/assets/*` (README screenshots; listed in package `files` so npm README images resolve)
 - `docs/research/*` (historical research; git-tracked, **not** listed in package `files`)
 
 **Hard constraints**
@@ -87,7 +88,7 @@ Every document belongs to one of two layers, and the two never mix:
 
 ## 3. Versioning & The Release Loop
 
-[Semantic Versioning (SemVer)](https://semver.org/): `MAJOR.MINOR.PATCH`. The project is currently `0.2.1`.
+[Semantic Versioning (SemVer)](https://semver.org/): `MAJOR.MINOR.PATCH`. The project is currently `0.2.2`.
 
 | Change | Version action |
 |---|---|

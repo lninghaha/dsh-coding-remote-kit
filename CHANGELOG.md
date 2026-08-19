@@ -4,6 +4,12 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+## v0.2.2 - 2026-08-19
+
+### Documentation
+
+- Add README screenshots (`docs/assets/`): desktop Settings pairing / overview, and phone pair / sessions. Tracked in git and included in the npm package so images resolve on GitHub and npm.
+
 ## v0.2.1 - 2026-08-19
 
 ### Changed

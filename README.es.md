@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.2.1** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.2.2** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
 
 **Acceso remoto por teléfono a [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Empareja un teléfono con el escritorio que ya ejecuta `dsh web`, observa sesiones y realiza un conjunto limitado de escrituras — sin exponer la API Web completa.
 
@@ -27,7 +27,7 @@ Se desarrolló primero como GitHub `dsh-mobile-remote`. El nombre npm **`dsh-mob
 
 | | Usa esto | Notas |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.2.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.1` |
+| npm | `dsh-coding-remote-kit@0.2.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | nombre anterior del checkout `dsh-mobile-remote` |
 | id del plugin Cordis | `mobile-remote` | sin cambios |
 | HTTP de la página de ajustes | `/api/mobile-remote/*` | sin cambios |
@@ -55,6 +55,22 @@ Se desarrolló primero como GitHub `dsh-mobile-remote`. El nombre npm **`dsh-mob
 - **Red privada primero** — se prefiere LAN / Tailscale. El Cloudflare Quick Tunnel opcional expone **solo** el plano de datos, nunca el puerto `3080`. Worker de rendezvous autohospedado opcional: escritorio y teléfono salen outbound; los frames de negocio siguen en E2EE.
 - **Forma estándar de plugin** — un plugin Cordis de servidor + página de ajustes classic-script. `dsh plugin --profile web add` con un **file tarball**, nunca un árbol de trabajo `link:`.
 
+## Capturas de pantalla
+
+<p align="center">
+  <img src="docs/assets/settings-pairing.png" alt="Ajustes de escritorio — oferta de emparejamiento con QR y PIN" width="48%" />
+  &nbsp;
+  <img src="docs/assets/settings-overview.png" alt="Ajustes de escritorio — estado del canal y dispositivos emparejados" width="48%" />
+</p>
+<p align="center"><em>Escritorio Ajustes → 移动远程: crear oferta de emparejamiento (izquierda) · estado del canal y dispositivos (derecha)</em></p>
+
+<p align="center">
+  <img src="docs/assets/mobile-pair.png" alt="Pantalla de emparejamiento en el teléfono" width="28%" />
+  &nbsp;&nbsp;
+  <img src="docs/assets/mobile-sessions.png" alt="Lista de sesiones en el teléfono" width="28%" />
+</p>
+<p align="center"><em>Companion en el teléfono: introducir PIN / escanear (izquierda) · lista de sesiones tras el emparejamiento (derecha)</em></p>
+
 ## Problemas que resuelve este plugin
 
 | Buscaste / viste | Qué estaba realmente roto | Qué hace este plugin |
@@ -67,7 +83,7 @@ Se desarrolló primero como GitHub `dsh-mobile-remote`. El nombre npm **`dsh-mob
 ## Inicio rápido
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.2.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.2.2
 ```
 
 Después el **operador** reinicia el proceso `dsh web` existente en su propia ventana. Abre **Settings → 移動远程**, crea una oferta de emparejamiento, escanea el QR (o escribe el PIN) en el teléfono.
@@ -78,8 +94,8 @@ Desde un checkout de código (desarrollo):
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.2.1.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.1.tgz"
+cp dsh-coding-remote-kit-0.2.2.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.2.tgz"
 ```
 
 No ejecutes `dsh plugin add ./` en este árbol de trabajo. pnpm 11 trata algunas rutas `file:` de tarball como fuente `link:`, y un import de entrada fallido tumba toda la GUI.
@@ -89,6 +105,7 @@ No ejecutes `dsh plugin add ./` en este árbol de trabajo. pnpm 11 trata algunas
 - [Nombres](#nombres)
 - [Estado](#estado)
 - [Características](#características)
+- [Capturas de pantalla](#capturas-de-pantalla)
 - [Problemas que resuelve este plugin](#problemas-que-resuelve-este-plugin)
 - [Inicio rápido](#inicio-rápido)
 - [Instalación](#instalación)
