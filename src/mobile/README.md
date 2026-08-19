@@ -2,7 +2,8 @@
 
 手机浏览器页源码，`pnpm build` 产出到 `lib/mobile/`：
 
-- `index.html` — 页面骨架（`<meta viewport>`，无外部 CDN；已连接态全屏会话 UI）
+- `index.html` — 页面骨架（`<meta viewport>`，PWA manifest / apple-touch-icon，无外部 CDN）
+- `manifest.webmanifest` / `sw.js` — 仅缓存 `/m` 静态壳，不碰 hash / WebSocket
 - `main.ts` — 流程：读 `location.hash` → 解码配对 offer → 存 host → 加载/生成
   手机 X25519 密钥 → `new WebSocket(endpoint)` → 4 步握手 → `status.get` → 版本门 → **保持 WS**
 - `rpc.ts` — 请求/响应关联与推送分发
