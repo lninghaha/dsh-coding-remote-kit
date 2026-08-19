@@ -37,7 +37,10 @@ tarball **不要**放在本仓库根下再 `pnpm add`：pnpm 11 会把 `file:...
 - 测试进 Docker 沙箱（`test-dsh-mobile-remote:*`），不要在本机抢 3080/7890 或对生产 `dsh web` 做冒烟。
 - 遵守用户级 `~/.dsh/AGENTS.md`：不扰动 mihomo / DNS / Tailscale；Docker 不用 `--network host`、不挂敏感目录。
 - 不要把交接文档、密钥、真实 token 写进 git。
+- `package.json` 的 `exports` **必须**包含 `"./package.json": "./package.json"`。`dsh-client-modules` 用 `require.resolve("<pkg>/package.json")` 扫描客户端；缺这一项会静默丢掉设置页（服务端仍加载）。
 
 ## 4. 事故备忘
 
 esbuild 把 `tweetnacl` 打进 ESM 入口会导致 `Dynamic require of "crypto" is not supported`。server bundle 必须 `packages: "external"`，构建断言与 `tests/bundle-externals.test.js` 不得删。
+
+缺 `exports["./package.json"]` 时设置里看不到「移动远程」，但 6879 数据面仍在。

@@ -16,6 +16,7 @@ test("package identity matches the M1 contract", async () => {
 	assert.equal(pkg.version, "0.0.0");
 	assert.equal(pkg.exports["."], "./lib/server/index.js");
 	assert.equal(pkg.exports["./client"], "./lib/client.js");
+	assert.equal(pkg.exports["./package.json"], "./package.json");
 	assert.equal(pkg.dsh.bundle.patch, "./cordis.patch.yml");
 	assert.equal(pkg.dsh.client.platform, "web");
 });

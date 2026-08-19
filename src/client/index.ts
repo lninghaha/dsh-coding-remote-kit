@@ -252,7 +252,7 @@ export function apply(ctx: ClientApplyContext): void {
 				name: "settings.section",
 				id: "mobile-remote",
 				order: 90,
-				label: "移动远程 / Mobile Remote",
+				label: () => "移动远程 / Mobile Remote",
 			},
 			MobileRemoteSettings,
 		),
