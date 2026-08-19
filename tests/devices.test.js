@@ -57,6 +57,7 @@ test("GET /api/mobile-remote/devices omits tokenHash", async () => {
 		registry,
 		offers: { createOffer() { return { offerId: "o" }; } },
 		audit: { log() {} },
+		trustedHosts: [],
 		listening: () => true,
 		currentBind: () => "127.0.0.1",
 		port: () => 6879,

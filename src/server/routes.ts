@@ -14,7 +14,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { encodeOffer, offerQrText } from "../shared/offer.js";
 import type { AuditLogger, DeviceRecord, DeviceRegistry, OfferRegistry } from "./registry.js";
 import {
-	isLoopbackRequest,
+	isTrustedManagementRequest,
 	passesBrowserContextGuard,
 	passesCsrfGuard,
 	readJsonBody,
@@ -51,6 +51,8 @@ export interface ManagementDeps {
 	listening(): boolean;
 	currentBind(): string;
 	port(): number;
+	/** Host names allowed in addition to loopback when the peer is loopback. */
+	readonly trustedHosts: readonly string[];
 	/** Rebind the data plane to 0.0.0.0 and persist networkReach=lan. */
 	widen(): Promise<void>;
 	/** Compute endpoint / pageUrl / candidate addresses for the current bind. */
@@ -89,8 +91,13 @@ function reject(
 	writeJson(response, status, { ok: false, error: { code, message } });
 }
 
-function guard(request: IncomingMessage, response: ServerResponse, method: string): boolean {
-	if (!isLoopbackRequest(request)) {
+function guard(
+	request: IncomingMessage,
+	response: ServerResponse,
+	method: string,
+	trustedHosts: readonly string[],
+): boolean {
+	if (!isTrustedManagementRequest(request, trustedHosts)) {
 		reject(response, 403, "forbidden", "management API is available only on loopback");
 		return false;
 	}
@@ -118,7 +125,7 @@ export function registerManagementRoutes(
 			kind: "exact",
 			path,
 			handler: async (request, response) => {
-				if (!guard(request, response, request.method ?? "GET")) return;
+				if (!guard(request, response, request.method ?? "GET", deps.trustedHosts)) return;
 				if (!methods.includes(request.method ?? "")) {
 					response.setHeader("allow", methods.join(", "));
 					reject(response, 405, "method-not-allowed", "request method is not supported");

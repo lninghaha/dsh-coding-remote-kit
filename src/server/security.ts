@@ -90,8 +90,33 @@ function originAuthority(value: unknown): { hostname: string; port: string; prot
 
 /** Peer socket address is a loopback address and Host is loopback/localhost. */
 export function isLoopbackRequest(request: IncomingMessage): boolean {
+	return isTrustedManagementRequest(request, []);
+}
+
+/**
+ * Management-plane trust: TCP peer must be loopback (Caddy on this machine),
+ * and Host must be loopback/localhost **or** an explicit trusted host
+ * (`dsh web --trusted-host`, plus plugin config). This is how the settings
+ * page on `https://dsh-x13.prepop.net` reaches `/api/mobile-remote/*`.
+ */
+export function isTrustedManagementRequest(
+	request: IncomingMessage,
+	trustedHosts: readonly string[] = [],
+): boolean {
+	if (!isLoopbackAddress(request.socket.remoteAddress)) return false;
 	const host = hostNameOf(request.headers.host);
-	return isLoopbackAddress(request.socket.remoteAddress) && (host === "localhost" || isLoopbackAddress(host));
+	if (host === null) return false;
+	if (host === "localhost" || isLoopbackAddress(host)) return true;
+	const allowed = new Set(trustedHosts.map((value) => value.toLowerCase()));
+	return allowed.has(host);
+}
+
+/** Collect hostnames from `ctx.get("webRuntime")` (dsh-web-app). */
+export function trustedHostsFromRuntime(value: unknown): string[] {
+	if (typeof value !== "object" || value === null) return [];
+	const hosts = (value as { trustedHosts?: unknown }).trustedHosts;
+	if (!Array.isArray(hosts)) return [];
+	return hosts.filter((item): item is string => typeof item === "string" && item.length > 0);
 }
 
 function headerMatchesHost(originValue: unknown, hostHeader: string): boolean {

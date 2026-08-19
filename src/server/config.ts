@@ -18,6 +18,8 @@ export const RuntimeConfigSchema = z
 		bind: BindAddressSchema,
 		port: z.number().int().min(1024).max(65_535).default(6879),
 		offerTtlMs: z.number().int().default(600_000),
+		/** Extra Host names allowed when the TCP peer is loopback (Caddy). */
+		trustedHosts: z.array(z.string().min(1)).default([]),
 	})
 	.strict();
 

@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { base64Encode } from "../shared/base64.js";
 import { type RuntimeConfig, RuntimeConfigSchema } from "./config.js";
+import { trustedHostsFromRuntime } from "./security.js";
 import { isHostApiProxy, type MobileRemoteHostContext } from "./context.js";
 import { MobileDataPlane } from "./dataplane.js";
 import { loadOrCreateServerKey } from "./keys.js";
@@ -89,6 +90,7 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 	if (webServer === undefined) {
 		logger.warn("mobile-remote: webServer service unavailable; management routes not registered");
 	} else {
+		const trustedHosts = [...config.trustedHosts, ...trustedHostsFromRuntime(ctx.get?.("webRuntime"))];
 		const disposers = registerManagementRoutes(webServer, {
 			logger,
 			now: () => Date.now(),
@@ -97,6 +99,7 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 			registry,
 			offers,
 			audit,
+			trustedHosts,
 			listening: () => dataPlane.listening,
 			currentBind: () => dataPlane.host,
 			port: () => config.port,
