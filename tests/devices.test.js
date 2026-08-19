@@ -70,6 +70,9 @@ test("GET /api/mobile-remote/devices omits tokenHash", async () => {
 			},
 			async stop() {},
 		},
+		async installCloudflared() {
+			return { asset: "cloudflared-linux-amd64", path: "/tmp/cloudflared" };
+		},
 	});
 
 	const chunks = [];

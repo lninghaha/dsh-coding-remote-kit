@@ -65,6 +65,8 @@ export interface ManagementDeps {
 	advertise(): AdvertiseResult;
 	/** Cloudflare Quick Tunnel face (start/stop/snapshot). Present only when the plugin owns one. */
 	readonly tunnel: TunnelDeps;
+	/** Opt-in official binary install. Must not run at apply() time. */
+	installCloudflared(): Promise<{ asset: string; path: string }>;
 }
 
 export interface TunnelDeps {
@@ -243,6 +245,24 @@ export function registerManagementRoutes(
 		}),
 		register("/api/mobile-remote/devices", ["GET"], async (_request, response) => {
 			writeJson(response, 200, devicesResponseBody(deps.registry));
+		}),
+		register("/api/mobile-remote/cloudflared", ["POST"], async (request, response) => {
+			const body = await readJsonBody(request, response);
+			if (body === undefined) return;
+			const record = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+			if (record?.action !== "install") {
+				reject(response, 400, "invalid_params", "action must be 'install'");
+				return;
+			}
+			try {
+				const result = await deps.installCloudflared();
+				deps.audit.log({ event: "cloudflared_install", detail: { asset: result.asset } }, deps.now());
+				writeJson(response, 200, { ok: true, asset: result.asset });
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "install failed";
+				deps.logger.warn(`cloudflared install failed (${message})`);
+				writeJson(response, 500, { ok: false, error: { code: "install-failed", message } });
+			}
 		}),
 		register("/api/mobile-remote/revoke", ["POST"], async (request, response) => {
 			const body = await readJsonBody(request, response);

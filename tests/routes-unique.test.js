@@ -22,6 +22,7 @@ function stubDeps() {
 			async start() { return "https://example.trycloudflare.com"; },
 			async stop() {},
 		},
+		async installCloudflared() { return { asset: "cloudflared-linux-amd64", path: "/tmp/cloudflared" }; },
 	};
 }
 
@@ -39,5 +40,7 @@ test("management exact paths are unique (DSH webServer keys by path, not method)
 	registerManagementRoutes(webServer, stubDeps());
 	assert.deepEqual(new Set(paths).size, paths.length);
 	assert.ok(paths.includes("/api/mobile-remote/tunnel"));
+	assert.ok(paths.includes("/api/mobile-remote/cloudflared"));
 	assert.equal(paths.filter((path) => path === "/api/mobile-remote/tunnel").length, 1);
+	assert.equal(paths.filter((path) => path === "/api/mobile-remote/cloudflared").length, 1);
 });

@@ -10,6 +10,7 @@ import { networkCandidates } from "./net.js";
 import { AuditLogger, DeviceRegistry, OfferRegistry } from "./registry.js";
 import { ensureStorageDir } from "./storage.js";
 import { registerManagementRoutes } from "./routes.js";
+import { installOfficialCloudflared } from "./cloudflared-install.js";
 import { CloudflareQuickTunnel } from "./tunnel.js";
 import { createUpstreamHub } from "./upstream.js";
 
@@ -122,6 +123,7 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 				start: (options) => tunnel.start(options),
 				stop: () => tunnel.stop(),
 			},
+			installCloudflared: () => installOfficialCloudflared(),
 		});
 		for (const [index, dispose] of disposers.entries()) {
 			ctx.effect(() => dispose, `mobile-remote: route ${index + 1}`);

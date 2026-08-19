@@ -75,6 +75,15 @@ function formatRemaining(ms: number): string {
 	return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+function formatAgo(timestamp: number): string {
+	if (timestamp <= 0) return "";
+	const delta = Date.now() - timestamp;
+	if (delta < 60_000) return "刚刚";
+	if (delta < 3_600_000) return `${String(Math.floor(delta / 60_000))} 分钟前`;
+	if (delta < 86_400_000) return `${String(Math.floor(delta / 3_600_000))} 小时前`;
+	return `${String(Math.floor(delta / 86_400_000))} 天前`;
+}
+
 function MobileRemoteSettings() {
 	const [status, setStatus] = useState<StatusInfo | null>(null);
 	const [channel, setChannel] = useState<Channel>("lan");
@@ -83,6 +92,8 @@ function MobileRemoteSettings() {
 	const [error, setError] = useState<string | null>(null);
 	const [remainingMs, setRemainingMs] = useState<number | null>(null);
 	const [tunnelBusy, setTunnelBusy] = useState(false);
+	const [installBusy, setInstallBusy] = useState(false);
+	const [showOfferText, setShowOfferText] = useState(false);
 
 	const formatApiError = (
 		response: Response,
@@ -179,81 +190,117 @@ function MobileRemoteSettings() {
 		}
 	};
 
-	const tunnelAction = (action: "start" | "stop") => {
-		if (tunnelBusy) return;
+	const postJson = async (path: string, body: unknown): Promise<{ ok: boolean; status: number; payload: Record<string, unknown> }> => {
+		const response = await fetch(path, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"x-dsh-mobile-remote": "1",
+			},
+			body: JSON.stringify(body),
+		});
+		const payload = (await response.json()) as Record<string, unknown>;
+		return { ok: response.ok, status: response.status, payload };
+	};
+
+	const tunnelAction = async (action: "start" | "stop"): Promise<boolean> => {
+		if (tunnelBusy) return false;
 		setError(null);
 		setTunnelBusy(true);
+		try {
+			const { ok, status: httpStatus, payload } = await postJson("/api/mobile-remote/tunnel", {
+				action,
+				kind: "cloudflare-quick",
+			});
+			if (!ok) {
+				setError(
+					formatApiError(
+						{ status: httpStatus } as Response,
+						payload as { error?: { message?: string } },
+						action === "start" ? "开启公网失败" : "停止公网失败",
+					),
+				);
+				return false;
+			}
+			refreshStatus();
+			if (action === "start") setChannel("public");
+			if (action === "stop") setChannel("lan");
+			return true;
+		} catch {
+			setError(action === "start" ? "开启公网失败" : "停止公网失败");
+			return false;
+		} finally {
+			setTunnelBusy(false);
+		}
+	};
+
+	const installCloudflared = () => {
+		if (installBusy) return;
+		setError(null);
+		setInstallBusy(true);
 		void (async () => {
 			try {
-				const response = await fetch("/api/mobile-remote/tunnel", {
-					method: "POST",
-					headers: {
-						"content-type": "application/json",
-						"x-dsh-mobile-remote": "1",
-					},
-					body: JSON.stringify({ action, kind: "cloudflare-quick" }),
+				const { ok, status: httpStatus, payload } = await postJson("/api/mobile-remote/cloudflared", {
+					action: "install",
 				});
-				const payload = (await response.json()) as { url?: string; error?: { message?: string } };
-				if (!response.ok) {
-					setError(formatApiError(response, payload, action === "start" ? "开启公网链接失败" : "停止公网链接失败"));
+				if (!ok) {
+					setError(
+						formatApiError(
+							{ status: httpStatus } as Response,
+							payload as { error?: { message?: string } },
+							"下载官方 cloudflared 失败",
+						),
+					);
 					return;
 				}
 				refreshStatus();
-				if (action === "start" && typeof payload.url === "string") {
-					setChannel("public");
-				}
 			} catch {
-				setError(action === "start" ? "开启公网链接失败" : "停止公网链接失败");
+				setError("下载官方 cloudflared 失败");
 			} finally {
-				setTunnelBusy(false);
+				setInstallBusy(false);
 			}
 		})();
 	};
 
-	const copyTunnelUrl = () => {
-		const url = status?.tunnel.url;
-		if (typeof url !== "string" || url.length === 0) return;
-		const clipboard = (navigator as { clipboard?: { writeText(text: string): Promise<void> } }).clipboard;
-		if (clipboard === undefined) {
-			setError("当前浏览器不支持复制链接");
-			return;
-		}
-		void clipboard.writeText(url).then(() => {
-			setError(null);
-		}).catch(() => {
-			setError("复制链接失败");
-		});
+	const selectLan = () => {
+		setChannel("lan");
+		if (status?.tunnel.running) void tunnelAction("stop");
 	};
 
 	const createOffer = () => {
 		setError(null);
 		void (async () => {
 			try {
-				const response = await fetch("/api/mobile-remote/offers", {
-					method: "POST",
-					headers: {
-						"content-type": "application/json",
-						"x-dsh-mobile-remote": "1",
-					},
-					body: "{}",
-				});
-				const payload = (await response.json()) as {
-					offer: { expiresAt: number };
-					qrText: string;
-					candidates: string[];
-					error?: { message?: string };
-				};
-				if (!response.ok) {
-					setError(formatApiError(response, payload, "生成配对二维码失败"));
+				if (channel === "public") {
+					if (!(status?.tunnel.binaryOk ?? false)) {
+						setError("请先下载官方 cloudflared");
+						return;
+					}
+					if (!(status?.tunnel.running ?? false)) {
+						const started = await tunnelAction("start");
+						if (!started) return;
+					}
+				}
+				const { ok, status: httpStatus, payload } = await postJson("/api/mobile-remote/offers", {});
+				if (!ok) {
+					setError(
+						formatApiError(
+							{ status: httpStatus } as Response,
+							payload as { error?: { message?: string } },
+							"生成二维码失败",
+						),
+					);
 					return;
 				}
+				const offer = payload.offer as { expiresAt: number };
 				setOfferInfo({
-					qrText: payload.qrText,
-					candidates: payload.candidates,
-					expiresAt: payload.offer.expiresAt,
+					qrText: String(payload.qrText ?? ""),
+					candidates: Array.isArray(payload.candidates) ? (payload.candidates as string[]) : [],
+					expiresAt: offer.expiresAt,
 				});
+				refreshStatus();
 			} catch {
-				setError("生成配对二维码失败");
+				setError("生成二维码失败");
 			}
 		})();
 	};
@@ -261,162 +308,166 @@ function MobileRemoteSettings() {
 	const tunnelHost = extractTunnelHost(status?.tunnel.url ?? null);
 	const tunnelRunning = status?.tunnel.running ?? false;
 	const tunnelBinaryOk = status?.tunnel.binaryOk ?? false;
-
-	const statusLine = status === null
-		? "状态加载中…"
-		: `绑定 ${status.bind}:${String(status.port)} · ${status.listening ? "监听中" : "未监听"} · ${status.networkReach} · 已配对设备 ${String(status.activeDevices)}${tunnelRunning ? ` · 公网隧道 ${tunnelHost ?? "运行中"}` : ""}`;
+	const publicMode = tunnelRunning || channel === "public";
+	const box = {
+		display: "grid",
+		gap: "8px",
+		padding: "12px",
+		border: "1px solid #d0d0d0",
+		borderRadius: "10px",
+	};
+	const muted = { margin: 0, fontSize: "13px", color: "#555" };
 
 	return createElement(
 		"section",
-		{ style: { display: "grid", gap: "12px", maxWidth: "40rem", lineHeight: 1.55 } },
-		createElement("p", { style: { margin: 0 } }, statusLine),
+		{ style: { display: "grid", gap: "16px", maxWidth: "40rem", lineHeight: 1.55 } },
+		createElement("p", { style: muted }, "用手机浏览器扫码，控制这台电脑上的 DSH。配对码大约 10 分钟有效。"),
 		createElement(
 			"div",
-			{
-				style: {
-					display: "grid",
-					gap: "6px",
-					padding: "10px 12px",
-					border: "1px solid #d0d0d0",
-					borderRadius: "8px",
-				},
-			},
+			{ style: box },
+			createElement("strong", { style: { fontSize: "14px" } }, "1. 手机怎么连"),
 			createElement(
-				"div",
-				{ style: { display: "flex", gap: "16px", fontSize: "13px" } },
-				createElement(
-					"label",
-					{ style: { display: "flex", gap: "6px", alignItems: "center" } },
-					createElement("input", {
-						type: "radio",
-						name: "channel",
-						checked: !tunnelRunning && channel === "lan",
-						onChange: () => setChannel("lan"),
-					}),
-					"仅局域网",
-				),
-				createElement(
-					"label",
-					{ style: { display: "flex", gap: "6px", alignItems: "center" } },
-					createElement("input", {
-						type: "radio",
-						name: "channel",
-						checked: tunnelRunning || channel === "public",
-						onChange: () => setChannel("public"),
-					}),
-					"公网（Cloudflare Quick Tunnel）",
-				),
+				"label",
+				{ style: { display: "flex", gap: "8px", alignItems: "center", fontSize: "13px" } },
+				createElement("input", {
+					type: "radio",
+					name: "channel",
+					checked: !publicMode,
+					onChange: selectLan,
+				}),
+				"同一 Wi‑Fi / 局域网",
 			),
-			channel === "public" && !tunnelRunning
-				? createElement(
-						"p",
-						{ style: { margin: 0, fontSize: "12px", color: "#8a5a00" } },
-						"公网链接等同临时钥匙：知道链接者即可尝试联系此主机，请勿转发；配对仍需端到端密钥。",
-					)
-				: null,
-			!tunnelBinaryOk
-				? createElement(
-						"p",
-						{ style: { margin: 0, fontSize: "12px", color: "#b3261e" } },
-						"未检测到 cloudflared：请将二进制放到 ~/.local/bin/cloudflared 后刷新页面。",
-					)
-				: null,
 			createElement(
-				"div",
-				{ style: { display: "flex", gap: "8px", flexWrap: "wrap" } },
-				!tunnelRunning
-					? createElement(
+				"label",
+				{ style: { display: "flex", gap: "8px", alignItems: "center", fontSize: "13px" } },
+				createElement("input", {
+					type: "radio",
+					name: "channel",
+					checked: publicMode,
+					onChange: () => setChannel("public"),
+				}),
+				"外出（临时公网，不用 Cloudflare 账号）",
+			),
+			publicMode
+				? createElement(
+						"p",
+						{ style: { ...muted, color: "#8a5a00" } },
+						"公网地址等于一把临时钥匙，请勿转发。配对仍要扫码。不登录、不使用你的 Cloudflare token。",
+					)
+				: null,
+			publicMode && !tunnelBinaryOk
+				? createElement(
+						"div",
+						{ style: { display: "grid", gap: "6px" } },
+						createElement("p", { style: { ...muted, color: "#b3261e" } }, "外出需要官方 cloudflared（约几十 MB，装到本机 ~/.local/bin）。"),
+						createElement(
 							"button",
 							{
 								type: "button",
-								disabled: !tunnelBinaryOk || tunnelBusy,
-								onClick: () => tunnelAction("start"),
+								disabled: installBusy,
+								onClick: installCloudflared,
+								style: { justifySelf: "start" },
 							},
-							"开启公网链接",
-						)
-					: null,
-				tunnelRunning
-					? createElement(
+							installBusy ? "正在下载官方组件…" : "下载官方 cloudflared",
+						),
+					)
+				: null,
+			publicMode && tunnelBinaryOk && !tunnelRunning
+				? createElement("p", { style: muted }, "下一步点「生成二维码」时会自动打开临时公网。")
+				: null,
+			tunnelRunning
+				? createElement(
+						"div",
+						{ style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" } },
+						createElement("span", { style: { fontSize: "13px" } }, `公网已开：${tunnelHost ?? "运行中"}`),
+						createElement(
 							"button",
-							{ type: "button", onClick: copyTunnelUrl },
-							"复制链接",
-						)
-					: null,
-				createElement("button", { type: "button", onClick: createOffer }, "刷新二维码"),
-				tunnelRunning
-					? createElement(
-							"button",
-							{ type: "button", disabled: tunnelBusy, onClick: () => tunnelAction("stop") },
-							"停止",
-						)
-					: null,
-			),
+							{ type: "button", disabled: tunnelBusy, onClick: () => void tunnelAction("stop") },
+							"停止公网",
+						),
+					)
+				: null,
 		),
 		createElement(
-			"button",
-			{ type: "button", onClick: createOffer, style: { justifySelf: "start" } },
-			"生成配对二维码",
-		),
-		error !== null
-			? createElement("p", { style: { margin: 0, color: "#b3261e" } }, error)
-			: null,
-		offerInfo !== null
-			? createElement(
-					"div",
-					{ style: { display: "grid", gap: "8px" } },
-					createElement("canvas", {
-						id: "dsh-mobile-remote-qr",
-						style: { width: "220px", height: "220px", imageRendering: "pixelated" },
-					}),
-					createElement(
-						"code",
-						{ style: { wordBreak: "break-all", fontSize: "12px" } },
-						offerInfo.qrText,
-					),
-					remainingMs !== null
-						? createElement("p", { style: { margin: 0 } }, `二维码剩余有效时间 ${formatRemaining(remainingMs)}`)
-						: null,
-					createElement(
-						"p",
-						{ style: { margin: 0, fontSize: "13px", color: "#555" } },
-						`候选地址：${offerInfo.candidates.join("、")}`,
-					),
-				)
-			: null,
-		createElement("h3", { style: { margin: "8px 0 0", fontSize: "15px" } }, "已配对设备"),
-		devices.length === 0
-			? createElement("p", { style: { margin: 0, color: "#555", fontSize: "13px" } }, "暂无设备")
-			: createElement(
-					"ul",
-					{ style: { margin: 0, padding: 0, listStyle: "none", display: "grid", gap: "8px" } },
-					...devices.map((device) =>
+			"div",
+			{ style: box },
+			createElement("strong", { style: { fontSize: "14px" } }, "2. 生成二维码"),
+			createElement(
+				"button",
+				{
+					type: "button",
+					disabled: tunnelBusy || installBusy || (publicMode && !tunnelBinaryOk),
+					onClick: createOffer,
+					style: { justifySelf: "start" },
+				},
+				tunnelBusy ? "正在准备…" : "生成二维码",
+			),
+			error !== null ? createElement("p", { style: { margin: 0, color: "#b3261e", fontSize: "13px" } }, error) : null,
+			offerInfo !== null
+				? createElement(
+						"div",
+						{ style: { display: "grid", gap: "8px" } },
+						createElement("p", { style: muted }, "用手机浏览器扫描。不要发到群里。"),
+						createElement("canvas", {
+							id: "dsh-mobile-remote-qr",
+							style: { width: "220px", height: "220px", imageRendering: "pixelated" },
+						}),
+						remainingMs !== null
+							? createElement("p", { style: { margin: 0, fontSize: "13px" } }, `剩余 ${formatRemaining(remainingMs)}`)
+							: null,
 						createElement(
-							"li",
+							"button",
 							{
-								key: device.deviceId,
-								style: {
-									display: "flex",
-									gap: "8px",
-									alignItems: "center",
-									justifyContent: "space-between",
-									fontSize: "13px",
-								},
+								type: "button",
+								onClick: () => setShowOfferText((value) => !value),
+								style: { justifySelf: "start" },
 							},
+							showOfferText ? "隐藏链接" : "显示链接",
+						),
+						showOfferText
+							? createElement("code", { style: { wordBreak: "break-all", fontSize: "12px" } }, offerInfo.qrText)
+							: null,
+					)
+				: null,
+		),
+		createElement(
+			"div",
+			{ style: box },
+			createElement("strong", { style: { fontSize: "14px" } }, "3. 已配对的手机"),
+			devices.length === 0
+				? createElement("p", { style: muted }, "还没有手机连过。")
+				: createElement(
+						"ul",
+						{ style: { margin: 0, padding: 0, listStyle: "none", display: "grid", gap: "8px" } },
+						...devices.map((device) =>
 							createElement(
-								"span",
-								{ style: { wordBreak: "break-all" } },
-								`${device.deviceId}${device.revokedAt === undefined ? "" : "（已吊销）"}`,
+								"li",
+								{
+									key: device.deviceId,
+									style: {
+										display: "flex",
+										gap: "8px",
+										alignItems: "center",
+										justifyContent: "space-between",
+										fontSize: "13px",
+									},
+								},
+								createElement(
+									"span",
+									{ style: { wordBreak: "break-all" } },
+									`${device.revokedAt === undefined ? "手机" : "已吊销"} · ${formatAgo(device.lastSeenAt)} · ${device.deviceId.slice(0, 8)}…`,
+								),
+								device.revokedAt === undefined
+									? createElement(
+											"button",
+											{ type: "button", onClick: () => revokeDevice(device.deviceId) },
+											"解除配对",
+										)
+									: null,
 							),
-							device.revokedAt === undefined
-								? createElement(
-										"button",
-										{ type: "button", onClick: () => revokeDevice(device.deviceId) },
-										"吊销",
-									)
-								: null,
 						),
 					),
-				),
+		),
 	);
 }
 
@@ -427,7 +478,7 @@ export function apply(ctx: ClientApplyContext): void {
 				name: "settings.section",
 				id: "mobile-remote",
 				order: 90,
-				label: () => "移动远程 / Mobile Remote",
+				label: () => "移动远程",
 			},
 			MobileRemoteSettings,
 		),
