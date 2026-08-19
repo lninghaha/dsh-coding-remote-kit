@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -10,7 +10,7 @@
 	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 	<link rel="manifest" href="/m/manifest.webmanifest" />
 	<link rel="apple-touch-icon" href="/m/icons/icon-192.png" />
-	<title>DSH 远程</title>
+	<title>DSH Remote</title>
 	<style>
 		:root {
 			color-scheme: dark;
@@ -201,10 +201,14 @@
 		}
 		.toast.show { opacity: 1; }
 		.empty-hint { margin: 0; padding: 12px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.5; }
+		.lang-switch { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12px; color: var(--muted); }
+		.lang-switch button { min-height: auto; padding: 4px 6px; font-size: 12px; background: transparent; color: var(--muted); }
+		.lang-switch button.active { color: var(--text); font-weight: 600; }
+		.bar-actions .lang-switch { justify-content: flex-end; }
 	</style>
 </head>
 <body>
-	<main id="app">加载中…</main>
+	<main id="app">Loading…</main>
 	<script src="/m/app.js"></script>
 </body>
 </html>

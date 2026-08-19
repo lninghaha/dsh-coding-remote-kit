@@ -5,6 +5,14 @@
 import nacl from "tweetnacl";
 import { base64Decode, base64Encode, utf8Decode, utf8Encode } from "../shared/base64.js";
 import { MOBILE_PROTOCOL_VERSION } from "../shared/constants.js";
+import {
+	bootstrapLocale,
+	getLocale,
+	pairErrorMessage,
+	setLocale,
+	subscribeLocale,
+	t,
+} from "../shared/i18n/index.js";
 import { decodeOffer, validateOffer, type PairingOffer } from "../shared/offer.js";
 import { formatPairCode, isCompletePairCode, normalizePairCode } from "../shared/pair-code.js";
 import { evaluateVersionGate } from "../shared/version.js";
@@ -34,6 +42,28 @@ interface NoticeOptions {
 
 let lastOffer: PairingOffer | null = null;
 let lastConnectOptions: { fallbackToPin?: boolean } = {};
+let rerenderCurrent: (() => void) | null = null;
+
+function appendLanguageSwitcher(container: HTMLElement): void {
+	const wrap = document.createElement("div");
+	wrap.className = "lang-switch";
+	const locales = [
+		{ locale: "zh-CN" as const, labelKey: "common.lang.zh" as const },
+		{ locale: "en" as const, labelKey: "common.lang.en" as const },
+	];
+	for (const [index, entry] of locales.entries()) {
+		if (index > 0) wrap.appendChild(document.createTextNode(" | "));
+		const button = document.createElement("button");
+		button.type = "button";
+		button.className = getLocale() === entry.locale ? "active" : "";
+		button.textContent = t(entry.labelKey);
+		button.addEventListener("click", () => {
+			setLocale(entry.locale, localStorage);
+		});
+		wrap.appendChild(button);
+	}
+	container.appendChild(wrap);
+}
 
 function root(): HTMLElement {
 	const node = document.getElementById("app");
@@ -41,7 +71,9 @@ function root(): HTMLElement {
 	return node;
 }
 
-function renderNoticeCard(options: NoticeOptions): void {
+function renderNoticeCard(getOptions: () => NoticeOptions): void {
+	rerenderCurrent = () => renderNoticeCard(getOptions);
+	const options = getOptions();
 	document.documentElement.classList.add("connected");
 	document.body.classList.add("connected");
 	const app = root();
@@ -76,16 +108,17 @@ function renderNoticeCard(options: NoticeOptions): void {
 		}
 		card.appendChild(actions);
 	}
+	appendLanguageSwitcher(card);
 	wrap.appendChild(card);
 	app.appendChild(wrap);
 }
 
 function render(title: string, body: string, isError = false): void {
-	renderNoticeCard({
+	renderNoticeCard(() => ({
 		title,
 		message: body,
 		tone: isError ? "error" : "info",
-	});
+	}));
 }
 
 function registerShellWorker(): void {
@@ -129,11 +162,31 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 		clientPublicKey: keyPair.publicKey,
 		pinnedPublicKeyB64: offer.publicKeyB64,
 	});
-	renderNoticeCard({
-		title: "正在配对…",
-		message: "正在与桌面建立端到端加密连接",
+	const failNotice = (titleKey: Parameters<typeof t>[0], messageKey: Parameters<typeof t>[0], vars?: Record<string, string | number>): void => {
+		renderNoticeCard(() => ({
+			title: t(titleKey),
+			message: t(messageKey, vars),
+			tone: "error",
+			actions: [
+				{ label: t("pair.retryConnect"), onClick: () => connect(offer, options) },
+				{ label: t("pair.changeCode"), onClick: () => bootPairForm(), ghost: true },
+				{
+					label: t("pair.clearLocal"),
+					onClick: () => {
+						clearPersistedOffer(localStorage);
+						bootPairForm();
+					},
+					danger: true,
+				},
+			],
+		}));
+	};
+
+	renderNoticeCard(() => ({
+		title: t("pair.loading.title"),
+		message: t("pair.loading.body"),
 		loading: true,
-	});
+	}));
 
 	let ws: WebSocketLike;
 	try {
@@ -143,15 +196,15 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 			bootPairForm();
 			return;
 		}
-		renderNoticeCard({
-			title: "配对失败",
-			message: "无法连接桌面服务，请确认手机与电脑在同一网络。",
+		renderNoticeCard(() => ({
+			title: t("pair.failed.title"),
+			message: t("pair.failed.unreachable"),
 			tone: "error",
 			actions: [
-				{ label: "重试", onClick: () => connect(offer, options) },
-				{ label: "输入配对码", onClick: () => bootPairForm(), ghost: true },
+				{ label: t("common.retry"), onClick: () => connect(offer, options) },
+				{ label: t("pair.enterPin"), onClick: () => bootPairForm(), ghost: true },
 			],
-		});
+		}));
 		return;
 	}
 
@@ -160,26 +213,6 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 	};
 	const rpc = new MobileRpcClient(sendEncrypted);
 	let appStarted = false;
-
-	const failNotice = (title: string, message: string): void => {
-		renderNoticeCard({
-			title,
-			message,
-			tone: "error",
-			actions: [
-				{ label: "重试连接", onClick: () => connect(offer, options) },
-				{ label: "更换配对码", onClick: () => bootPairForm(), ghost: true },
-				{
-					label: "清除本机配对",
-					onClick: () => {
-						clearPersistedOffer(localStorage);
-						bootPairForm();
-					},
-					danger: true,
-				},
-			],
-		});
-	};
 
 	ws.onopen = () => {
 		ws.send(JSON.stringify(session.hello));
@@ -193,16 +226,16 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 			try {
 				ready = JSON.parse(text);
 			} catch {
-				failNotice("配对信息不符，已中止", "握手消息不是有效 JSON。");
+				failNotice("pair.mismatch", "pair.badHandshakeJson");
 				ws.close();
 				return;
 			}
 			const result = session.receiveReady(ready);
 			if (!result.ok) {
 				if (result.reason === "pinned-key-mismatch") {
-					failNotice("配对信息不符，已中止", "服务端公钥与配对二维码钉死的公钥不一致。");
+					failNotice("pair.mismatch", "pair.pubkeyMismatch");
 				} else {
-					failNotice("配对信息不符，已中止", "握手消息无效。");
+					failNotice("pair.mismatch", "pair.badHandshake");
 				}
 				ws.close();
 				return;
@@ -217,16 +250,16 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 		try {
 			sealed = base64Decode(text);
 		} catch {
-			failNotice("配对失败", "收到无法解码的消息。");
+			failNotice("pair.failed.title", "pair.undecodable");
 			ws.close();
 			return;
 		}
 		const payload = session.openIn(sealed);
 		if (payload === null) {
 			if (session.consecutiveFailures >= 5) {
-				failNotice("配对失败", "连续解密失败，连接已中止。");
+				failNotice("pair.failed.title", "pair.decryptAbort");
 			} else {
-				failNotice("配对失败", "无法解密服务端消息。");
+				failNotice("pair.failed.title", "pair.decryptFail");
 			}
 			ws.close();
 			return;
@@ -235,20 +268,20 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 		try {
 			message = JSON.parse(utf8Decode(payload)) as Record<string, unknown>;
 		} catch {
-			failNotice("配对失败", "收到无效的加密载荷。");
+			failNotice("pair.failed.title", "pair.badPayload");
 			ws.close();
 			return;
 		}
 		if (message.type === "e2ee_error") {
 			const code = (message.error as { code?: string } | undefined)?.code ?? "unknown";
-			failNotice("配对失败", `服务端拒绝配对（${code}）。`);
+			failNotice("pair.failed.title", "pair.failed.serverRejected", { code });
 			ws.close();
 			return;
 		}
 		if (phase === "awaiting-authenticated") {
 			const result = session.receiveAuthenticated(message);
 			if (!result.ok) {
-				failNotice("配对信息不符，已中止", "握手校验失败。");
+				failNotice("pair.mismatch", "pair.handshakeVerifyFail");
 				ws.close();
 				return;
 			}
@@ -264,7 +297,7 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 			bootPairForm();
 			return;
 		}
-		if (phase !== "authenticated") failNotice("配对失败", "与桌面服务的连接出错。");
+		if (phase !== "authenticated") failNotice("pair.failed.title", "pair.wsError");
 	};
 
 	ws.onclose = () => {
@@ -272,21 +305,21 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 		if (phase === "authenticated" || appStarted) {
 			document.body.classList.remove("connected");
 			const retryOffer = lastOffer;
-			renderNoticeCard({
-				title: "连接已断开",
-				message: "与桌面的加密连接已关闭。可重试连接，或回桌面重新生成配对码。",
+			renderNoticeCard(() => ({
+				title: t("pair.disconnected.title"),
+				message: t("pair.disconnected.body"),
 				tone: "warn",
 				actions: [
 					{
-						label: "重试连接",
+						label: t("pair.retryConnect"),
 						onClick: () => {
 							if (retryOffer !== null) connect(retryOffer, lastConnectOptions);
 							else bootPairForm();
 						},
 					},
-					{ label: "更换配对码", onClick: () => bootPairForm(), ghost: true },
+					{ label: t("pair.changeCode"), onClick: () => bootPairForm(), ghost: true },
 					{
-						label: "清除本机配对",
+						label: t("pair.clearLocal"),
 						onClick: () => {
 							clearPersistedOffer(localStorage);
 							bootPairForm();
@@ -294,7 +327,7 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 						danger: true,
 					},
 				],
-			});
+			}));
 			return;
 		}
 		if (options.fallbackToPin === true && phase !== "authenticated") {
@@ -312,22 +345,22 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 				minCompatibleMobileVersion: result?.minCompatibleMobileVersion ?? 1,
 			});
 			if (verdict === "mobile-too-old") {
-				renderNoticeCard({
-					title: "版本过旧",
-					message: "手机端协议版本过旧，请更新插件后重试。",
+				renderNoticeCard(() => ({
+					title: t("pair.mobileTooOld.title"),
+					message: t("pair.mobileTooOld.body"),
 					tone: "error",
-					actions: [{ label: "更换配对码", onClick: () => bootPairForm(), ghost: true }],
-				});
+					actions: [{ label: t("pair.changeCode"), onClick: () => bootPairForm(), ghost: true }],
+				}));
 				ws.close();
 				return;
 			}
 			if (verdict === "desktop-too-old") {
-				renderNoticeCard({
-					title: "桌面版本过旧",
-					message: "桌面端协议版本过旧，请更新 dsh 后重试。",
+				renderNoticeCard(() => ({
+					title: t("pair.desktopTooOld.title"),
+					message: t("pair.desktopTooOld.body"),
 					tone: "error",
-					actions: [{ label: "更换配对码", onClick: () => bootPairForm(), ghost: true }],
-				});
+					actions: [{ label: t("pair.changeCode"), onClick: () => bootPairForm(), ghost: true }],
+				}));
 				ws.close();
 				return;
 			}
@@ -335,6 +368,7 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 			// status.get failed → fail open (still show the connected state).
 		}
 		appStarted = true;
+		rerenderCurrent = null;
 		const app = root();
 		app.textContent = "";
 		app.className = "shell";
@@ -350,7 +384,7 @@ function bootE2eList(): void {
 		for (let task = 0; task < 4; task += 1) {
 			items.push({
 				sessionId: `s-${String(workspace)}-${String(task)}`,
-				title: `任务 ${String(workspace + 1)}.${String(task + 1)}`,
+				title: t("app.taskLabel", { workspace: workspace + 1, task: task + 1 }),
 				running: false,
 				blank: false,
 				updatedAt: now - workspace * 86_400_000,
@@ -366,6 +400,7 @@ function bootE2eList(): void {
 		},
 		onPush() {},
 	} as unknown as MobileRpcClient;
+	rerenderCurrent = null;
 	const app = root();
 	app.textContent = "";
 	app.className = "shell";
@@ -373,6 +408,7 @@ function bootE2eList(): void {
 }
 
 function bootPairForm(): void {
+	rerenderCurrent = bootPairForm;
 	document.documentElement.classList.add("connected");
 	document.body.classList.add("connected");
 	const app = root();
@@ -385,10 +421,10 @@ function bootPairForm(): void {
 	card.className = "pair-card";
 
 	const heading = document.createElement("h1");
-	heading.textContent = "输入配对码";
+	heading.textContent = t("pair.enterPin");
 	const hint = document.createElement("p");
 	hint.className = "hint";
-	hint.textContent = "在桌面「移动远程」里生成二维码后，输入 8 位配对码；也可以直接扫码。";
+	hint.textContent = t("pair.form.hint");
 
 	const input = document.createElement("input") as HTMLInputElement;
 	input.placeholder = "XXXX-XXXX";
@@ -399,7 +435,7 @@ function bootPairForm(): void {
 
 	const button = document.createElement("button");
 	button.type = "button";
-	button.textContent = "连接";
+	button.textContent = t("pair.form.connect");
 
 	const err = document.createElement("p");
 	err.className = "err";
@@ -422,7 +458,7 @@ function bootPairForm(): void {
 	const submit = (): void => {
 		err.textContent = "";
 		if (!isCompletePairCode(input.value)) {
-			err.textContent = "请输入完整的 8 位配对码";
+			err.textContent = t("pair.form.incomplete");
 			return;
 		}
 		button.disabled = true;
@@ -434,9 +470,9 @@ function bootPairForm(): void {
 					headers: { "content-type": "application/json" },
 					body: JSON.stringify({ code: displayCode }),
 				});
-				const payload = (await response.json()) as { offer?: unknown; error?: { message?: string } };
+				const payload = (await response.json()) as { offer?: unknown; error?: { code?: string } };
 				if (!response.ok || payload.offer === undefined) {
-					err.textContent = payload.error?.message ?? "配对码无效或已过期";
+					err.textContent = pairErrorMessage(payload.error?.code);
 					button.disabled = false;
 					return;
 				}
@@ -448,7 +484,7 @@ function bootPairForm(): void {
 				}
 				connect(offer);
 			} catch {
-				err.textContent = "无法提交配对码";
+				err.textContent = t("pair.form.submitFailed");
 				button.disabled = false;
 			}
 		})();
@@ -462,13 +498,14 @@ function bootPairForm(): void {
 	const clearBtn = document.createElement("button");
 	clearBtn.type = "button";
 	clearBtn.className = "ghost";
-	clearBtn.textContent = "清除本机已保存的配对";
+	clearBtn.textContent = t("pair.clearSaved");
 	clearBtn.addEventListener("click", () => {
 		clearPersistedOffer(localStorage);
-		err.textContent = "已清除，请重新扫码或输入配对码";
+		err.textContent = t("pair.cleared");
 	});
 
 	card.append(heading, hint, input, button, err, clearBtn);
+	appendLanguageSwitcher(card);
 	wrap.appendChild(card);
 	app.appendChild(wrap);
 	queueMicrotask(() => input.focus());
@@ -500,12 +537,14 @@ function boot(): void {
 	try {
 		offer = decodeOffer(code);
 	} catch (error) {
-		renderNoticeCard({
-			title: "配对失败",
-			message: `配对二维码无效（${error instanceof Error ? error.message : "无法解析"}）。`,
+		renderNoticeCard(() => ({
+			title: t("pair.failed.title"),
+			message: t("pair.qr.invalid", {
+				detail: error instanceof Error ? error.message : t("pair.qr.parseFailed"),
+			}),
 			tone: "error",
-			actions: [{ label: "输入配对码", onClick: () => bootPairForm() }],
-		});
+			actions: [{ label: t("pair.enterPin"), onClick: () => bootPairForm() }],
+		}));
 		return;
 	}
 	try {
@@ -516,4 +555,8 @@ function boot(): void {
 	connect(offer);
 }
 
+bootstrapLocale();
+subscribeLocale(() => {
+	rerenderCurrent?.();
+});
 boot();

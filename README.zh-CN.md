@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.2.2** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.3.0** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
 
 **面向 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) 的远程手机访问插件。** 把手机配对到已经在跑 `dsh web` 的桌面，观察会话并做一组窄写操作——不必把完整 Web API 暴露出去。
 
@@ -27,7 +27,7 @@
 
 | | 请用这个 | 说明 |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.2.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.2` |
+| npm | `dsh-coding-remote-kit@0.3.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.3.0` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | 旧 checkout 名 `dsh-mobile-remote` |
 | Cordis 插件 id | `mobile-remote` | 不变 |
 | 设置页 HTTP | `/api/mobile-remote/*` | 不变 |
@@ -48,6 +48,7 @@
 
 ## 特性
 
+- **双语界面** — 桌面设置页与手机端支持中文 / English（`?lang=` 或应用内切换；默认跟随 `navigator.language`）。
 - **一次配对** — 桌面展示二维码或 8 位 PIN；手机钉死桌面 X25519 公钥并持有 `deviceToken`（服务端只存 SHA-256）。
 - **双平面** — 管理面留在回环 `dsh web`；移动数据面是独立端口（默认 `6879`）上的 RPC 白名单。
 - **握手后 E2EE** — `/m/ws` 走 tweetnacl secretbox；未认证连接看不到会话内容。
@@ -58,16 +59,16 @@
 ## 截图
 
 <p align="center">
-  <img src="docs/assets/settings-pairing.png" alt="桌面设置 — 配对二维码与 PIN" width="48%" />
+  <img src="docs/assets/zh-CN/settings-pairing.png" alt="桌面设置 — 配对二维码与 PIN" width="48%" />
   &nbsp;
-  <img src="docs/assets/settings-overview.png" alt="桌面设置 — 通道状态与已配对设备" width="48%" />
+  <img src="docs/assets/zh-CN/settings-overview.png" alt="桌面设置 — 通道状态与已配对设备" width="48%" />
 </p>
 <p align="center"><em>桌面 设置 → 移动远程：生成配对 offer（左）· 通道状态与设备（右）</em></p>
 
 <p align="center">
-  <img src="docs/assets/mobile-pair.png" alt="手机配对页" width="28%" />
+  <img src="docs/assets/zh-CN/mobile-pair.png" alt="手机配对页" width="28%" />
   &nbsp;&nbsp;
-  <img src="docs/assets/mobile-sessions.png" alt="手机会话列表" width="28%" />
+  <img src="docs/assets/zh-CN/mobile-sessions.png" alt="手机会话列表" width="28%" />
 </p>
 <p align="center"><em>手机端：输入 PIN / 扫码（左）· 配对后的会话列表（右）</em></p>
 
@@ -83,7 +84,7 @@
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.2.2
+dsh plugin --profile web add dsh-coding-remote-kit@0.3.0
 ```
 
 然后由**操作者**在自己的时间窗重启现有 `dsh web`。打开 **设置 → 移动远程**，生成配对 offer，手机扫码（或手输 PIN）。
@@ -94,8 +95,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.2.2
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.2.2.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.2.tgz"
+cp dsh-coding-remote-kit-0.3.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.3.0.tgz"
 ```
 
 不要对本工作树执行 `dsh plugin add ./`。pnpm 11 会把某些 `file:` tarball 解析成 `link:` 源码树，入口 import 失败会拖死整个 GUI。

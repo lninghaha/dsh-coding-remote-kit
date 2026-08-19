@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.2.2** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.3.0** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
 
 **Remote phone access for [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Pair a phone to the desktop that already runs `dsh web`, then observe sessions and perform a narrow set of writes — without exposing the full Web API.
 
@@ -27,7 +27,7 @@ Developed first as GitHub `dsh-mobile-remote`. The npm name **`dsh-mobile-remote
 
 | | Use this | Notes |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.2.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.2` |
+| npm | `dsh-coding-remote-kit@0.3.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.3.0` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | previous checkout name `dsh-mobile-remote` |
 | Cordis plugin id | `mobile-remote` | unchanged |
 | Settings HTTP | `/api/mobile-remote/*` | unchanged |
@@ -48,6 +48,7 @@ Do **not** `dsh plugin add dsh-mobile-remote` — that installs the unrelated We
 
 ## Features
 
+- **Bilingual UI** — Chinese and English for desktop Settings and the phone companion (`?lang=` / in-app switch; defaults from `navigator.language`).
 - **Pair once** — desktop shows a QR code or 8-digit PIN; the phone pins the desktop X25519 public key and holds a `deviceToken` (server stores SHA-256 only).
 - **Dual plane** — management routes stay on loopback `dsh web`; the mobile data plane is a dedicated port (default `6879`) with an RPC allowlist.
 - **E2EE after handshake** — tweetnacl secretbox on `/m/ws`; unauthenticated sockets never see session content.
@@ -58,16 +59,16 @@ Do **not** `dsh plugin add dsh-mobile-remote` — that installs the unrelated We
 ## Screenshots
 
 <p align="center">
-  <img src="docs/assets/settings-pairing.png" alt="Desktop settings — pairing offer with QR and PIN" width="48%" />
+  <img src="docs/assets/en/settings-pairing.png" alt="Desktop settings — pairing offer with QR and PIN" width="48%" />
   &nbsp;
-  <img src="docs/assets/settings-overview.png" alt="Desktop settings — channel status and paired devices" width="48%" />
+  <img src="docs/assets/en/settings-overview.png" alt="Desktop settings — channel status and paired devices" width="48%" />
 </p>
-<p align="center"><em>Desktop Settings → 移动远程: create a pairing offer (left) · channel status &amp; devices (right)</em></p>
+<p align="center"><em>Desktop Settings → Mobile Remote: create a pairing offer (left) · channel status &amp; devices (right)</em></p>
 
 <p align="center">
-  <img src="docs/assets/mobile-pair.png" alt="Phone pairing screen" width="28%" />
+  <img src="docs/assets/en/mobile-pair.png" alt="Phone pairing screen" width="28%" />
   &nbsp;&nbsp;
-  <img src="docs/assets/mobile-sessions.png" alt="Phone session list" width="28%" />
+  <img src="docs/assets/en/mobile-sessions.png" alt="Phone session list" width="28%" />
 </p>
 <p align="center"><em>Phone companion: enter PIN / scan (left) · session list after pairing (right)</em></p>
 
@@ -83,10 +84,10 @@ Do **not** `dsh plugin add dsh-mobile-remote` — that installs the unrelated We
 ## Quick start
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.2.2
+dsh plugin --profile web add dsh-coding-remote-kit@0.3.0
 ```
 
-Then the **operator** restarts the existing `dsh web` process in their own window. Open **Settings → 移动远程**, create a pairing offer, scan the QR (or type the PIN) on the phone.
+Then the **operator** restarts the existing `dsh web` process in their own window. Open **Settings → Mobile Remote**, create a pairing offer, scan the QR (or type the PIN) on the phone.
 
 From a source checkout (development):
 
@@ -94,8 +95,8 @@ From a source checkout (development):
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.2.2.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.2.tgz"
+cp dsh-coding-remote-kit-0.3.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.3.0.tgz"
 ```
 
 Do not `dsh plugin add ./` from this working tree. pnpm 11 treats some `file:` tarball paths as `link:` source, and a bad entry import takes down the whole GUI.
@@ -152,7 +153,7 @@ Management stays behind the host Web loopback fence. The data plane is a separat
 
 ## Settings page
 
-Open **Settings → 移动远程**:
+Open **Settings → Mobile Remote**:
 
 - status (bind, port, listening, active devices, tunnel, rendezvous)
 - **LAN** / **Quick Tunnel** / **rendezvous** channels

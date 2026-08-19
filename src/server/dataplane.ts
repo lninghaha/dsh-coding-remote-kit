@@ -201,19 +201,19 @@ export class MobileDataPlane {
 		const raw = typeof record?.code === "string" ? record.code : "";
 		const code = normalizePairCode(raw);
 		if (!isCompletePairCode(code)) {
-			writeJson(response, 400, { ok: false, error: { code: "invalid_params", message: "配对码格式不对" } });
+			writeJson(response, 400, { ok: false, error: { code: "invalid_params", message: "invalid pairing code format" } });
 			return;
 		}
 		const ip = request.socket.remoteAddress ?? "unknown";
 		if (this.#claimBlocked(ip)) {
-			writeJson(response, 429, { ok: false, error: { code: "rate_limited", message: "尝试次数过多，请稍后再试" } });
+			writeJson(response, 429, { ok: false, error: { code: "rate_limited", message: "too many attempts" } });
 			return;
 		}
 		const offer = this.#deps.offers.findByPairCode(code, this.#now());
 		if (offer === null) {
 			this.#claimFail(ip);
 			this.#deps.audit.log({ event: "pair_code_miss" }, this.#now());
-			writeJson(response, 404, { ok: false, error: { code: "not-found", message: "配对码无效或已过期" } });
+			writeJson(response, 404, { ok: false, error: { code: "not-found", message: "pairing code invalid or expired" } });
 			return;
 		}
 		this.#deps.audit.log({ event: "pair_code_hit", detail: { offerId: offer.offerId } }, this.#now());

@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.2.2** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.3.0** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
 
 **Удалённый доступ с телефона к [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Сопрягите телефон с компьютером, где уже работает `dsh web`, наблюдайте сессии и выполняйте узкий набор записей — не открывая полный Web API.
 
@@ -27,7 +27,7 @@
 
 | | Используйте это | Примечания |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.2.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.2` |
+| npm | `dsh-coding-remote-kit@0.3.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.3.0` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | прежнее имя checkout `dsh-mobile-remote` |
 | id плагина Cordis | `mobile-remote` | без изменений |
 | HTTP страницы настроек | `/api/mobile-remote/*` | без изменений |
@@ -48,6 +48,7 @@
 
 ## Возможности
 
+- **Двуязычный UI** — китайский и английский в настройках рабочего стола и companion на телефоне (`?lang=` / переключатель в приложении; по умолчанию `navigator.language`).
 - **Сопряжение один раз** — рабочий стол показывает QR-код или 8-значный PIN; телефон закрепляет X25519-открытый ключ стола и хранит `deviceToken` (сервер сохраняет только SHA-256).
 - **Две плоскости** — маршруты управления остаются на loopback `dsh web`; мобильная плоскость данных — отдельный порт (по умолчанию `6879`) с allowlist RPC.
 - **E2EE после рукопожатия** — tweetnacl secretbox на `/m/ws`; неаутентифицированные сокеты никогда не видят содержимое сессии.
@@ -58,16 +59,16 @@
 ## Скриншоты
 
 <p align="center">
-  <img src="docs/assets/settings-pairing.png" alt="Настройки рабочего стола — предложение сопряжения с QR и PIN" width="48%" />
+  <img src="docs/assets/en/settings-pairing.png" alt="Настройки рабочего стола — предложение сопряжения с QR и PIN" width="48%" />
   &nbsp;
-  <img src="docs/assets/settings-overview.png" alt="Настройки рабочего стола — статус канала и сопряжённые устройства" width="48%" />
+  <img src="docs/assets/en/settings-overview.png" alt="Настройки рабочего стола — статус канала и сопряжённые устройства" width="48%" />
 </p>
-<p align="center"><em>Рабочий стол Настройки → 移动远程: создать предложение сопряжения (слева) · статус канала и устройства (справа)</em></p>
+<p align="center"><em>Рабочий стол Settings → Mobile Remote: создать предложение сопряжения (слева) · статус канала и устройства (справа)</em></p>
 
 <p align="center">
-  <img src="docs/assets/mobile-pair.png" alt="Экран сопряжения на телефоне" width="28%" />
+  <img src="docs/assets/en/mobile-pair.png" alt="Экран сопряжения на телефоне" width="28%" />
   &nbsp;&nbsp;
-  <img src="docs/assets/mobile-sessions.png" alt="Список сессий на телефоне" width="28%" />
+  <img src="docs/assets/en/mobile-sessions.png" alt="Список сессий на телефоне" width="28%" />
 </p>
 <p align="center"><em>Companion на телефоне: ввести PIN / сканировать (слева) · список сессий после сопряжения (справа)</em></p>
 
@@ -83,7 +84,7 @@
 ## Быстрый старт
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.2.2
+dsh plugin --profile web add dsh-coding-remote-kit@0.3.0
 ```
 
 Затем **оператор** перезапускает существующий процесс `dsh web` в своём окне. Откройте **Settings → 移動远程**, создайте предложение сопряжения, отсканируйте QR (или введите PIN) на телефоне.
@@ -94,8 +95,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.2.2
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.2.2.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.2.tgz"
+cp dsh-coding-remote-kit-0.3.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.3.0.tgz"
 ```
 
 Не выполняйте `dsh plugin add ./` из этого рабочего дерева. pnpm 11 воспринимает некоторые пути `file:` tarball как источник `link:`, и сбой входного import валит весь GUI.

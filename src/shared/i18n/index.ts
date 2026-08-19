@@ -1,0 +1,22 @@
+export {
+	LOCALE_STORAGE_KEY,
+	LOCALES,
+	applyDocumentLang,
+	bootstrapLocale,
+	formatAgo,
+	getLocale,
+	isLocale,
+	isMessageKey,
+	localeFromSearch,
+	localeFromTag,
+	pairErrorMessage,
+	readStoredLocale,
+	resolveLocale,
+	setLocale,
+	subscribeLocale,
+	t,
+	translate,
+	writeStoredLocale,
+	MESSAGES,
+} from "./t.js";
+export type { Locale, MessageKey, StorageLike, Vars } from "./t.js";
