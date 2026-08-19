@@ -51,6 +51,7 @@ interface QuestionItem {
 type View = { name: "list" } | { name: "session"; sessionId: string };
 
 export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void {
+	document.documentElement.classList.add("connected");
 	document.body.classList.add("connected");
 	const state = {
 		view: { name: "list" } as View,
@@ -59,6 +60,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		busy: false,
 		error: null as string | null,
 		toast: null as string | null,
+		sheet: false,
 		collapsed: new Set<string>(),
 		approvals: [] as PendingApproval[],
 		questions: [] as PendingQuestion[],
@@ -70,6 +72,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		const view = state.view;
 		if (view.name === "list") root.appendChild(renderList());
 		else root.appendChild(renderSession(view.sessionId));
+		if (state.sheet) root.appendChild(renderSheet());
 	};
 
 	const renderChrome = (): HTMLElement => {
@@ -88,7 +91,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			header.appendChild(titles);
 			const more = el("button", { className: "ghost", type: "button" }, "⋯");
 			more.addEventListener("click", () => {
-				state.toast = "审查 / 终端请在桌面 DSH 打开";
+				state.sheet = true;
 				render();
 			});
 			header.appendChild(more);
@@ -180,12 +183,45 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		return card;
 	};
 
+	const renderSheet = (): HTMLElement => {
+		const wrap = el("div");
+		const mask = el("div", { className: "sheet-mask" });
+		mask.addEventListener("click", () => {
+			state.sheet = false;
+			render();
+		});
+		const sheet = el("div", { className: "sheet" });
+		sheet.appendChild(el("h3", {}, "打开标签页"));
+		sheet.appendChild(el("p", { className: "muted" }, "选择要在侧边面板中打开的标签。"));
+		const review = el("button", { className: "sheet-item", type: "button" }, "审查");
+		const term = el("button", { className: "sheet-item", type: "button" }, "终端");
+		const pick = (label: string) => {
+			state.sheet = false;
+			state.toast = `${label}请在桌面 DSH 打开`;
+			render();
+		};
+		review.addEventListener("click", () => {
+			pick("审查");
+		});
+		term.addEventListener("click", () => {
+			pick("终端");
+		});
+		sheet.appendChild(review);
+		sheet.appendChild(term);
+		wrap.appendChild(mask);
+		wrap.appendChild(sheet);
+		return wrap;
+	};
+
 	const renderSession = (sessionId: string): HTMLElement => {
 		const wrap = el("div", { className: "col session" });
 		wrap.appendChild(renderInbox(sessionId));
 		const scroller = el("div", { className: "transcript" });
 		for (const line of foldTranscript(state.events)) {
-			scroller.appendChild(el("div", { className: `bubble ${line.role}` }, `${labelOf(line.role)} ${line.text}`));
+			const bubble = el("div", { className: `bubble ${line.role}` });
+			if (line.role === "tool") bubble.textContent = `工具 ${line.text}`;
+			else appendMarkdown(bubble, line.text);
+			scroller.appendChild(bubble);
 		}
 		wrap.appendChild(scroller);
 		const composer = el("form", { className: "composer" });
@@ -584,7 +620,33 @@ function groupByCwd(sessions: SessionRow[]): WorkspaceGroup[] {
 		}
 		group.sessions.push(session);
 	}
+	for (const group of map.values()) {
+		group.sessions.sort((left, right) => right.updatedAt - left.updatedAt);
+	}
 	return [...map.values()];
+}
+
+function appendMarkdown(root: HTMLElement, text: string): void {
+	const parts = text.split("```");
+	for (const [index, part] of parts.entries()) {
+		if (index % 2 === 1) {
+			const code = el("code");
+			const body = part.replace(/^[^\n]*\n/, "");
+			code.textContent = body.length > 0 ? body : part;
+			root.appendChild(code);
+			continue;
+		}
+		const chunks = part.split(/(`[^`]+`)/);
+		for (const chunk of chunks) {
+			if (chunk.startsWith("`") && chunk.endsWith("`") && chunk.length >= 2) {
+				const code = el("span", { className: "inline-code" });
+				code.textContent = chunk.slice(1, -1);
+				root.appendChild(code);
+			} else if (chunk.length > 0) {
+				root.appendChild(document.createTextNode(chunk));
+			}
+		}
+	}
 }
 
 function formatAgo(timestamp: number): string {

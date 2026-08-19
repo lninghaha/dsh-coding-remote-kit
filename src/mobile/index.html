@@ -21,6 +21,7 @@
 		* { box-sizing: border-box; }
 		html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
 		body { display: flex; align-items: center; justify-content: center; padding: 24px; }
+		html.connected, body.connected { height: 100dvh; max-height: 100dvh; overflow: hidden; }
 		body.connected { display: block; padding: 0; }
 		#app {
 			width: 100%; max-width: 28rem; padding: 24px;
@@ -28,8 +29,9 @@
 			white-space: pre-wrap; line-height: 1.55; font-size: 16px; word-break: break-word;
 		}
 		body.connected #app {
-			max-width: none; height: 100%; padding: 0; border: 0; border-radius: 0;
+			max-width: none; height: 100dvh; max-height: 100dvh; padding: 0; border: 0; border-radius: 0;
 			white-space: normal; display: flex; flex-direction: column; background: var(--bg);
+			overflow: hidden;
 		}
 		.bar {
 			display: flex; align-items: center; gap: 10px; padding: 14px 16px;
@@ -37,7 +39,11 @@
 		}
 		.bar .sub { color: var(--muted); font-size: 13px; font-weight: 400; }
 		.bar .err { color: #f87171; font-size: 13px; }
-		.col { display: flex; flex-direction: column; gap: 12px; padding: 16px; flex: 1; min-height: 0; overflow: auto; }
+		.col {
+			display: flex; flex-direction: column; gap: 12px; padding: 16px;
+			flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
+			-webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
+		}
 		.col.session { padding: 0; overflow: hidden; }
 		.hero { color: var(--muted); font-size: 13px; line-height: 1.5; padding: 12px 14px; background: var(--bg-elev); border-radius: 12px; }
 		.section-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -64,7 +70,21 @@
 		.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #16351f; color: var(--ok); }
 		.pill.run { background: #1e3a5f; color: #93c5fd; }
 		.row { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-card); text-align: left; font: inherit; color: inherit; }
-		.transcript { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; }
+		.transcript {
+			flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
+			display: flex; flex-direction: column; gap: 10px; padding: 12px 16px;
+			-webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
+		}
+		.sheet-mask { position: fixed; inset: 0; background: #0008; z-index: 20; }
+		.sheet {
+			position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 21;
+			background: var(--bg-card); border: 1px solid var(--line); border-radius: 16px; padding: 16px;
+		}
+		.sheet h3 { margin: 0 0 6px; font-size: 18px; }
+		.sheet-item {
+			display: flex; width: 100%; margin-top: 8px; padding: 14px; border: 0; border-radius: 12px;
+			background: var(--bg-elev); color: inherit; text-align: left; font: inherit;
+		}
 		.bubble { padding: 10px 12px; border-radius: 12px; background: var(--bg-elev); white-space: pre-wrap; font-size: 14px; }
 		.bubble.user { background: #1e3a5f; }
 		.bubble.tool { color: var(--muted); font-size: 13px; }
