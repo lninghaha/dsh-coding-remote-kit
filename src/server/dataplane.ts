@@ -58,6 +58,14 @@ export interface DataPlaneDeps {
 	readonly now?: () => number;
 }
 
+/** Resolve a static file under `mobileDir`, or `null` if the path escapes. */
+export function resolveMobileStaticPath(mobileDir: string, relative: string): string | null {
+	const base = normalize(mobileDir).replace(/[/\\]+$/u, "");
+	const filePath = normalize(join(base, relative));
+	if (filePath !== base && !filePath.startsWith(base + sep)) return null;
+	return filePath;
+}
+
 const MIME: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
 	".js": "application/javascript; charset=utf-8",
@@ -140,9 +148,8 @@ export class MobileDataPlane {
 			response.end("not found");
 			return;
 		}
-		const base = this.#deps.mobileDir;
-		const filePath = normalize(join(base, relative));
-		if (filePath !== base && !filePath.startsWith(base + sep)) {
+		const filePath = resolveMobileStaticPath(this.#deps.mobileDir, relative);
+		if (filePath === null) {
 			response.writeHead(403, headers);
 			response.end("forbidden");
 			return;
