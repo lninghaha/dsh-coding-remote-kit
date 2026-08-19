@@ -70,6 +70,20 @@ test("GET /api/mobile-remote/devices omits tokenHash", async () => {
 			},
 			async stop() {},
 		},
+		relay: {
+			snapshot: () => ({ running: false, kind: null, url: null, hostConnected: false, binaryOk: true, hasToken: false }),
+			async start() {
+				throw new Error("not started in this test");
+			},
+			async stop() {},
+			createInvite: () => "invite",
+			advertise: () => ({
+				endpoint: "wss://example.com/v1/phone/h?invite=i",
+				pageUrl: "https://example.com/m/",
+				candidates: ["example.com"],
+			}),
+			async putInvite() {},
+		},
 		async installCloudflared() {
 			return { asset: "cloudflared-linux-amd64", path: "/tmp/cloudflared" };
 		},

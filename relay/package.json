@@ -1,0 +1,13 @@
+{
+  "name": "dsh-coding-remote-kit-relay",
+  "private": true,
+  "type": "module",
+  "description": "Self-hosted rendezvous Worker for dsh-coding-remote-kit. Not published on npm.",
+  "scripts": {
+    "types": "wrangler types",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.28.0"
+  }
+}

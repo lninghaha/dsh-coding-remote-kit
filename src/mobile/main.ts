@@ -14,9 +14,9 @@ import { decodeOffer, validateOffer, type PairingOffer } from "../shared/offer.j
 import { evaluateVersionGate } from "../shared/version.js";
 import { startConnectedApp } from "./app.js";
 import { generateClientKeyPair, MobileE2eeSession } from "./e2ee.js";
+import { loadPersistedOffer, persistOffer } from "./persist.js";
 import { MobileRpcClient } from "./rpc.js";
 
-const HOST_KEY = "dshmr.host";
 const KEY_KEY = "dshmr.key";
 
 function root(): HTMLElement {
@@ -65,7 +65,7 @@ function loadOrCreateKey(): { secretKey: Uint8Array; publicKey: Uint8Array } {
 
 type Phase = "awaiting-ready" | "awaiting-authenticated" | "authenticated";
 
-function connect(offer: PairingOffer): void {
+function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {}): void {
 	let phase: Phase = "awaiting-ready";
 	const keyPair = loadOrCreateKey();
 	const session = new MobileE2eeSession({
@@ -79,6 +79,10 @@ function connect(offer: PairingOffer): void {
 	try {
 		ws = new WebSocket(offer.endpoint);
 	} catch {
+		if (options.fallbackToPin === true) {
+			bootPairForm();
+			return;
+		}
 		render("配对失败", "无法连接桌面服务，请确认手机与电脑在同一网络。", true);
 		return;
 	}
@@ -168,6 +172,10 @@ function connect(offer: PairingOffer): void {
 	};
 
 	ws.onerror = () => {
+		if (phase !== "authenticated" && options.fallbackToPin === true) {
+			bootPairForm();
+			return;
+		}
 		if (phase !== "authenticated") render("配对失败", "与桌面服务的连接出错。", true);
 	};
 
@@ -176,6 +184,10 @@ function connect(offer: PairingOffer): void {
 		if (phase === "authenticated" || appStarted) {
 			document.body.classList.remove("connected");
 			render("已断开，请刷新", "与桌面的加密连接已关闭。", true);
+			return;
+		}
+		if (options.fallbackToPin === true && phase !== "authenticated") {
+			bootPairForm();
 		}
 	};
 
@@ -280,7 +292,7 @@ function bootPairForm(): void {
 				}
 				const offer = validateOffer(payload.offer);
 				try {
-					localStorage.setItem(HOST_KEY, offer.pageUrl);
+					persistOffer(localStorage, offer);
 				} catch {
 					// ignore
 				}
@@ -307,6 +319,16 @@ function boot(): void {
 	}
 	const hash = location.hash;
 	if (hash.length <= 1) {
+		let persisted: PairingOffer | null = null;
+		try {
+			persisted = loadPersistedOffer(localStorage);
+		} catch {
+			persisted = null;
+		}
+		if (persisted !== null) {
+			connect(persisted, { fallbackToPin: true });
+			return;
+		}
 		bootPairForm();
 		return;
 	}
@@ -319,7 +341,7 @@ function boot(): void {
 		return;
 	}
 	try {
-		localStorage.setItem(HOST_KEY, offer.pageUrl);
+		persistOffer(localStorage, offer);
 	} catch {
 		// non-persistent storage is acceptable
 	}

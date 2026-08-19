@@ -11,7 +11,7 @@
 ```text
 Harness webServer（回环，通常 127.0.0.1:3080）
   └─ 管理面 /api/mobile-remote/*
-       配对 offer、设备列表、吊销、隧道开关
+       配对 offer、设备列表、吊销、隧道 / 会合中继开关
        Host + 浏览器上下文 + CSRF；非回环 → 403
 
 独立数据面（默认 127.0.0.1:6879，配对时可 widen 到 0.0.0.0）
@@ -34,6 +34,7 @@ MVP 路线：**B — 语义窄 RPC + 双平面**（`docs/01-mvp-scope.md`）。�
        GET  /api/mobile-remote/devices
        POST /api/mobile-remote/revoke
        GET/POST /api/mobile-remote/tunnel
+       GET/POST /api/mobile-remote/relay
        POST /api/mobile-remote/cloudflared
 
 手机浏览器 /m（src/mobile）
@@ -50,6 +51,7 @@ src/server
   ├─ server-key.json    X25519 身份（0600）
   ├─ MobileDataPlane    HTTP + ws
   ├─ CloudflareQuickTunnel   只暴露数据面（永不 3080）
+  ├─ RendezvousClient   出站 WSS 连自建 Worker（永不 3080）
   └─ UpstreamHub        apiProxy 会话 / 审批 / 提问
 ```
 
@@ -63,12 +65,13 @@ src/server
 
 ### `src/server/`
 
-- `index.ts`：插件 `apply`。存储、服务端密钥、数据面监听、管理面路由、隧道 disposer。
+- `index.ts`：插件 `apply`。存储、服务端密钥、数据面监听、管理面路由、隧道与会合中继 disposer。
 - `config.ts`：Zod：`enabled` / `bind` / `port` / `offerTtlMs` / `trustedHosts`。
 - `context.ts`：宿主 `apiProxy` + `webServer` 类型。
 - `routes.ts`：每个 path 只 `webServer.register` 一次（DSH 按 path 去重、不认 HTTP method）。GET/POST 在 handler 内分支。
 - `security.ts`：回环 / Host / 浏览器上下文 / CSRF / 有界 JSON body。
 - `dataplane.ts`：数据面端口上的独立 `node:http` + `ws`；静态 `/m`；`/m/claim`；`/m/ws`。
+- `connection.ts`：`acceptMobileSocket` — `/m/ws` 与会合中继 accept 共用的 E2EE + RPC 会话。
 - `e2ee.ts` / `crypto.ts`：服务端握手、token 查找、tweetnacl secretbox。
 - `rpc.ts`：白名单分发；未知方法 → `forbidden`。
 - `upstream.ts`：宿主 `apiProxy` 会话/审批/提问桥。
@@ -77,15 +80,16 @@ src/server
 - `net.ts`：二维码广告用的 LAN 候选地址。
 - `backpressure.ts`：每连接出站队列上限。
 - `tunnel.ts`：Cloudflare Quick Tunnel 子进程；持久化 `tunnel.json`；unload 时杀掉。
+- `relay.ts`：出站会合客户端（`dshmr-relay/v1`）；持久化 `relay.json`；unload 时停止。禁止夹进 `cloudflared`。
 - `cloudflared-install.ts`：可选官方二进制安装（禁止在 `apply()` 时跑）。
 
 ### `src/shared/`
 
-无依赖的协议常量与编解码，Node 与手机页共用：`constants.ts`（RPC 白名单、帧长度、HKDF 标签）、`offer.ts`、`pair-code.ts`、`handshake.ts`、`frame.ts`、`hkdf.ts`、`transcript.ts`、`validation.ts`、`base64.ts`、`version.ts`。
+无依赖的协议常量与编解码，Node 与手机页共用：`constants.ts`（RPC 白名单、帧长度、HKDF 标签）、`offer.ts`、`pair-code.ts`、`handshake.ts`、`frame.ts`、`hkdf.ts`、`transcript.ts`、`validation.ts`、`base64.ts`、`version.ts`、`relay.ts`（会合外层信封）。
 
 ### `src/client/`
 
-classic-script 设置页（`window.__ModuleLoader__.load`）。二维码、8 位 PIN、设备列表、LAN / 公网通道、隧道开关。注入 `@deepseek-ai/dsh-client-ui-settings` 与 `dsh-client-ui-slots`。
+classic-script 设置页（`window.__ModuleLoader__.load`）。二维码、8 位 PIN、设备列表、LAN / Quick Tunnel / 会合中继。注入 `@deepseek-ai/dsh-client-ui-settings` 与 `dsh-client-ui-slots`。
 
 ### `src/mobile/`
 
@@ -102,6 +106,8 @@ GET  /api/mobile-remote/devices          # 永不包含 tokenHash
 POST /api/mobile-remote/revoke           # { deviceId }
 GET  /api/mobile-remote/tunnel
 POST /api/mobile-remote/tunnel           # { kind: "cloudflare-quick", action: "start"|"stop" }
+GET  /api/mobile-remote/relay
+POST /api/mobile-remote/relay            # { action: "start"|"stop", origin?, hostToken? }
 POST /api/mobile-remote/cloudflared      # { action: "install" }
 ```
 
@@ -128,6 +134,7 @@ RPC 方法与推送信封见 `docs/03-protocol.md`。
 | `devices.json` | 已配对设备；**只存 deviceToken 的 SHA-256** |
 | `audit.jsonl` | `rpc_write` / offer / 吊销 / 隧道事件；无 payload |
 | `tunnel.json` | Quick Tunnel 持久化，崩溃后可回收残留子进程 |
+| `relay.json` | 会合 origin / hostId / hostToken（0600）；GET 永不返回 token |
 
 ## 6. 配对与 E2EE
 
@@ -137,7 +144,7 @@ RPC 方法与推送信封见 `docs/03-protocol.md`。
 4. 四步握手（`dshmr-e2ee/v1`）钉死桌面公钥，经 HKDF 派生会话密钥，再用 device token 做 `e2ee_auth`。
 5. 之后的帧走 tweetnacl secretbox。连续 5 次解密失败关闭连接。
 
-v0 诚实边界：裸 LAN 上 **`/m` 的首次 HTTP 下发**可被 MITM。页面被替换后，E2EE 只保护「恶意脚本与服务器之间」的信道。推荐 Tailscale / WireGuard；可选 Cloudflare Quick Tunnel 在边缘终结 TLS，且**不得**把 3080 送进隧道。细节见 `docs/04-threat-model.md`。
+v0 诚实边界：裸 LAN 上 **`/m` 的首次 HTTP 下发**可被 MITM。页面被替换后，E2EE 只保护「恶意脚本与服务器之间」的信道。推荐 Tailscale / WireGuard；可选 Cloudflare Quick Tunnel 在边缘终结 TLS，且**不得**把 3080 送进隧道。可选自建会合中继（M5）用 HTTPS 提供 `/m` 并拼接出站 WebSocket，也**不得**看见 3080。细节见 `docs/04-threat-model.md`、`docs/05-cloud-relay.md`。
 
 ## 7. 构建产物
 
@@ -154,5 +161,5 @@ v0 诚实边界：裸 LAN 上 **`/m` 的首次 HTTP 下发**可被 MITM。页面
 
 - Cordis 插件 id：`mobile-remote`。
 - 配置默认：`enabled: true`，`bind: "127.0.0.1"`，`port: 6879`。
-- 配对广告 LAN 候选且没有公网隧道时，数据面会 widen 到 `0.0.0.0`。
+- 配对广告 LAN 候选且没有公网隧道 / 会合中继时，数据面会 widen 到 `0.0.0.0`。
 - 线协议版本：`MOBILE_PROTOCOL_VERSION = 1`（`src/shared/constants.ts`）。

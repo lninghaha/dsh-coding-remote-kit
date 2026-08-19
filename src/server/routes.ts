@@ -19,6 +19,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { encodeOffer, offerQrText } from "../shared/offer.js";
 import type { AuditLogger, DeviceRecord, DeviceRegistry, OfferRegistry } from "./registry.js";
 import type { CloudflareQuickTunnelSnapshot } from "./tunnel.js";
+import { validateRelayStartBody, type RendezvousSnapshot } from "./relay.js";
+import { ProtocolValidationError } from "../shared/validation.js";
 import {
 	isTrustedManagementRequest,
 	passesBrowserContextGuard,
@@ -65,6 +67,8 @@ export interface ManagementDeps {
 	advertise(): AdvertiseResult;
 	/** Cloudflare Quick Tunnel face (start/stop/snapshot). Present only when the plugin owns one. */
 	readonly tunnel: TunnelDeps;
+	/** Self-hosted rendezvous Worker (outbound). Mutually exclusive with Quick Tunnel. */
+	readonly relay: RelayDeps;
 	/** Opt-in official binary install. Must not run at apply() time. */
 	installCloudflared(): Promise<{ asset: string; path: string }>;
 }
@@ -73,6 +77,15 @@ export interface TunnelDeps {
 	snapshot(): CloudflareQuickTunnelSnapshot;
 	start(options: { port: number; timeoutMs?: number }): Promise<string>;
 	stop(): Promise<void>;
+}
+
+export interface RelayDeps {
+	snapshot(): RendezvousSnapshot;
+	start(options: { origin?: string; hostToken?: string }): Promise<string>;
+	stop(): Promise<void>;
+	createInvite(): string;
+	advertise(invite: string): { endpoint: string; pageUrl: string; candidates: string[] };
+	putInvite(input: { invite: string; expiresAt: number; offerId: string }): Promise<void>;
 }
 
 /** Advertise the pairing offer through an active tunnel's public URL. */
@@ -173,8 +186,41 @@ export function registerManagementRoutes(
 			// When the user has an explicit public tunnel running, path /m and /m/ws
 			// are already reachable at its HTTPS origin — do NOT rebind/widen to the LAN,
 			// and advertise the tunnel URL instead of local candidates.
+			const relaySnapshot = deps.relay.snapshot();
 			const snapshot = deps.tunnel.snapshot();
 			let advertiseResult: AdvertiseResult;
+			let pendingInvite: { invite: string; offerId: string; expiresAt: number } | null = null;
+			if (relaySnapshot.running) {
+				if (!relaySnapshot.hostConnected || relaySnapshot.url === null) {
+					reject(response, 503, "relay-not-connected", "rendezvous host is not connected");
+					return;
+				}
+				const invite = deps.relay.createInvite();
+				advertiseResult = deps.relay.advertise(invite);
+				const createdRelay = deps.offers.createOffer({
+					endpoint: advertiseResult.endpoint,
+					pageUrl: advertiseResult.pageUrl,
+					publicKeyB64: deps.publicKeyB64,
+					ttlMs: deps.offerTtlMs,
+					now: deps.now(),
+				});
+				pendingInvite = { invite, offerId: createdRelay.offer.offerId, expiresAt: createdRelay.offer.expiresAt };
+				const { offer, pairCode } = createdRelay;
+				deps.audit.log({ event: "offer_created", detail: { offerId: offer.offerId } }, deps.now());
+				try {
+					await deps.relay.putInvite(pendingInvite);
+				} catch {
+					reject(response, 503, "relay-not-connected", "failed to register invite with the rendezvous");
+					return;
+				}
+				writeJson(response, 200, {
+					offer,
+					pairCode,
+					qrText: offerQrText(advertiseResult.pageUrl, encodeOffer(offer)),
+					candidates: advertiseResult.candidates,
+				});
+				return;
+			}
 			if (snapshot.running && snapshot.url !== null) {
 				advertiseResult = tunnelAdvertise(snapshot.url);
 			} else {
@@ -207,6 +253,7 @@ export function registerManagementRoutes(
 				networkReach: deps.registry.networkReach,
 				activeDevices: deps.registry.activeDeviceCount(),
 				tunnel: deps.tunnel.snapshot(),
+				relay: deps.relay.snapshot(),
 			});
 		}),
 		register("/api/mobile-remote/tunnel", ["GET", "POST"], async (request, response) => {
@@ -225,6 +272,7 @@ export function registerManagementRoutes(
 			}
 			if (action === "start") {
 				try {
+					await deps.relay.stop();
 					const url = await deps.tunnel.start({ port: deps.port() });
 					let host = "trycloudflare.com";
 					try {
@@ -245,6 +293,47 @@ export function registerManagementRoutes(
 				await deps.tunnel.stop();
 				deps.audit.log({ event: "tunnel_stop", detail: { kind: "cloudflare-quick" } }, deps.now());
 				writeJson(response, 200, { ok: true, snapshot: deps.tunnel.snapshot() });
+				return;
+			}
+			reject(response, 400, "invalid_params", "action must be 'start' or 'stop'");
+		}),
+		register("/api/mobile-remote/relay", ["GET", "POST"], async (request, response) => {
+			if ((request.method ?? "GET") === "GET") {
+				writeJson(response, 200, deps.relay.snapshot());
+				return;
+			}
+			const body = await readJsonBody(request, response);
+			if (body === undefined) return;
+			const record = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+			const action = record?.action;
+			if (action === "start") {
+				try {
+					const startBody = validateRelayStartBody(record);
+					await deps.tunnel.stop();
+					const url = await deps.relay.start(startBody);
+					let host = "example.com";
+					try {
+						host = new URL(url).host;
+					} catch {
+						// keep placeholder
+					}
+					deps.audit.log({ event: "relay_start", detail: { host } }, deps.now());
+					writeJson(response, 200, { ok: true, running: true, url, snapshot: deps.relay.snapshot() });
+				} catch (error) {
+					if (error instanceof ProtocolValidationError) {
+						reject(response, 400, "invalid_params", error.message);
+						return;
+					}
+					const message = error instanceof Error ? error.message : "start failed";
+					deps.logger.warn(`rendezvous start failed (${message})`);
+					writeJson(response, 500, { ok: false, error: { code: "relay-start-failed", message } });
+				}
+				return;
+			}
+			if (action === "stop") {
+				await deps.relay.stop();
+				deps.audit.log({ event: "relay_stop", detail: { kind: "rendezvous" } }, deps.now());
+				writeJson(response, 200, { ok: true, snapshot: deps.relay.snapshot() });
 				return;
 			}
 			reject(response, 400, "invalid_params", "action must be 'start' or 'stop'");

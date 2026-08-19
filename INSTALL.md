@@ -62,7 +62,22 @@ Offer 有 TTL（默认 10 分钟）。设备可在设置页吊销；吊销后该
 
 官方 `cloudflared` 二进制可在设置页按需安装，**不会**在 `apply()` 时自动下载。
 
-自建会合中继（Worker 中继、业务仍 E2EE）尚未实现，见 [`docs/05-cloud-relay.md`](docs/05-cloud-relay.md)。
+## 会合中继（可选）
+
+手机在 4G 且不想把本机 `6879` 打到公网时，可部署仓库里的 `relay/` Worker。桌面与手机都只出站；业务帧仍是 E2EE。需要 Cloudflare **Workers Paid**（Durable Objects）。本项目不运营公共会合点。
+
+```bash
+pnpm build
+cd relay
+pnpm install
+npx wrangler types
+npx wrangler secret put HOST_TOKEN
+npx wrangler deploy
+```
+
+然后在 **设置 → 移动远程 → 会合中继** 填写 `https://example.com`（或 `https://<name>.workers.dev`）和同一 `YOUR_TOKEN`，连接后再生成二维码。规格见 [`docs/05-cloud-relay.md`](docs/05-cloud-relay.md)。
+
+不要把 token 或真实域名写进 git。插件升级后必须重新 `pnpm build` 并 `wrangler deploy`。
 
 ## 推荐网络
 
@@ -71,6 +86,7 @@ Offer 有 TTL（默认 10 分钟）。设备可在设置页吊销；吊销后该
 1. Tailscale / WireGuard 等加密 overlay（缓解「裸 LAN 首次 HTTP 下发可被 MITM」）
 2. 受信局域网
 3. 用户显式开启的 Quick Tunnel
+4. 自建会合中继（桌面出站，不开放本机端口）
 
 不要把数据面端口直接映射到公网防火墙。
 

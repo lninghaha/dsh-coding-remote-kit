@@ -51,3 +51,27 @@ mux 重连后手机需再 `session.subscribe` / `host.subscribe`。`session.queu
 ```
 
 缺 `rpcId` 或 `sessionId` → `invalid_params`。
+
+## 会合中继外层（`dshmr-relay/v1`）
+
+可选通道。Worker 只转发拼接后的字节；**不**改上面的 RPC 表，也**不**改 `dshmr-e2ee/v1`。`HANDSHAKE_CONTEXT.transport` 仍为 `direct`。Offer 仍是 v1 exact keys，中继只写进 `pageUrl` / `endpoint`。
+
+控制面（桌面 ↔ Worker，JSON text）：
+
+| 消息 | 方向 | 字段 |
+| --- | --- | --- |
+| `host_hello` | 桌面 → Worker | `v`, `hostId`, `hostToken` |
+| `host_ok` / `host_error` | Worker → 桌面 | `hostId` / `error.code` |
+| `invite_put` | 桌面 → Worker | `invite`, `expiresAt`, `offerId` |
+| `invite_ack` | Worker → 桌面 | `offerId` |
+| `claim` | Worker → 桌面 | `requestId`, `code`（8 位 PIN，不是完整码） |
+| `claim_result` | 桌面 → Worker | `requestId`, `offer?`, `error?` |
+| `phone_waiting` | Worker → 桌面 | `ticket`, `expiresAt` |
+| `ping` / `pong` | 双向 | — |
+
+手机：
+
+- 配对 `wss://<origin>/v1/phone/<hostId>?invite=…`
+- 重连 `wss://<origin>/v1/phone/<hostId>?resume=1`
+
+桌面再出站 `wss://<origin>/v1/accept/<ticket>`，之后与 `/m/ws` 同一套 E2EE + RPC。规格见 [`05-cloud-relay.md`](05-cloud-relay.md)。

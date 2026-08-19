@@ -44,6 +44,7 @@
 | M2 配对 / 局域网数据面 | 完成 |
 | M3 窄 RPC / 审批 | 完成 |
 | M4 签名 HTTPS / 原生 App | 未开始 |
+| M5 自建会合中继 | 完成 — [`docs/05-cloud-relay.md`](docs/05-cloud-relay.md) |
 
 ## 特性
 
@@ -51,7 +52,7 @@
 - **双平面** — 管理面留在回环 `dsh web`；移动数据面是独立端口（默认 `6879`）上的 RPC 白名单。
 - **握手后 E2EE** — `/m/ws` 走 tweetnacl secretbox；未认证连接看不到会话内容。
 - **窄写操作** — 观察会话、应答审批/提问、短回复；重编辑仍回桌面。
-- **私网优先** — 推荐 LAN / Tailscale。可选 Cloudflare Quick Tunnel **只**暴露数据面，永不暴露 `3080`。
+- **私网优先** — 推荐 LAN / Tailscale。可选 Cloudflare Quick Tunnel **只**暴露数据面，永不暴露 `3080`。可选自建会合中继：桌面与手机都出站，业务帧仍 E2EE。
 - **标准插件形态** — 一个 Cordis 服务端插件 + classic-script 设置页。用 **file tarball** 做 `dsh plugin --profile web add`，不要 `link:` 工作树。
 
 ## 本插件解决的问题
@@ -136,8 +137,8 @@ pnpm test:sandbox                         # Dockerfile 的 check / isolated-inst
 
 打开 **设置 → 移动远程**：
 
-- 状态（bind、端口、是否在听、活跃设备、隧道）
-- **局域网** / **公网** 通道
+- 状态（bind、端口、是否在听、活跃设备、隧道、会合中继）
+- **局域网** / **Quick Tunnel** / **会合中继**
 - 生成 offer → 二维码 + 8 位 PIN
 - 设备列表与吊销
 - 可选安装官方 `cloudflared`（禁止在插件 `apply()` 时自动跑）
@@ -154,7 +155,7 @@ pnpm test:sandbox                         # Dockerfile 的 check / isolated-inst
 
 默认**关闭**。在设置页启动时，`cloudflared` Quick Tunnel **只**指向 `127.0.0.1:<数据面端口>`。`/m` 会在 `https://<随机>.trycloudflare.com` 上可达；配对仍需要 fragment 令牌（或 PIN）和 E2EE。插件 unload / 点「停止」时杀掉子进程。
 
-禁止把 `3080` / `dsh web` 送进隧道。自建会合中继**尚未实现**；见 [docs/05-cloud-relay.md](docs/05-cloud-relay.md)。
+禁止把 `3080` / `dsh web` 送进隧道。可选自建会合中继（桌面与手机都出站，业务仍 E2EE）：见 [docs/05-cloud-relay.md](docs/05-cloud-relay.md)。需要 Cloudflare Workers Paid，**不是**本项目运营的公共中继。
 
 ## 安全
 
@@ -194,7 +195,7 @@ MVP 决策（路线 B）：[docs/01-mvp-scope.md](docs/01-mvp-scope.md)。
 | [docs/02-architecture.md](docs/02-architecture.md) | 内部架构 · [中文](docs/02-architecture.zh-CN.md) |
 | [docs/03-protocol.md](docs/03-protocol.md) | RPC 白名单与推送信封 |
 | [docs/04-threat-model.md](docs/04-threat-model.md) | 资产、攻击者、不变量 |
-| [docs/05-cloud-relay.md](docs/05-cloud-relay.md) | 未来会合中继（未实现） |
+| [docs/05-cloud-relay.md](docs/05-cloud-relay.md) | 自建会合中继（M5） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 |
 | [AGENTS.md](AGENTS.md) | Agent/操作者规则（禁止自行重启生产） |
 

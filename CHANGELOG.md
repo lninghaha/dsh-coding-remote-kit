@@ -4,6 +4,15 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+### Added
+
+- Self-hosted rendezvous relay (M5): desktop and phone open outbound WSS to an operator-deployed Cloudflare Worker (`relay/`). Business frames stay `dshmr-e2ee/v1`. Settings gain a third channel, mutually exclusive with Quick Tunnel. PIN-over-relay is proxied to the desktop; the Worker operator can see that offer.
+- Phone page persists the last pairing offer so a refresh can resume without scanning again.
+
+### Documentation
+
+- `docs/05-cloud-relay.md` is now the M5 spec. Threat model, architecture, protocol, README, and INSTALL updated.
+
 ## v0.1.0 - 2026-08-19
 
 ### Added

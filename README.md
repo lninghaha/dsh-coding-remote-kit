@@ -44,6 +44,7 @@ Do **not** `dsh plugin add dsh-mobile-remote` — that installs the unrelated We
 | M2 pairing / LAN data plane | done |
 | M3 narrow RPC / approvals | done |
 | M4 signed HTTPS / native app | not started |
+| M5 self-hosted rendezvous Worker | done — [`docs/05-cloud-relay.md`](docs/05-cloud-relay.md) |
 
 ## Features
 
@@ -51,7 +52,7 @@ Do **not** `dsh plugin add dsh-mobile-remote` — that installs the unrelated We
 - **Dual plane** — management routes stay on loopback `dsh web`; the mobile data plane is a dedicated port (default `6879`) with an RPC allowlist.
 - **E2EE after handshake** — tweetnacl secretbox on `/m/ws`; unauthenticated sockets never see session content.
 - **Narrow writes** — observe sessions, answer approvals/questions, short replies; heavy editing stays on the desktop.
-- **Private-network first** — LAN / Tailscale preferred. Optional Cloudflare Quick Tunnel exposes **only** the data plane, never port `3080`.
+- **Private-network first** — LAN / Tailscale preferred. Optional Cloudflare Quick Tunnel exposes **only** the data plane, never port `3080`. Optional self-hosted rendezvous Worker: desktop and phone both outbound; business frames stay E2EE.
 - **Standard plugin shape** — one Cordis server plugin + classic-script Settings page. `dsh plugin --profile web add` a **file tarball**, never a `link:` working tree.
 
 ## Problems this plugin solves
@@ -136,8 +137,8 @@ Management stays behind the host Web loopback fence. The data plane is a separat
 
 Open **Settings → 移动远程**:
 
-- status (bind, port, listening, active devices, tunnel)
-- **LAN** vs **public** channel
+- status (bind, port, listening, active devices, tunnel, rendezvous)
+- **LAN** / **Quick Tunnel** / **rendezvous** channels
 - create offer → QR + 8-digit PIN
 - device list and revoke
 - optional official `cloudflared` install (never runs at plugin `apply()`)
@@ -154,7 +155,7 @@ Pushes include session events plus `approval.requested` / `question.requested` (
 
 Default **off**. When started from Settings, `cloudflared` Quick Tunnel points **only** at `127.0.0.1:<data-plane-port>`. `/m` becomes reachable on a `https://<random>.trycloudflare.com` URL; pairing still needs the fragment token (or PIN) and E2EE. The child process is killed on plugin unload / Stop.
 
-Never tunnel port `3080` / `dsh web`. A self-hosted rendezvous relay is **not** implemented; see [docs/05-cloud-relay.md](docs/05-cloud-relay.md).
+Never tunnel port `3080` / `dsh web`. A self-hosted rendezvous Worker (desktop and phone both outbound, business frames still E2EE) is optional; see [docs/05-cloud-relay.md](docs/05-cloud-relay.md). It needs a Cloudflare Workers Paid plan and is **not** a public relay operated by this project.
 
 ## Security
 
@@ -194,7 +195,7 @@ MVP decision (route B): [docs/01-mvp-scope.md](docs/01-mvp-scope.md).
 | [docs/02-architecture.md](docs/02-architecture.md) | Internal architecture · [中文](docs/02-architecture.zh-CN.md) |
 | [docs/03-protocol.md](docs/03-protocol.md) | RPC allowlist and push envelopes (Chinese) |
 | [docs/04-threat-model.md](docs/04-threat-model.md) | Assets, attackers, invariants (Chinese) |
-| [docs/05-cloud-relay.md](docs/05-cloud-relay.md) | Future rendezvous relay (not implemented) |
+| [docs/05-cloud-relay.md](docs/05-cloud-relay.md) | Self-hosted rendezvous Worker (M5) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guide |
 | [AGENTS.md](AGENTS.md) | Agent/operator rules (no production restart) |
 

@@ -28,6 +28,7 @@ interface StatusInfo {
 	networkReach: string;
 	activeDevices: number;
 	tunnel: TunnelSnapshot;
+	relay: RelaySnapshot;
 }
 
 interface TunnelSnapshot {
@@ -37,7 +38,16 @@ interface TunnelSnapshot {
 	binaryOk: boolean;
 }
 
-type Channel = "lan" | "public";
+interface RelaySnapshot {
+	running: boolean;
+	kind: "rendezvous" | null;
+	url: string | null;
+	hostConnected: boolean;
+	binaryOk: boolean;
+	hasToken: boolean;
+}
+
+type Channel = "lan" | "public" | "relay";
 
 interface OfferInfo {
 	qrText: string;
@@ -93,8 +103,11 @@ function MobileRemoteSettings() {
 	const [error, setError] = useState<string | null>(null);
 	const [remainingMs, setRemainingMs] = useState<number | null>(null);
 	const [tunnelBusy, setTunnelBusy] = useState(false);
+	const [relayBusy, setRelayBusy] = useState(false);
 	const [installBusy, setInstallBusy] = useState(false);
 	const [showOfferText, setShowOfferText] = useState(false);
+	const [relayOrigin, setRelayOrigin] = useState("https://example.com");
+	const [relayToken, setRelayToken] = useState("");
 
 	const formatApiError = (
 		response: Response,
@@ -120,6 +133,9 @@ function MobileRemoteSettings() {
 					return;
 				}
 				setStatus(payload);
+				if (typeof payload.relay?.url === "string" && payload.relay.url.length > 0) {
+					setRelayOrigin(payload.relay.url);
+				}
 			} catch {
 				setError("无法读取移动远程状态");
 			}
@@ -263,9 +279,44 @@ function MobileRemoteSettings() {
 		})();
 	};
 
+	const relayAction = async (action: "start" | "stop"): Promise<boolean> => {
+		if (relayBusy) return false;
+		setError(null);
+		setRelayBusy(true);
+		try {
+			const body: Record<string, unknown> = { action };
+			if (action === "start") {
+				body.origin = relayOrigin.trim();
+				if (relayToken.trim().length > 0) body.hostToken = relayToken.trim();
+			}
+			const { ok, status: httpStatus, payload } = await postJson("/api/mobile-remote/relay", body);
+			if (!ok) {
+				setError(
+					formatApiError(
+						{ status: httpStatus } as Response,
+						payload as { error?: { message?: string } },
+						action === "start" ? "会合中继连接失败" : "停止会合中继失败",
+					),
+				);
+				return false;
+			}
+			if (action === "start") setRelayToken("");
+			refreshStatus();
+			if (action === "start") setChannel("relay");
+			if (action === "stop") setChannel("lan");
+			return true;
+		} catch {
+			setError(action === "start" ? "会合中继连接失败" : "停止会合中继失败");
+			return false;
+		} finally {
+			setRelayBusy(false);
+		}
+	};
+
 	const selectLan = () => {
 		setChannel("lan");
 		if (status?.tunnel.running) void tunnelAction("stop");
+		if (status?.relay?.running) void relayAction("stop");
 	};
 
 	const createOffer = () => {
@@ -279,6 +330,12 @@ function MobileRemoteSettings() {
 					}
 					if (!(status?.tunnel.running ?? false)) {
 						const started = await tunnelAction("start");
+						if (!started) return;
+					}
+				}
+				if (channel === "relay") {
+					if (!(status?.relay?.hostConnected ?? false)) {
+						const started = await relayAction("start");
 						if (!started) return;
 					}
 				}
@@ -310,7 +367,12 @@ function MobileRemoteSettings() {
 	const tunnelHost = extractTunnelHost(status?.tunnel.url ?? null);
 	const tunnelRunning = status?.tunnel.running ?? false;
 	const tunnelBinaryOk = status?.tunnel.binaryOk ?? false;
-	const publicMode = tunnelRunning || channel === "public";
+	const relayRunning = status?.relay?.running ?? false;
+	const relayConnected = status?.relay?.hostConnected ?? false;
+	const relayHost = extractTunnelHost(status?.relay?.url ?? null);
+	const publicMode = !relayRunning && (tunnelRunning || channel === "public");
+	const relayMode = relayRunning || channel === "relay";
+	const lanMode = !publicMode && !relayMode;
 	const box = {
 		display: "grid",
 		gap: "8px",
@@ -334,7 +396,7 @@ function MobileRemoteSettings() {
 				createElement("input", {
 					type: "radio",
 					name: "channel",
-					checked: !publicMode,
+					checked: lanMode,
 					onChange: selectLan,
 				}),
 				"同一 Wi‑Fi / 局域网",
@@ -346,9 +408,26 @@ function MobileRemoteSettings() {
 					type: "radio",
 					name: "channel",
 					checked: publicMode,
-					onChange: () => setChannel("public"),
+					onChange: () => {
+					setChannel("public");
+					if (status?.relay?.running) void relayAction("stop");
+				},
 				}),
 				"外出（临时公网，不用 Cloudflare 账号）",
+			),
+			createElement(
+				"label",
+				{ style: { display: "flex", gap: "8px", alignItems: "center", fontSize: "13px" } },
+				createElement("input", {
+					type: "radio",
+					name: "channel",
+					checked: relayMode,
+					onChange: () => {
+						setChannel("relay");
+						if (status?.tunnel.running) void tunnelAction("stop");
+					},
+				}),
+				"会合中继（自建 Worker，本机不开放端口）",
 			),
 			publicMode
 				? createElement(
@@ -389,6 +468,54 @@ function MobileRemoteSettings() {
 						),
 					)
 				: null,
+			relayMode
+				? createElement(
+						"p",
+						{ style: { ...muted, color: "#8a5a00" } },
+						"需要你自己的 Cloudflare 账号（Workers Paid）部署仓库里的 relay/。中继只转发密文，不要把 3080 指过去。",
+					)
+				: null,
+			relayMode
+				? createElement(
+						"div",
+						{ style: { display: "grid", gap: "6px" } },
+						createElement("input", {
+							type: "url",
+							value: relayOrigin,
+							placeholder: "https://example.com",
+							onChange: (event: { target: { value: string } }) => setRelayOrigin(event.target.value),
+							style: { fontSize: "13px", padding: "6px 8px" },
+						}),
+						createElement("input", {
+							type: "password",
+							value: relayToken,
+							placeholder: status?.relay?.hasToken ? "已保存 HOST_TOKEN，留空则沿用" : "HOST_TOKEN",
+							onChange: (event: { target: { value: string } }) => setRelayToken(event.target.value),
+							style: { fontSize: "13px", padding: "6px 8px" },
+						}),
+						relayConnected
+							? createElement(
+									"div",
+									{ style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" } },
+									createElement("span", { style: { fontSize: "13px" } }, `中继已连：${relayHost ?? "运行中"}`),
+									createElement(
+										"button",
+										{ type: "button", disabled: relayBusy, onClick: () => void relayAction("stop") },
+										"断开中继",
+									),
+								)
+							: createElement(
+									"button",
+									{
+										type: "button",
+										disabled: relayBusy,
+										onClick: () => void relayAction("start"),
+										style: { justifySelf: "start" },
+									},
+									relayBusy ? "正在连接…" : "连接会合中继",
+								),
+					)
+				: null,
 		),
 		createElement(
 			"div",
@@ -398,11 +525,16 @@ function MobileRemoteSettings() {
 				"button",
 				{
 					type: "button",
-					disabled: tunnelBusy || installBusy || (publicMode && !tunnelBinaryOk),
+					disabled:
+						tunnelBusy ||
+						relayBusy ||
+						installBusy ||
+						(publicMode && !tunnelBinaryOk) ||
+						(relayMode && !relayConnected && relayOrigin.trim().length === 0),
 					onClick: createOffer,
 					style: { justifySelf: "start" },
 				},
-				tunnelBusy ? "正在准备…" : "生成二维码",
+				tunnelBusy || relayBusy ? "正在准备…" : "生成二维码",
 			),
 			error !== null ? createElement("p", { style: { margin: 0, color: "#b3261e", fontSize: "13px" } }, error) : null,
 			offerInfo !== null

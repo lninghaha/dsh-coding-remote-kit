@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dsh-coding-remote-kit-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "RENDEZVOUS",
+        "class_name": "RendezvousRoom"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RendezvousRoom"]
+    }
+  ],
+  "assets": {
+    "directory": "../lib/mobile",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  }
+}

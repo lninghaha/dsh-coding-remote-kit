@@ -19,4 +19,5 @@ test("package identity matches the M1 contract", async () => {
 	assert.equal(pkg.exports["./package.json"], "./package.json");
 	assert.equal(pkg.dsh.bundle.patch, "./cordis.patch.yml");
 	assert.equal(pkg.dsh.client.platform, "web");
+	assert.ok(!(pkg.files ?? []).some((entry) => String(entry).startsWith("relay")));
 });

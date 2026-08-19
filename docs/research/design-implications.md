@@ -62,4 +62,4 @@
 - [x] 决定 MVP 走路线 B（见 [`../01-mvp-scope.md`](../01-mvp-scope.md)）
 - [x] 写出威胁模型与「禁止事项」清单（[`../04-threat-model.md`](../04-threat-model.md)）
 - [x] **方案 1：Cloudflare Quick Tunnel（只暴露数据面 6879）**。已实现于 `src/server/tunnel.ts` + 设置页「公网」入口。
-- [ ] **方案 2：自建会合中继**（桌面/手机连 Worker，业务 E2EE）。见 [`../05-cloud-relay.md`](../05-cloud-relay.md)。非 Quick Tunnel 里程碑。  
+- [x] **方案 2：自建会合中继**（桌面/手机连 Worker，业务 E2EE）。见 [`../05-cloud-relay.md`](../05-cloud-relay.md)。  

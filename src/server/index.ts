@@ -12,6 +12,7 @@ import { ensureStorageDir } from "./storage.js";
 import { registerManagementRoutes } from "./routes.js";
 import { installOfficialCloudflared } from "./cloudflared-install.js";
 import { CloudflareQuickTunnel } from "./tunnel.js";
+import { RendezvousClient } from "./relay.js";
 import { createUpstreamHub } from "./upstream.js";
 
 export const name = "mobile-remote";
@@ -70,6 +71,17 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 		upstream,
 	});
 
+	const rendezvous = new RendezvousClient({
+		persistFile: join(storageDirectory, "relay.json"),
+		logger,
+		offers,
+		connectionDeps: () => dataPlane.connectionDeps(),
+	});
+	ctx.effect(
+		() => () => void rendezvous.stop(),
+		"mobile-remote: rendezvous client (must stop on unload)",
+	);
+
 	// Startup bind: keep LAN reachability across restarts for active devices.
 	const startBind =
 		registry.hasActiveDevice() && registry.networkReach === "lan" ? ALL_INTERFACES : config.bind;
@@ -122,6 +134,14 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 				snapshot: () => tunnel.snapshot(),
 				start: (options) => tunnel.start(options),
 				stop: () => tunnel.stop(),
+			},
+			relay: {
+				snapshot: () => rendezvous.snapshot(),
+				start: (options) => rendezvous.start(options),
+				stop: () => rendezvous.stop(),
+				createInvite: () => rendezvous.createInvite(),
+				advertise: (invite) => rendezvous.advertise(invite),
+				putInvite: (input) => rendezvous.putInvite(input),
 			},
 			installCloudflared: () => installOfficialCloudflared(),
 		});

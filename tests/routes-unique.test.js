@@ -22,6 +22,14 @@ function stubDeps() {
 			async start() { return "https://example.trycloudflare.com"; },
 			async stop() {},
 		},
+		relay: {
+			snapshot: () => ({ running: false, kind: null, url: null, hostConnected: false, binaryOk: true, hasToken: false }),
+			async start() { return "https://example.com"; },
+			async stop() {},
+			createInvite: () => "invite",
+			advertise: () => ({ endpoint: "wss://example.com/v1/phone/h?invite=i", pageUrl: "https://example.com/m/", candidates: ["example.com"] }),
+			async putInvite() {},
+		},
 		async installCloudflared() { return { asset: "cloudflared-linux-amd64", path: "/tmp/cloudflared" }; },
 	};
 }
@@ -41,6 +49,8 @@ test("management exact paths are unique (DSH webServer keys by path, not method)
 	assert.deepEqual(new Set(paths).size, paths.length);
 	assert.ok(paths.includes("/api/mobile-remote/tunnel"));
 	assert.ok(paths.includes("/api/mobile-remote/cloudflared"));
+	assert.ok(paths.includes("/api/mobile-remote/relay"));
 	assert.equal(paths.filter((path) => path === "/api/mobile-remote/tunnel").length, 1);
 	assert.equal(paths.filter((path) => path === "/api/mobile-remote/cloudflared").length, 1);
+	assert.equal(paths.filter((path) => path === "/api/mobile-remote/relay").length, 1);
 });

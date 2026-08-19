@@ -11,7 +11,7 @@ Host pin: `@deepseek-ai/dsh@0.1.0-rc.7`. Changing the pin requires a new ADR (`d
 ```text
 Harness webServer (loopback, typically 127.0.0.1:3080)
   └─ management routes /api/mobile-remote/*
-       pairing offers, device list, revoke, tunnel switch
+       pairing offers, device list, revoke, tunnel / rendezvous switch
        Host + browser-context + CSRF guards; non-loopback → 403
 
 Dedicated data plane (default 127.0.0.1:6879, may widen to 0.0.0.0)
@@ -34,6 +34,7 @@ Settings (src/client)
        GET  /api/mobile-remote/devices
        POST /api/mobile-remote/revoke
        GET/POST /api/mobile-remote/tunnel
+       GET/POST /api/mobile-remote/relay
        POST /api/mobile-remote/cloudflared
 
 Phone browser /m (src/mobile)
@@ -50,6 +51,7 @@ src/server
   ├─ server-key.json    X25519 identity (0600)
   ├─ MobileDataPlane    HTTP + ws
   ├─ CloudflareQuickTunnel   data plane only (never port 3080)
+  ├─ RendezvousClient   outbound WSS to a self-hosted Worker (never 3080)
   └─ UpstreamHub        apiProxy sessions / approvals / questions
 ```
 
@@ -63,12 +65,13 @@ Re-exports Cordis `name` / `inject` / `Config` / `apply` from `src/server/index.
 
 ### `src/server/`
 
-- `index.ts`: plugin `apply`. Storage, server key, data-plane listen, management routes, tunnel disposer.
+- `index.ts`: plugin `apply`. Storage, server key, data-plane listen, management routes, tunnel + rendezvous disposers.
 - `config.ts`: Zod `enabled` / `bind` / `port` / `offerTtlMs` / `trustedHosts`.
 - `context.ts`: host `apiProxy` + `webServer` typing.
 - `routes.ts`: one `webServer.register` per path (DSH de-duplicates by path, not method). GET/POST branch inside the handler.
 - `security.ts`: loopback / Host / browser context / CSRF / bounded JSON body.
 - `dataplane.ts`: dedicated `node:http` + `ws` on the data-plane port; static `/m`; `/m/claim`; `/m/ws`.
+- `connection.ts`: `acceptMobileSocket` — E2EE + RPC session used by `/m/ws` and by rendezvous accept sockets.
 - `e2ee.ts` / `crypto.ts`: server handshake, token lookup, tweetnacl secretbox.
 - `rpc.ts`: allowlist dispatch; unknown methods → `forbidden`.
 - `upstream.ts`: host `apiProxy` session/approval/question bridge.
@@ -77,15 +80,16 @@ Re-exports Cordis `name` / `inject` / `Config` / `apply` from `src/server/index.
 - `net.ts`: LAN candidate addresses for QR advertise.
 - `backpressure.ts`: per-connection outbound queue limits.
 - `tunnel.ts`: Cloudflare Quick Tunnel child process; persist `tunnel.json`; kill on unload.
+- `relay.ts`: outbound rendezvous client (`dshmr-relay/v1`); persist `relay.json`; stop on unload. Never mixed into `cloudflared`.
 - `cloudflared-install.ts`: opt-in official binary install (never at `apply()`).
 
 ### `src/shared/`
 
-Dependency-free protocol constants and codecs used by both Node and the mobile page: `constants.ts` (RPC allowlist, frame sizes, HKDF labels), `offer.ts`, `pair-code.ts`, `handshake.ts`, `frame.ts`, `hkdf.ts`, `transcript.ts`, `validation.ts`, `base64.ts`, `version.ts`.
+Dependency-free protocol constants and codecs used by both Node and the mobile page: `constants.ts` (RPC allowlist, frame sizes, HKDF labels), `offer.ts`, `pair-code.ts`, `handshake.ts`, `frame.ts`, `hkdf.ts`, `transcript.ts`, `validation.ts`, `base64.ts`, `version.ts`, `relay.ts` (outer rendezvous envelope).
 
 ### `src/client/`
 
-Classic-script Settings page (`window.__ModuleLoader__.load`). QR, 8-digit PIN, device list, LAN vs public channel, tunnel start/stop. Injects `@deepseek-ai/dsh-client-ui-settings` + `dsh-client-ui-slots`.
+Classic-script Settings page (`window.__ModuleLoader__.load`). QR, 8-digit PIN, device list, LAN / Quick Tunnel / rendezvous channels. Injects `@deepseek-ai/dsh-client-ui-settings` + `dsh-client-ui-slots`.
 
 ### `src/mobile/`
 
@@ -102,6 +106,8 @@ GET  /api/mobile-remote/devices          # never includes tokenHash
 POST /api/mobile-remote/revoke           # { deviceId }
 GET  /api/mobile-remote/tunnel
 POST /api/mobile-remote/tunnel           # { kind: "cloudflare-quick", action: "start"|"stop" }
+GET  /api/mobile-remote/relay
+POST /api/mobile-remote/relay            # { action: "start"|"stop", origin?, hostToken? }
 POST /api/mobile-remote/cloudflared      # { action: "install" }
 ```
 
@@ -128,6 +134,7 @@ RPC methods and push envelopes: `docs/03-protocol.md`.
 | `devices.json` | paired devices; **SHA-256 of deviceToken only** |
 | `audit.jsonl` | `rpc_write` / offer / revoke / tunnel events; no payloads |
 | `tunnel.json` | Quick Tunnel persist so a crash can reap a stale child |
+| `relay.json` | rendezvous origin / hostId / hostToken (0600); never returned by GET |
 
 ## 6. Pairing and E2EE
 
@@ -137,7 +144,7 @@ RPC methods and push envelopes: `docs/03-protocol.md`.
 4. Four-step handshake (`dshmr-e2ee/v1`) pins the desktop public key, derives session keys via HKDF, then `e2ee_auth` with the device token.
 5. Further frames are tweetnacl secretbox. Five consecutive decrypt failures close the socket.
 
-Honest v0 boundary: the **first HTTP download of `/m`** on a raw LAN is MITM-able. E2EE does not protect a replaced page. Prefer Tailscale / WireGuard; optional Cloudflare Quick Tunnel terminates TLS at the edge and must never include port 3080. Details: `docs/04-threat-model.md`.
+Honest v0 boundary: the **first HTTP download of `/m`** on a raw LAN is MITM-able. E2EE does not protect a replaced page. Prefer Tailscale / WireGuard; optional Cloudflare Quick Tunnel terminates TLS at the edge and must never include port 3080. Optional self-hosted rendezvous Worker (M5) serves `/m` over HTTPS and splices outbound WebSockets; it must never see port 3080. Details: `docs/04-threat-model.md`, `docs/05-cloud-relay.md`.
 
 ## 7. Build outputs
 
@@ -154,5 +161,5 @@ Honest v0 boundary: the **first HTTP download of `/m`** on a raw LAN is MITM-abl
 
 - Cordis plugin id: `mobile-remote`.
 - Config defaults: `enabled: true`, `bind: "127.0.0.1"`, `port: 6879`.
-- Pairing widens the data plane to `0.0.0.0` when advertising LAN candidates and no public tunnel is running.
+- Pairing widens the data plane to `0.0.0.0` when advertising LAN candidates and no public tunnel / rendezvous is running.
 - Wire protocol version: `MOBILE_PROTOCOL_VERSION = 1` (`src/shared/constants.ts`).

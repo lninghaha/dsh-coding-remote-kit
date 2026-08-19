@@ -21,6 +21,7 @@
 | QR 泄露 | 拍照、截图、投屏使 pairing offer 离开操作者控制。 |
 | 手机丢失 | 已配对设备落入他人之手，直到吊销。 |
 | 恶意插件 | 与本插件同住一个 DSH profile，可读部分宿主服务。 |
+| 自建中继运营者 | 控制 Worker 源码与 Cloudflare 账号；可见连接元数据；PIN 路径可见 offer。 |
 
 ## 安全不变量
 
@@ -47,7 +48,13 @@
   - **禁止**把 `3080` / `dsh web` 送进隧道；隧道 `--url` 只指向 `127.0.0.1:<数据面端口>`。
 - M4 可选：自签 HTTPS + 二维码钉死证书哈希（TOFU）。
 - 未来选项：路线 C 原生 App，用签名包投递客户端，彻底离开「首次 HTTP 下发」模型。
-- 方案 2（自建会合中继）见 [`05-cloud-relay.md`](05-cloud-relay.md)，未实现。
+- **方案 2：自建会合中继（M5）**，设置页显式开启，桌面与手机各自出站连操作者自己的 Worker：
+  - **不**把本机 `6879` / `3080` 打到公网；中继只做会合与密文转发。
+  - **投递层是边缘 TLS**：裸 LAN MITM 换不了 `/m`。被攻破的 Worker 仍可下发恶意 JS——自建 = 信任该 CF 账号与该源码。
+  - **QR fragment 不到 Worker**；PIN 兑换（`POST /m/claim`）会让 Worker 运营者在 TTL 内看见完整 offer（含 `deviceToken`）。
+  - Worker 可见连接元数据（谁在连、帧长/时间），不可见 `e2ee_auth` 之后的 RPC 明文。
+  - **禁止**把 `3080` / `dsh web` 接到 Worker；**禁止**本仓库运营公共会合点。
+  - 规格见 [`05-cloud-relay.md`](05-cloud-relay.md)。
 
 **明确出界（v0 不防、不声称防）：**
 
@@ -61,7 +68,7 @@
 
 - **不共享他人凭据。** Do not share another person's credentials.
 - **不监测未授权账户。** Do not monitor accounts you are not authorized to access.
-- **不裸暴露公网端口。** Do not bind the data-plane port on `0.0.0.0` to the public Internet. A user-started Cloudflare Quick Tunnel (HTTPS at the edge, localhost origin) is an explicit exception; never tunnel `3080`.
+- **不裸暴露公网端口。** Do not bind the data-plane port on `0.0.0.0` to the public Internet. A user-started Cloudflare Quick Tunnel (HTTPS at the edge, localhost origin) or a **self-hosted** rendezvous Worker (desktop outbound only) is an explicit exception; never tunnel `3080`.
 - **不暗示 DeepSeek 官方背书。** This plugin is not affiliated with, and is not endorsed by, DeepSeek.
 
 错误示例（禁止照抄到生产）：`ws://203.0.113.10:6879?token=s3cret`  

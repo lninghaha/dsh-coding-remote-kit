@@ -48,3 +48,4 @@ DSH Web 的安全模型以回环绑定、Host 校验与浏览器上下文为前�
 | M2 | 配对 offer、LAN 数据面、手机浏览器页 |
 | M3 | 窄 RPC 白名单、审批/提问、管理面路由 |
 | M4（可选） | overlay 文档、自签 HTTPS + TOFU、原生 App 评估 |
+| M5（可选） | 自建会合中继（桌面/手机出站连 Worker，业务仍 E2EE）；见 [`05-cloud-relay.md`](05-cloud-relay.md) |
