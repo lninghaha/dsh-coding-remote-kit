@@ -212,6 +212,13 @@ export function registerManagementRoutes(
 			if (action === "start") {
 				try {
 					const url = await deps.tunnel.start({ port: deps.port() });
+					let host = "trycloudflare.com";
+					try {
+						host = new URL(url).host;
+					} catch {
+						// keep placeholder
+					}
+					deps.audit.log({ event: "tunnel_start", detail: { kind: "cloudflare-quick", host } }, deps.now());
 					writeJson(response, 200, { ok: true, running: true, url });
 				} catch (error) {
 					const message = error instanceof Error ? error.message : "start failed";
@@ -222,6 +229,7 @@ export function registerManagementRoutes(
 			}
 			if (action === "stop") {
 				await deps.tunnel.stop();
+				deps.audit.log({ event: "tunnel_stop", detail: { kind: "cloudflare-quick" } }, deps.now());
 				writeJson(response, 200, { ok: true, snapshot: deps.tunnel.snapshot() });
 				return;
 			}
