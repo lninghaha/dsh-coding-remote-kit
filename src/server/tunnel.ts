@@ -22,13 +22,18 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { readJsonFile, writeFileAtomic } from "./storage.js";
 
 /** Extract the public Quick Tunnel URL from cloudflared banner output. */
 export function parseQuickTunnelUrl(text: string): string | null {
 	const match = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/.exec(text);
 	return match === null ? null : match[0];
+}
+
+/** True once the edge has accepted this connector (URL alone is not enough). */
+export function isTunnelRegistered(text: string): boolean {
+	return /registered tunnel connection/i.test(text);
 }
 
 const HINT_PATH = join(homedir(), ".local", "bin", "cloudflared");
@@ -143,13 +148,20 @@ export class CloudflareQuickTunnel {
 			if (this.url !== null) return this.url;
 			throw new Error("tunnel is already starting");
 		}
-		const timeoutMs = options.timeoutMs ?? 30_000;
-		const child = this.spawnImpl(this.binary, [
+		const timeoutMs = options.timeoutMs ?? 45_000;
+		// QUIC/UDP 7844 fails through this host's Tailscale exit node; HTTP/2 works.
+		const args = [
 			"tunnel",
 			"--url",
 			`http://127.0.0.1:${String(options.port)}`,
 			"--no-autoupdate",
-		]);
+			"--protocol",
+			"http2",
+		];
+		if (this.persistFile !== null) {
+			args.push("--logfile", join(dirname(this.persistFile), "cloudflared.log"));
+		}
+		const child = this.spawnImpl(this.binary, args);
 		this.child = child;
 		this.url = null;
 		this.#persist();
@@ -170,12 +182,12 @@ export class CloudflareQuickTunnel {
 				buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8");
 				if (settled) return;
 				const parsed = parseQuickTunnelUrl(buffer);
-				if (parsed !== null) {
+				if (parsed !== null) this.url = parsed;
+				if (this.url !== null && isTunnelRegistered(buffer)) {
 					settled = true;
 					clearTimeout(timer);
-					this.url = parsed;
 					this.#persist();
-					resolvePromise(parsed);
+					resolvePromise(this.url);
 				}
 			};
 			const onExit = (_code: unknown, _signal: unknown): void => {
@@ -195,7 +207,11 @@ export class CloudflareQuickTunnel {
 				} catch {
 					// child already gone
 				}
-				fail(`timed out waiting for the Cloudflare Quick Tunnel URL`);
+				fail(
+					this.url === null
+						? "timed out waiting for the Cloudflare Quick Tunnel URL"
+						: "timed out waiting for the tunnel to register with Cloudflare (HTTP/2). Tailscale exit node can break QUIC; retry after the plugin uses --protocol http2",
+				);
 			}, timeoutMs);
 			if (child.stderr !== null) child.stderr.on("data", onChunk);
 			if (child.stdout !== null) child.stdout.on("data", onChunk);

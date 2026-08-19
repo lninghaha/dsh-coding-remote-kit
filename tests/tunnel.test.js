@@ -77,12 +77,15 @@ test("start returns the URL from stderr then stop kills the child (no real tunne
 	const startPromise = tunnel.start({ port: 6879, timeoutMs: 2000 });
 	child.stderr.write("... connecting\n");
 	child.stderr.write("https://happy-photo-7qx.trycloudflare.com\n");
+	child.stderr.write("Registered tunnel connection connIndex=0 location=nrt12 protocol=http2\n");
 	const url = await startPromise;
 	assert.equal(url, "https://happy-photo-7qx.trycloudflare.com");
 	assert.ok(spawnedArgs.includes("tunnel"));
 	assert.ok(spawnedArgs.includes("--url"));
 	assert.ok(spawnedArgs.includes("http://127.0.0.1:6879"));
 	assert.ok(spawnedArgs.includes("--no-autoupdate"));
+	assert.ok(spawnedArgs.includes("--protocol"));
+	assert.ok(spawnedArgs.includes("http2"));
 	assert.equal(tunnel.snapshot().running, true);
 	assert.equal(tunnel.snapshot().kind, "cloudflare-quick");
 	assert.equal(tunnel.snapshot().url, url);
@@ -90,6 +93,20 @@ test("start returns the URL from stderr then stop kills the child (no real tunne
 	assert.equal(child.killed, true);
 	assert.equal(tunnel.snapshot().running, false);
 	assert.equal(tunnel.snapshot().kind, null);
+});
+
+test("URL without Registered tunnel connection does not resolve", async () => {
+	const child = fakeChild();
+	const tunnel = new CloudflareQuickTunnel({
+		binary: "/fake/cloudflared",
+		spawn() {
+			return child;
+		},
+	});
+	const startPromise = tunnel.start({ port: 6879, timeoutMs: 40 });
+	child.stderr.write("https://only-url.trycloudflare.com\n");
+	await assert.rejects(startPromise, /timed out waiting for the tunnel to register/);
+	assert.equal(child.killed, true);
 });
 
 test("start times out (and kills the child) when no URL appears", async () => {
