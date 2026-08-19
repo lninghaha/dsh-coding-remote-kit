@@ -199,7 +199,41 @@ function connect(offer: PairingOffer): void {
 	}
 }
 
+function bootE2eList(): void {
+	const now = Date.now();
+	const items: Array<Record<string, unknown>> = [];
+	for (let workspace = 0; workspace < 8; workspace += 1) {
+		const cwd = `/home/lning/dev/ws-${String(workspace)}`;
+		for (let task = 0; task < 4; task += 1) {
+			items.push({
+				sessionId: `s-${String(workspace)}-${String(task)}`,
+				title: `任务 ${String(workspace + 1)}.${String(task + 1)}`,
+				running: false,
+				blank: false,
+				updatedAt: now - workspace * 86_400_000,
+				cwd,
+			});
+		}
+	}
+	const client = {
+		async request(method: string) {
+			if (method === "host.subscribe") return { accepted: true };
+			if (method === "session.list") return { items };
+			return {};
+		},
+		onPush() {},
+	} as unknown as MobileRpcClient;
+	const app = root();
+	app.textContent = "";
+	app.style.color = "";
+	startConnectedApp(app, client);
+}
+
 function boot(): void {
+	if (new URLSearchParams(location.search).get("e2e") === "list") {
+		bootE2eList();
+		return;
+	}
 	const hash = location.hash;
 	if (hash.length <= 1) {
 		render("等待配对", "请从桌面 dsh web 设置页扫码配对。");
