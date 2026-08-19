@@ -142,7 +142,7 @@ test("start rejects when the child exits before publishing a URL", async () => {
 test("tunnelAdvertise maps the public URL to /m and wss /m/ws with host-only candidates", () => {
 	assert.deepEqual(tunnelAdvertise("https://abc-123.trycloudflare.com"), {
 		endpoint: "wss://abc-123.trycloudflare.com/m/ws",
-		pageUrl: "https://abc-123.trycloudflare.com/m",
+		pageUrl: "https://abc-123.trycloudflare.com/m/",
 		candidates: ["abc-123.trycloudflare.com"],
 	});
 });

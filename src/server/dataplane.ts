@@ -141,7 +141,12 @@ export class MobileDataPlane {
 			return;
 		}
 		let relative = "";
-		if (pathname === "/m" || pathname === "/m/") relative = "index.html";
+		if (pathname === "/m") {
+			response.writeHead(302, { ...headers, location: "/m/" });
+			response.end();
+			return;
+		}
+		if (pathname === "/m/") relative = "index.html";
 		else if (pathname.startsWith("/m/")) relative = pathname.slice("/m/".length);
 		else {
 			response.writeHead(404, headers);

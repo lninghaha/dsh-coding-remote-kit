@@ -93,7 +93,7 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 		const ip = candidates[0] ?? LOOPBACK;
 		return {
 			endpoint: `ws://${ip}:${String(config.port)}/m/ws`,
-			pageUrl: `http://${ip}:${String(config.port)}/m`,
+			pageUrl: `http://${ip}:${String(config.port)}/m/`,
 			candidates,
 		};
 	};

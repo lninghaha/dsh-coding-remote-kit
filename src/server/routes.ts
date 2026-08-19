@@ -78,7 +78,7 @@ export function tunnelAdvertise(url: string): AdvertiseResult {
 	const origin = url.replace(/\/+$/, "");
 	return {
 		endpoint: `${origin.replace(/^https:/u, "wss:")}/m/ws`,
-		pageUrl: `${origin}/m`,
+		pageUrl: `${origin}/m/`,
 		candidates: [origin.replace(/^https:\/\//u, "")],
 	};
 }
