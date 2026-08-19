@@ -33,4 +33,6 @@ docs/*
 !docs/05-cloud-relay.md
 !docs/research/
 !docs/research/**
+!docs/assets/
+!docs/assets/**
 reference/

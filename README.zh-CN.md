@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.2.1** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.2.2** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
 
 **面向 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) 的远程手机访问插件。** 把手机配对到已经在跑 `dsh web` 的桌面，观察会话并做一组窄写操作——不必把完整 Web API 暴露出去。
 
@@ -27,7 +27,7 @@
 
 | | 请用这个 | 说明 |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.2.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.1` |
+| npm | `dsh-coding-remote-kit@0.2.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | 旧 checkout 名 `dsh-mobile-remote` |
 | Cordis 插件 id | `mobile-remote` | 不变 |
 | 设置页 HTTP | `/api/mobile-remote/*` | 不变 |
@@ -55,6 +55,22 @@
 - **私网优先** — 推荐 LAN / Tailscale。可选 Cloudflare Quick Tunnel **只**暴露数据面，永不暴露 `3080`。可选自建会合中继：桌面与手机都出站，业务帧仍 E2EE。
 - **标准插件形态** — 一个 Cordis 服务端插件 + classic-script 设置页。用 **file tarball** 做 `dsh plugin --profile web add`，不要 `link:` 工作树。
 
+## 截图
+
+<p align="center">
+  <img src="docs/assets/settings-pairing.png" alt="桌面设置 — 配对二维码与 PIN" width="48%" />
+  &nbsp;
+  <img src="docs/assets/settings-overview.png" alt="桌面设置 — 通道状态与已配对设备" width="48%" />
+</p>
+<p align="center"><em>桌面 设置 → 移动远程：生成配对 offer（左）· 通道状态与设备（右）</em></p>
+
+<p align="center">
+  <img src="docs/assets/mobile-pair.png" alt="手机配对页" width="28%" />
+  &nbsp;&nbsp;
+  <img src="docs/assets/mobile-sessions.png" alt="手机会话列表" width="28%" />
+</p>
+<p align="center"><em>手机端：输入 PIN / 扫码（左）· 配对后的会话列表（右）</em></p>
+
 ## 本插件解决的问题
 
 | 你搜到 / 看到的 | 实际坏在哪 | 本插件怎么处理 |
@@ -67,7 +83,7 @@
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.2.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.2.2
 ```
 
 然后由**操作者**在自己的时间窗重启现有 `dsh web`。打开 **设置 → 移动远程**，生成配对 offer，手机扫码（或手输 PIN）。
@@ -78,8 +94,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.2.1
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.2.1.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.1.tgz"
+cp dsh-coding-remote-kit-0.2.2.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.2.tgz"
 ```
 
 不要对本工作树执行 `dsh plugin add ./`。pnpm 11 会把某些 `file:` tarball 解析成 `link:` 源码树，入口 import 失败会拖死整个 GUI。
@@ -89,6 +105,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.1.tg
 - [名称](#名称)
 - [状态](#状态)
 - [特性](#特性)
+- [截图](#截图)
 - [本插件解决的问题](#本插件解决的问题)
 - [快速开始](#快速开始)
 - [安装](#安装)

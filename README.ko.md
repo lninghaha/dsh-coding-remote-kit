@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.2.1** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.2.2** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
 
 **[DeepSeek Harness](https://github.com/deepseek-ai/dsh)용 원격 휴대폰 접근.** 이미 `dsh web`을 실행 중인 데스크톱에 휴대폰을 페어링한 뒤, 세션을 관찰하고 좁은 범위의 쓰기만 수행합니다. 전체 Web API는 노출하지 않습니다.
 
@@ -27,7 +27,7 @@
 
 | | 이것을 사용 | 설명 |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.2.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.1` |
+| npm | `dsh-coding-remote-kit@0.2.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | 이전 checkout 이름 `dsh-mobile-remote` |
 | Cordis 플러그인 id | `mobile-remote` | 변경 없음 |
 | 설정 페이지 HTTP | `/api/mobile-remote/*` | 변경 없음 |
@@ -55,6 +55,22 @@
 - **사설망 우선** — LAN / Tailscale을 권장합니다. 선택적 Cloudflare Quick Tunnel은 **데이터 플레인만** 노출하며 포트 `3080`은 절대 노출하지 않습니다. 선택적 자체 호스팅 랑데부 Worker: 데스크톱과 휴대폰 모두 아웃바운드이며 업무 프레임은 E2EE를 유지합니다.
 - **표준 플러그인 형태** — Cordis 서버 플러그인 하나 + classic-script 설정 페이지. `dsh plugin --profile web add`에는 **file tarball**을 쓰고, `link:` 작업 트리는 쓰지 않습니다.
 
+## 스크린샷
+
+<p align="center">
+  <img src="docs/assets/settings-pairing.png" alt="데스크톱 설정 — QR 및 PIN 페어링" width="48%" />
+  &nbsp;
+  <img src="docs/assets/settings-overview.png" alt="데스크톱 설정 — 채널 상태와 페어링된 기기" width="48%" />
+</p>
+<p align="center"><em>데스크톱 설정 → 移动远程: 페어링 offer 생성(왼쪽) · 채널 상태와 기기(오른쪽)</em></p>
+
+<p align="center">
+  <img src="docs/assets/mobile-pair.png" alt="휴대폰 페어링 화면" width="28%" />
+  &nbsp;&nbsp;
+  <img src="docs/assets/mobile-sessions.png" alt="휴대폰 세션 목록" width="28%" />
+</p>
+<p align="center"><em>휴대폰: PIN 입력 / 스캔(왼쪽) · 페어링 후 세션 목록(오른쪽)</em></p>
+
 ## 이 플러그인이 해결하는 문제
 
 | 검색 / 본 것 | 실제로 깨진 것 | 이 플러그인의 대응 |
@@ -67,7 +83,7 @@
 ## 빠른 시작
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.2.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.2.2
 ```
 
 그다음 **운영자**가 자신의 시간창에서 기존 `dsh web`을 재시작합니다. **Settings → 移動远程**를 열고 페어링 offer를 만든 뒤, 휴대폰에서 QR을 스캔(또는 PIN 입력)합니다.
@@ -78,8 +94,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.2.1
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.2.1.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.1.tgz"
+cp dsh-coding-remote-kit-0.2.2.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.2.tgz"
 ```
 
 이 작업 트리에서 `dsh plugin add ./`를 실행하지 마세요. pnpm 11은 일부 `file:` tarball 경로를 `link:` 소스로 취급하며, 진입 import가 실패하면 GUI 전체가 내려갑니다.
@@ -89,6 +105,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.1.tg
 - [이름](#이름)
 - [상태](#상태)
 - [기능](#기능)
+- [스크린샷](#스크린샷)
 - [이 플러그인이 해결하는 문제](#이-플러그인이-해결하는-문제)
 - [빠른 시작](#빠른-시작)
 - [설치](#설치)

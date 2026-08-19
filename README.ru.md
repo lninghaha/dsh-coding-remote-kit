@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.2.1** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.2.2** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
 
 **Удалённый доступ с телефона к [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Сопрягите телефон с компьютером, где уже работает `dsh web`, наблюдайте сессии и выполняйте узкий набор записей — не открывая полный Web API.
 
@@ -27,7 +27,7 @@
 
 | | Используйте это | Примечания |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.2.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.1` |
+| npm | `dsh-coding-remote-kit@0.2.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | прежнее имя checkout `dsh-mobile-remote` |
 | id плагина Cordis | `mobile-remote` | без изменений |
 | HTTP страницы настроек | `/api/mobile-remote/*` | без изменений |
@@ -55,6 +55,22 @@
 - **Сначала частная сеть** — предпочтительны LAN / Tailscale. Необязательный Cloudflare Quick Tunnel открывает **только** плоскость данных, никогда порт `3080`. Необязательный самостоятельно размещённый rendezvous Worker: стол и телефон оба исходящие; деловые кадры остаются E2EE.
 - **Стандартная форма плагина** — один серверный плагин Cordis + страница настроек classic-script. `dsh plugin --profile web add` с **file tarball**, никогда с рабочим деревом `link:`.
 
+## Скриншоты
+
+<p align="center">
+  <img src="docs/assets/settings-pairing.png" alt="Настройки рабочего стола — предложение сопряжения с QR и PIN" width="48%" />
+  &nbsp;
+  <img src="docs/assets/settings-overview.png" alt="Настройки рабочего стола — статус канала и сопряжённые устройства" width="48%" />
+</p>
+<p align="center"><em>Рабочий стол Настройки → 移动远程: создать предложение сопряжения (слева) · статус канала и устройства (справа)</em></p>
+
+<p align="center">
+  <img src="docs/assets/mobile-pair.png" alt="Экран сопряжения на телефоне" width="28%" />
+  &nbsp;&nbsp;
+  <img src="docs/assets/mobile-sessions.png" alt="Список сессий на телефоне" width="28%" />
+</p>
+<p align="center"><em>Companion на телефоне: ввести PIN / сканировать (слева) · список сессий после сопряжения (справа)</em></p>
+
 ## Проблемы, которые решает этот плагин
 
 | Искали / увидели | Что на самом деле было сломано | Что делает этот плагин |
@@ -67,7 +83,7 @@
 ## Быстрый старт
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.2.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.2.2
 ```
 
 Затем **оператор** перезапускает существующий процесс `dsh web` в своём окне. Откройте **Settings → 移動远程**, создайте предложение сопряжения, отсканируйте QR (или введите PIN) на телефоне.
@@ -78,8 +94,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.2.1
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.2.1.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.1.tgz"
+cp dsh-coding-remote-kit-0.2.2.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.2.tgz"
 ```
 
 Не выполняйте `dsh plugin add ./` из этого рабочего дерева. pnpm 11 воспринимает некоторые пути `file:` tarball как источник `link:`, и сбой входного import валит весь GUI.
@@ -89,6 +105,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.1.tg
 - [Имена](#имена)
 - [Статус](#статус)
 - [Возможности](#возможности)
+- [Скриншоты](#скриншоты)
 - [Проблемы, которые решает этот плагин](#проблемы-которые-решает-этот-плагин)
 - [Быстрый старт](#быстрый-старт)
 - [Установка](#установка)

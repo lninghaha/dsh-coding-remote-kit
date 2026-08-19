@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.2.1** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.2.2** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
 
 **[DeepSeek Harness](https://github.com/deepseek-ai/dsh) 向けのリモートスマホアクセス。** すでに `dsh web` が動いているデスクトップにスマホをペアリングし、セッションを観察して限定された書き込みだけを行う——フル Web API は公開しません。
 
@@ -27,7 +27,7 @@
 
 | | これを使う | 説明 |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.2.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.1` |
+| npm | `dsh-coding-remote-kit@0.2.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.2.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | 旧 checkout 名 `dsh-mobile-remote` |
 | Cordis プラグイン id | `mobile-remote` | 変更なし |
 | 設定ページ HTTP | `/api/mobile-remote/*` | 変更なし |
@@ -55,6 +55,22 @@
 - **プライベートネットワーク優先** — LAN / Tailscale を推奨。任意の Cloudflare Quick Tunnel は **データプレーンのみ** を公開し、ポート `3080` は決して公開しません。任意の自前ランデブー Worker：デスクトップとスマホはどちらも出向き、業務フレームは E2EE のままです。
 - **標準プラグイン形** — Cordis サーバープラグイン 1 つ + classic-script 設定ページ。`dsh plugin --profile web add` には **file tarball** を使い、`link:` 作業ツリーは使いません。
 
+## スクリーンショット
+
+<p align="center">
+  <img src="docs/assets/settings-pairing.png" alt="デスクトップ設定 — QR と PIN のペアリング" width="48%" />
+  &nbsp;
+  <img src="docs/assets/settings-overview.png" alt="デスクトップ設定 — チャネル状態とペア済みデバイス" width="48%" />
+</p>
+<p align="center"><em>デスクトップ 設定 → 移动远程：ペアリング offer（左）· チャネル状態とデバイス（右）</em></p>
+
+<p align="center">
+  <img src="docs/assets/mobile-pair.png" alt="スマホのペアリング画面" width="28%" />
+  &nbsp;&nbsp;
+  <img src="docs/assets/mobile-sessions.png" alt="スマホのセッション一覧" width="28%" />
+</p>
+<p align="center"><em>スマホ：PIN 入力 / スキャン（左）· ペアリング後のセッション一覧（右）</em></p>
+
 ## このプラグインが解決する問題
 
 | 検索 / 見たもの | 実際に壊れていたこと | このプラグインの対応 |
@@ -67,7 +83,7 @@
 ## クイックスタート
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.2.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.2.2
 ```
 
 その後、**オペレーター** が自分の時間枠で既存の `dsh web` を再起動します。**Settings → 移動远程** を開き、ペアリング offer を作成し、スマホで QR をスキャン（または PIN を入力）します。
@@ -78,8 +94,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.2.1
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.2.1.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.1.tgz"
+cp dsh-coding-remote-kit-0.2.2.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.2.tgz"
 ```
 
 この作業ツリーに対して `dsh plugin add ./` を実行しないでください。pnpm 11 は一部の `file:` tarball パスを `link:` ソースとして扱い、入口 import が失敗すると GUI 全体が落ちます。
@@ -89,6 +105,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.2.1.tg
 - [名称](#名称)
 - [状態](#状態)
 - [特徴](#特徴)
+- [スクリーンショット](#スクリーンショット)
 - [このプラグインが解決する問題](#このプラグインが解決する問題)
 - [クイックスタート](#クイックスタート)
 - [インストール](#インストール)
