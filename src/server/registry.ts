@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { base64UrlEncode } from "../shared/base64.js";
 import { DEVICE_SCOPE, MAX_PENDING_OFFERS } from "../shared/constants.js";
+import { formatPairCode, normalizePairCode, pairCodeFromBytes } from "../shared/pair-code.js";
 import type { PairingOffer } from "../shared/offer.js";
 import { constantTimeEqualHex, randomBytes } from "./crypto.js";
 import { appendJsonLine, readJsonFile, writeFileAtomic } from "./storage.js";
@@ -155,11 +156,17 @@ export interface CreateOfferInput {
 	readonly now?: number;
 }
 
+export interface CreatedOffer {
+	readonly offer: PairingOffer;
+	readonly pairCode: string;
+}
+
 export class OfferRegistry {
 	readonly #pending = new Map<string, PairingOffer>();
 	readonly #order: string[] = [];
+	readonly #codes = new Map<string, string>();
 
-	createOffer(input: CreateOfferInput): PairingOffer {
+	createOffer(input: CreateOfferInput): CreatedOffer {
 		const now = input.now ?? Date.now();
 		const offer: PairingOffer = {
 			v: 1,
@@ -170,14 +177,16 @@ export class OfferRegistry {
 			offerId: base64UrlEncode(randomBytes(16)),
 			expiresAt: now + input.ttlMs,
 		};
+		const pairCode = this.#mintPairCode();
 		this.#pending.set(offer.deviceToken, offer);
+		this.#codes.set(pairCode, offer.deviceToken);
 		this.#order.push(offer.deviceToken);
 		while (this.#pending.size > MAX_PENDING_OFFERS) {
 			const oldest = this.#order.shift();
 			if (oldest === undefined) break;
-			this.#pending.delete(oldest);
+			this.#forget(oldest);
 		}
-		return offer;
+		return { offer, pairCode: formatPairCode(pairCode) };
 	}
 
 	count(): number {
@@ -189,10 +198,17 @@ export class OfferRegistry {
 		const offer = this.#pending.get(deviceToken);
 		if (offer === undefined) return null;
 		if (offer.expiresAt <= now) {
-			this.#consume(deviceToken);
+			this.#forget(deviceToken);
 			return null;
 		}
 		return offer;
+	}
+
+	/** Find a live offer by the short typed pairing PIN. */
+	findByPairCode(pairCode: string, now: number = Date.now()): PairingOffer | null {
+		const token = this.#codes.get(normalizePairCode(pairCode));
+		if (token === undefined) return null;
+		return this.findByToken(token, now);
 	}
 
 	/** Consume (remove) a pending offer, returning it only if live. */
@@ -200,15 +216,26 @@ export class OfferRegistry {
 		const offer = this.#pending.get(deviceToken);
 		if (offer === undefined) return null;
 		if (offer.expiresAt <= now) {
-			this.#consume(deviceToken);
+			this.#forget(deviceToken);
 			return null;
 		}
-		this.#consume(deviceToken);
+		this.#forget(deviceToken);
 		return offer;
 	}
 
-	#consume(deviceToken: string): void {
+	#mintPairCode(): string {
+		for (let attempt = 0; attempt < 8; attempt += 1) {
+			const code = pairCodeFromBytes(randomBytes(8));
+			if (!this.#codes.has(code)) return code;
+		}
+		return pairCodeFromBytes(randomBytes(8));
+	}
+
+	#forget(deviceToken: string): void {
 		this.#pending.delete(deviceToken);
+		for (const [code, token] of this.#codes) {
+			if (token === deviceToken) this.#codes.delete(code);
+		}
 		const index = this.#order.indexOf(deviceToken);
 		if (index >= 0) this.#order.splice(index, 1);
 	}

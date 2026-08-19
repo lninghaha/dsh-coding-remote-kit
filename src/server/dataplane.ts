@@ -37,6 +37,8 @@ import { open, seal } from "../shared/frame.js";
 import { dispatchRpc } from "./rpc.js";
 import { resolveDeviceToken, ServerHandshake, type ServerSessionKeys } from "./e2ee.js";
 import type { AuditLogger, DeviceRegistry, OfferRegistry } from "./registry.js";
+import { isCompletePairCode, normalizePairCode } from "../shared/pair-code.js";
+import { readJsonBody, writeJson } from "./security.js";
 import type { Subscriber, UpstreamHub } from "./upstream.js";
 
 export interface DataPlaneLogger {
@@ -182,8 +184,15 @@ export class MobileDataPlane {
 		response.end(request.method === "HEAD" ? undefined : body);
 	}
 
+	#claimHits = new Map<string, number[]>();
+
 	#requestHandler = (request: IncomingMessage, response: ServerResponse): void => {
 		try {
+			const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
+			if (pathname === "/m/claim") {
+				void this.#serveClaim(request, response);
+				return;
+			}
 			this.#serveStatic(request, response);
 		} catch (error) {
 			this.#deps.logger.error(`data plane request failed (${error instanceof Error ? error.name : "error"})`);
@@ -191,6 +200,51 @@ export class MobileDataPlane {
 			response.end();
 		}
 	};
+
+	#serveClaim = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+		const headers = { "cache-control": "no-store", "x-content-type-options": "nosniff" };
+		if (request.method !== "POST") {
+			response.writeHead(405, { ...headers, allow: "POST" });
+			response.end();
+			return;
+		}
+		const body = await readJsonBody(request, response);
+		if (body === undefined) return;
+		const record = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+		const raw = typeof record?.code === "string" ? record.code : "";
+		const code = normalizePairCode(raw);
+		if (!isCompletePairCode(code)) {
+			writeJson(response, 400, { ok: false, error: { code: "invalid_params", message: "配对码格式不对" } });
+			return;
+		}
+		const ip = request.socket.remoteAddress ?? "unknown";
+		if (this.#claimBlocked(ip)) {
+			writeJson(response, 429, { ok: false, error: { code: "rate_limited", message: "尝试次数过多，请稍后再试" } });
+			return;
+		}
+		const offer = this.#deps.offers.findByPairCode(code, this.#now());
+		if (offer === null) {
+			this.#claimFail(ip);
+			this.#deps.audit.log({ event: "pair_code_miss" }, this.#now());
+			writeJson(response, 404, { ok: false, error: { code: "not-found", message: "配对码无效或已过期" } });
+			return;
+		}
+		this.#deps.audit.log({ event: "pair_code_hit", detail: { offerId: offer.offerId } }, this.#now());
+		writeJson(response, 200, { ok: true, offer });
+	};
+
+	#claimBlocked(ip: string): boolean {
+		const now = this.#now();
+		const hits = (this.#claimHits.get(ip) ?? []).filter((time) => now - time < 60_000);
+		this.#claimHits.set(ip, hits);
+		return hits.length >= 8;
+	}
+
+	#claimFail(ip: string): void {
+		const hits = this.#claimHits.get(ip) ?? [];
+		hits.push(this.#now());
+		this.#claimHits.set(ip, hits);
+	}
 
 	#onConnection = (ws: WebSocket): void => {
 		if (this.#connections >= MAX_CONNECTIONS) {

@@ -32,14 +32,14 @@ test("unknown / wrong token → bad_auth", () => {
 
 test("expired offer → bad_auth", () => {
 	const d = deps();
-	const offer = d.offers.createOffer({ endpoint: "e", pageUrl: "p", publicKeyB64: "k", ttlMs: 1000, now: 1000 });
+	const { offer } = d.offers.createOffer({ endpoint: "e", pageUrl: "p", publicKeyB64: "k", ttlMs: 1000, now: 1000 });
 	const result = resolveDeviceToken(offer.deviceToken, { ...d, now: () => 5000 });
 	assert.equal(result.kind, "bad_auth");
 });
 
 test("offer consumed twice → bad_auth", () => {
 	const d = deps();
-	const offer = d.offers.createOffer({ endpoint: "e", pageUrl: "p", publicKeyB64: "k", ttlMs: 100000, now: 1000 });
+	const { offer } = d.offers.createOffer({ endpoint: "e", pageUrl: "p", publicKeyB64: "k", ttlMs: 100000, now: 1000 });
 	assert.ok(d.offers.consumeByToken(offer.deviceToken, 2000));
 	assert.equal(d.offers.consumeByToken(offer.deviceToken, 2000), null);
 	const result = resolveDeviceToken(offer.deviceToken, { ...d, now: () => 2000 });
@@ -48,7 +48,7 @@ test("offer consumed twice → bad_auth", () => {
 
 test("revoked device → unauthorized", () => {
 	const d = deps();
-	const offer = d.offers.createOffer({ endpoint: "e", pageUrl: "p", publicKeyB64: "k", ttlMs: 100000, now: 1000 });
+	const { offer } = d.offers.createOffer({ endpoint: "e", pageUrl: "p", publicKeyB64: "k", ttlMs: 100000, now: 1000 });
 	const first = resolveDeviceToken(offer.deviceToken, { ...d, now: () => 2000 });
 	assert.equal(first.kind, "ok");
 	d.registry.revoke(first.device.deviceId, 3000);

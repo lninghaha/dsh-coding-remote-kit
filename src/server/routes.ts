@@ -182,15 +182,21 @@ export function registerManagementRoutes(
 				advertiseResult = deps.advertise();
 			}
 			const { endpoint, pageUrl, candidates } = advertiseResult;
-			const offer = deps.offers.createOffer({
+			const created = deps.offers.createOffer({
 				endpoint,
 				pageUrl,
 				publicKeyB64: deps.publicKeyB64,
 				ttlMs: deps.offerTtlMs,
 				now: deps.now(),
 			});
+			const { offer, pairCode } = created;
 			deps.audit.log({ event: "offer_created", detail: { offerId: offer.offerId } }, deps.now());
-			writeJson(response, 200, { offer, qrText: offerQrText(pageUrl, encodeOffer(offer)), candidates });
+			writeJson(response, 200, {
+				offer,
+				pairCode,
+				qrText: offerQrText(pageUrl, encodeOffer(offer)),
+				candidates,
+			});
 		}),
 		register("/api/mobile-remote/status", ["GET"], async (_request, response) => {
 			writeJson(response, 200, {

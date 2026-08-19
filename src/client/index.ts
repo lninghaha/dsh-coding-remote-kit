@@ -43,6 +43,7 @@ interface OfferInfo {
 	qrText: string;
 	candidates: string[];
 	expiresAt: number;
+	pairCode: string;
 }
 
 interface DeviceInfo {
@@ -297,6 +298,7 @@ function MobileRemoteSettings() {
 					qrText: String(payload.qrText ?? ""),
 					candidates: Array.isArray(payload.candidates) ? (payload.candidates as string[]) : [],
 					expiresAt: offer.expiresAt,
+					pairCode: String(payload.pairCode ?? ""),
 				});
 				refreshStatus();
 			} catch {
@@ -391,7 +393,7 @@ function MobileRemoteSettings() {
 		createElement(
 			"div",
 			{ style: box },
-			createElement("strong", { style: { fontSize: "14px" } }, "2. 生成二维码"),
+			createElement("strong", { style: { fontSize: "14px" } }, "2. 生成二维码或配对码"),
 			createElement(
 				"button",
 				{
@@ -407,7 +409,22 @@ function MobileRemoteSettings() {
 				? createElement(
 						"div",
 						{ style: { display: "grid", gap: "8px" } },
-						createElement("p", { style: muted }, "用手机浏览器扫描。不要发到群里。"),
+						createElement("p", { style: muted }, "扫码，或在手机打开配对页后输入配对码。不要发到群里。"),
+						offerInfo.pairCode.length > 0
+							? createElement(
+									"p",
+									{
+										style: {
+											margin: 0,
+											fontSize: "28px",
+											letterSpacing: "0.14em",
+											fontWeight: 700,
+											fontVariantNumeric: "tabular-nums",
+										},
+									},
+									offerInfo.pairCode,
+								)
+							: null,
 						createElement("canvas", {
 							id: "dsh-mobile-remote-qr",
 							style: { width: "220px", height: "220px", imageRendering: "pixelated" },

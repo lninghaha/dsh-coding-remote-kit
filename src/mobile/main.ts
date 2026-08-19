@@ -10,7 +10,7 @@
 import nacl from "tweetnacl";
 import { base64Decode, base64Encode, utf8Decode, utf8Encode } from "../shared/base64.js";
 import { MOBILE_PROTOCOL_VERSION } from "../shared/constants.js";
-import { decodeOffer, type PairingOffer } from "../shared/offer.js";
+import { decodeOffer, validateOffer, type PairingOffer } from "../shared/offer.js";
 import { evaluateVersionGate } from "../shared/version.js";
 import { startConnectedApp } from "./app.js";
 import { generateClientKeyPair, MobileE2eeSession } from "./e2ee.js";
@@ -239,6 +239,66 @@ function bootE2eList(): void {
 	startConnectedApp(app, client);
 }
 
+function bootPairForm(): void {
+	document.documentElement.classList.add("connected");
+	document.body.classList.add("connected");
+	const app = root();
+	app.className = "shell";
+	app.textContent = "";
+	app.style.color = "";
+	const wrap = document.createElement("div");
+	wrap.style.cssText = "padding:24px;display:flex;flex-direction:column;gap:12px;max-width:28rem;margin:0 auto;";
+	const title = document.createElement("strong");
+	title.textContent = "输入配对码";
+	const hint = document.createElement("p");
+	hint.style.cssText = "margin:0;color:#9a9a9a;font-size:14px;line-height:1.5";
+	hint.textContent = "在桌面「移动远程」里生成二维码后，把 8 位配对码打在这里。也可以直接扫码。";
+	const input = document.createElement("input");
+	input.placeholder = "XXXX-XXXX";
+	input.autocomplete = "one-time-code";
+	input.setAttribute("inputmode", "text");
+	const button = document.createElement("button");
+	button.type = "button";
+	button.textContent = "连接";
+	const err = document.createElement("p");
+	err.style.cssText = "margin:0;color:#f87171;font-size:13px";
+	const submit = (): void => {
+		err.textContent = "";
+		button.disabled = true;
+		void (async () => {
+			try {
+				const response = await fetch("/m/claim", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ code: input.value }),
+				});
+				const payload = (await response.json()) as { offer?: unknown; error?: { message?: string } };
+				if (!response.ok || payload.offer === undefined) {
+					err.textContent = payload.error?.message ?? "配对码无效";
+					button.disabled = false;
+					return;
+				}
+				const offer = validateOffer(payload.offer);
+				try {
+					localStorage.setItem(HOST_KEY, offer.pageUrl);
+				} catch {
+					// ignore
+				}
+				connect(offer);
+			} catch {
+				err.textContent = "无法提交配对码";
+				button.disabled = false;
+			}
+		})();
+	};
+	button.addEventListener("click", submit);
+	input.addEventListener("keydown", (event) => {
+		if (event.key === "Enter") submit();
+	});
+	wrap.append(title, hint, input, button, err);
+	app.appendChild(wrap);
+}
+
 function boot(): void {
 	registerShellWorker();
 	if (new URLSearchParams(location.search).get("e2e") === "list") {
@@ -247,7 +307,7 @@ function boot(): void {
 	}
 	const hash = location.hash;
 	if (hash.length <= 1) {
-		render("等待配对", "请从桌面 dsh web 设置页扫码配对。");
+		bootPairForm();
 		return;
 	}
 	const code = hash.slice(1);

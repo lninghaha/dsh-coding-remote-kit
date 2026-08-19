@@ -20,6 +20,8 @@
 
 `session.prompt` / `session.cancel` / `respond` 记审计 `rpc_write`，`detail` 只有 `{ method, sessionId }`。
 
+数据面 `POST /m/claim` `{ code }`（8 位配对 PIN）→ `{ offer }`，供手机手输；失败不计完整码。每 IP 每分钟最多 8 次失败。
+
 ## 推送信封
 
 已认证连接上的服务端推送：

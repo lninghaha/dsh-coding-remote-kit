@@ -69,10 +69,13 @@ test("constant-time hex comparison path (timingSafeEqual) works", () => {
 
 test("offer registry enforces one-time consumption and a 5-offer cap", () => {
 	const offers = new OfferRegistry();
-	const offer = offers.createOffer({ endpoint: "ws://x", pageUrl: "http://x", publicKeyB64: "p", ttlMs: 10000, now: 1000 });
+	const { offer, pairCode } = offers.createOffer({ endpoint: "ws://x", pageUrl: "http://x", publicKeyB64: "p", ttlMs: 10000, now: 1000 });
 	assert.equal(offers.count(), 1);
+	assert.match(pairCode, /^[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+	assert.equal(offers.findByPairCode(pairCode.toLowerCase(), 2000)?.offerId, offer.offerId);
 	assert.equal(offers.consumeByToken(offer.deviceToken, 2000)?.offerId, offer.offerId);
 	assert.equal(offers.consumeByToken(offer.deviceToken, 2000), null);
+	assert.equal(offers.findByPairCode(pairCode, 2000), null);
 
 	const capped = new OfferRegistry();
 	const first = capped.createOffer({ endpoint: "e", pageUrl: "p", publicKeyB64: "k", ttlMs: 10000, now: 1 });
@@ -80,5 +83,5 @@ test("offer registry enforces one-time consumption and a 5-offer cap", () => {
 		capped.createOffer({ endpoint: "e", pageUrl: "p", publicKeyB64: "k", ttlMs: 10000, now: 1 });
 	}
 	assert.equal(capped.count(), 5);
-	assert.equal(capped.consumeByToken(first.deviceToken, 2), null);
+	assert.equal(capped.consumeByToken(first.offer.deviceToken, 2), null);
 });
