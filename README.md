@@ -5,6 +5,8 @@ DeepSeek Harness（DSH）**远程手机访问**插件。
 目标：在电脑上跑 `dsh web`，用手机安全地观察与轻量操控 Agent——对标 [Orca Mobile Companion](https://www.onorca.dev/docs/mobile) 的产品意图，并兼容 DSH「Everything is a Plugin」形态。
 
 > 宿主版本钉死 `@deepseek-ai/dsh@0.1.0-rc.7`。本仓库是社区插件，**不暗示 DeepSeek 官方背书**。
+>
+> 干活前先读 [`AGENTS.md`](AGENTS.md)：**禁止自行重启生产 `dsh-web`**；挂回 profile 与重启由操作者分工。
 
 ## 状态
 

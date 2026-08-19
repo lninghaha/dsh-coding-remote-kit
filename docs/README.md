@@ -12,6 +12,7 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [../AGENTS.md](../AGENTS.md) | 项目规则：禁止自行重启 `dsh-web`、挂回分工、沙箱门禁 |
 | [adr/0001-mvp-scope.md](adr/0001-mvp-scope.md) | ADR：MVP 范围与路线 B（语义窄 RPC + 双平面） |
 | [threat-model.md](threat-model.md) | 威胁模型：资产、攻击者、不变量、诚实边界、禁止事项 |
 | [protocol.md](protocol.md) | M3 白名单 RPC、推送信封、respond 两种 payload |
