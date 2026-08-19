@@ -4,6 +4,17 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+## v0.3.0 - 2026-08-19
+
+### Added
+
+- Bilingual product UI (zh-CN / en) for desktop Settings and the phone companion: auto-detect via `navigator.language`, optional `?lang=`, in-app switch persisted in `localStorage`.
+- Shared i18n catalog under `src/shared/i18n/`; pairing API errors localize from stable `error.code` values.
+
+### Documentation
+
+- README screenshots split by language: `docs/assets/zh-CN/*` for `README.zh-CN.md`, `docs/assets/en/*` for all other READMEs.
+
 ## v0.2.2 - 2026-08-19
 
 ### Documentation

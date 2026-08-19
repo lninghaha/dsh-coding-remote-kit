@@ -2,6 +2,7 @@
  * Connected mobile UI: session list, transcript, short reply, approval / question cards.
  */
 
+import { formatAgo, getLocale, setLocale, subscribeLocale, t } from "../shared/i18n/index.js";
 import { asRecord, extractText, type MobilePush, type MobileRpcClient } from "./rpc.js";
 
 export interface SessionRow {
@@ -87,11 +88,32 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 
 	const sessionContext = (sessionId: string): { title: string; workspace: string } => {
 		const session = state.sessions.find((row) => row.sessionId === sessionId);
-		if (session === undefined) return { title: "未知任务", workspace: "未知工作区" };
+		if (session === undefined) return { title: t("app.unknownTask"), workspace: t("app.unknownWorkspace") };
 		return {
-			title: session.title ?? "未命名会话",
-			workspace: session.cwd === undefined ? "未绑定工作区" : basenameOf(session.cwd),
+			title: session.title ?? t("app.untitledSession"),
+			workspace: session.cwd === undefined ? t("app.unboundWorkspace") : basenameOf(session.cwd),
 		};
+	};
+
+	const appendLanguageSwitcher = (container: HTMLElement): void => {
+		const wrap = document.createElement("div");
+		wrap.className = "lang-switch";
+		const locales = [
+			{ locale: "zh-CN" as const, labelKey: "common.lang.zh" as const },
+			{ locale: "en" as const, labelKey: "common.lang.en" as const },
+		];
+		for (const [index, entry] of locales.entries()) {
+			if (index > 0) wrap.appendChild(document.createTextNode(" | "));
+			const button = document.createElement("button");
+			button.type = "button";
+			button.className = getLocale() === entry.locale ? "active" : "";
+			button.textContent = t(entry.labelKey);
+			button.addEventListener("click", () => {
+				setLocale(entry.locale, localStorage);
+			});
+			wrap.appendChild(button);
+		}
+		container.appendChild(wrap);
 	};
 
 	const render = (): void => {
@@ -125,24 +147,25 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		const header = el("header", { className: "bar" });
 		const view = state.view;
 		if (view.name === "session") {
-			const back = el("button", { className: "ghost", type: "button" }, "返回");
+			const back = el("button", { className: "ghost", type: "button" }, t("common.back"));
 			back.addEventListener("click", () => {
 				void leaveSession();
 			});
 			header.appendChild(back);
 			const current = state.sessions.find((row) => row.sessionId === view.sessionId);
 			const titles = el("div", { className: "bar-title" });
-			titles.appendChild(el("strong", {}, current?.title ?? "未命名会话"));
+			titles.appendChild(el("strong", {}, current?.title ?? t("app.untitledSession")));
 			const sub =
 				current?.running === true
-					? "任务会话 · 运行中"
+					? t("app.sessionRunning")
 					: current?.cwd !== undefined
-						? `任务会话 · ${basenameOf(current.cwd)}`
-						: "任务会话";
+						? t("app.sessionIdleCwd", { cwd: basenameOf(current.cwd) })
+						: t("app.session");
 			titles.appendChild(el("div", { className: "sub" }, sub));
 			header.appendChild(titles);
 			const actions = el("div", { className: "bar-actions" });
-			const more = el("button", { className: "ghost", type: "button" }, "信息");
+			appendLanguageSwitcher(actions);
+			const more = el("button", { className: "ghost", type: "button" }, t("app.info"));
 			more.addEventListener("click", () => {
 				state.sheet = true;
 				render();
@@ -151,18 +174,19 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			header.appendChild(actions);
 		} else {
 			const block = el("div", { className: "bar-title" });
-			block.appendChild(el("strong", {}, "DSH 远程"));
+			block.appendChild(el("strong", {}, t("brand.title")));
 			const pending = state.approvals.length + state.questions.length;
 			block.appendChild(
 				el(
 					"div",
 					{ className: "sub" },
-					pending > 0 ? `已连接 · ${String(pending)} 条待处理` : "已连接到当前窗口",
+					pending > 0 ? t("app.connectedPending", { n: pending }) : t("app.connectedWindow"),
 				),
 			);
 			header.appendChild(block);
 			const actions = el("div", { className: "bar-actions" });
-			const refresh = el("button", { className: "ghost", type: "button" }, "刷新");
+			appendLanguageSwitcher(actions);
+			const refresh = el("button", { className: "ghost", type: "button" }, t("common.refresh"));
 			refresh.addEventListener("click", () => {
 				void refreshList();
 			});
@@ -176,8 +200,8 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		const wrap = el("div", { className: "col" });
 		if (!state.hintHidden) {
 			const hero = el("div", { className: "hero" });
-			hero.appendChild(el("p", {}, "只能看到桌面窗口里已打开的项目。二维码失效后请回桌面重新连接。"));
-			const dismiss = el("button", { className: "ghost", type: "button" }, "知道了");
+			hero.appendChild(el("p", {}, t("app.hint")));
+			const dismiss = el("button", { className: "ghost", type: "button" }, t("common.gotIt"));
 			dismiss.addEventListener("click", () => {
 				state.hintHidden = true;
 				writeHintHidden();
@@ -190,7 +214,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		const search = el("input") as HTMLInputElement;
 		search.className = "search";
 		search.type = "search";
-		search.placeholder = "筛选工作区或任务";
+		search.placeholder = t("app.filterPlaceholder");
 		search.value = state.query;
 		search.addEventListener("input", () => {
 			state.query = search.value;
@@ -209,9 +233,9 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		wrap.appendChild(search);
 		const groups = filterGroups(groupByCwd(state.sessions), state.filterQuery);
 		const section = el("div", { className: "section-h" });
-		section.appendChild(el("h2", {}, "工作区和任务"));
+		section.appendChild(el("h2", {}, t("app.workspacesTasks")));
 		section.appendChild(
-			el("span", { className: "muted" }, `${String(groups.length)} 个工作区 · ${String(state.sessions.length)} 个任务`),
+			el("span", { className: "muted" }, t("app.workspaceCount", { workspaces: groups.length, tasks: state.sessions.length })),
 		);
 		wrap.appendChild(section);
 		if (state.sessions.length === 0) {
@@ -219,13 +243,13 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 				el(
 					"p",
 					{ className: "empty-hint" },
-					"桌面 DSH 窗口里还没有打开的项目或任务。请先在桌面打开工作区，再点右上角刷新。",
+					t("app.emptyDesktop"),
 				),
 			);
 			return wrap;
 		}
 		if (groups.length === 0) {
-			wrap.appendChild(el("p", { className: "empty-hint" }, `没有匹配「${state.filterQuery.trim()}」的会话，试试换个关键词。`));
+			wrap.appendChild(el("p", { className: "empty-hint" }, t("app.filterEmpty", { query: state.filterQuery.trim() })));
 			return wrap;
 		}
 		for (const group of groups) {
@@ -252,14 +276,14 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		const name = el("div");
 		const titleLine = el("div");
 		titleLine.appendChild(el("span", { className: "ws-name" }, group.label));
-		titleLine.appendChild(el("span", { className: "badge" }, group.cwd === undefined ? "未绑定" : "本地"));
+		titleLine.appendChild(el("span", { className: "badge" }, group.cwd === undefined ? t("app.unbound") : t("common.local")));
 		if (pending > 0) {
-			titleLine.appendChild(el("span", { className: "badge pending" }, `${String(pending)} 待处理`));
+			titleLine.appendChild(el("span", { className: "badge pending" }, t("app.pendingShort", { n: pending })));
 		}
 		name.appendChild(titleLine);
 		if (group.cwd !== undefined) name.appendChild(el("div", { className: "ws-path" }, group.cwd));
 		name.appendChild(
-			el("div", { className: "muted" }, `${open ? "▾" : "▸"}  ${String(group.sessions.length)} 个任务`),
+			el("div", { className: "muted" }, `${open ? "▾" : "▸"}  ${t("app.taskCount", { n: group.sessions.length })}`),
 		);
 		toggle.appendChild(name);
 		toggle.addEventListener("click", () => {
@@ -268,7 +292,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			render();
 		});
 		const add = el("button", { className: "icon-btn", type: "button" }, "+");
-		add.setAttribute("aria-label", "新建任务");
+		add.setAttribute("aria-label", t("app.newTask"));
 		add.addEventListener("click", () => {
 			void createSession(group.cwd);
 		});
@@ -277,18 +301,18 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		card.appendChild(head);
 		if (open) {
 			if (group.sessions.length === 0) {
-				card.appendChild(el("p", { className: "muted" }, "这个工作区暂无任务"));
+				card.appendChild(el("p", { className: "muted" }, t("app.noTasksInWorkspace")));
 			}
 			const limit = state.showAll.has(group.key) ? group.sessions.length : 5;
 			const visible = group.sessions.slice(0, limit);
 			for (const session of visible) {
 				const row = el("button", { className: "task", type: "button" });
 				const left = el("div", { className: "task-main" });
-				left.appendChild(el("div", { className: "title" }, session.title ?? "未命名会话"));
+				left.appendChild(el("div", { className: "title" }, session.title ?? t("app.untitledSession")));
 				left.appendChild(el("div", { className: "muted" }, formatAgo(session.updatedAt)));
 				row.appendChild(left);
 				row.appendChild(
-					el("span", { className: session.running ? "pill run" : "pill" }, session.running ? "运行中" : "空闲"),
+					el("span", { className: session.running ? "pill run" : "pill" }, session.running ? t("app.running") : t("app.idle")),
 				);
 				row.addEventListener("click", () => {
 					void openSession(session.sessionId);
@@ -296,7 +320,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 				card.appendChild(row);
 			}
 			if (group.sessions.length > 5 && !state.showAll.has(group.key)) {
-				const more = el("button", { className: "more-tasks", type: "button" }, `显示全部 ${String(group.sessions.length)} 个任务`);
+				const more = el("button", { className: "more-tasks", type: "button" }, t("app.showAllTasks", { n: group.sessions.length }));
 				more.addEventListener("click", () => {
 					state.showAll.add(group.key);
 					render();
@@ -318,7 +342,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		const view = state.view;
 		if (view.name === "session") {
 			const current = state.sessions.find((row) => row.sessionId === view.sessionId);
-			sheet.appendChild(el("h3", {}, "会话信息"));
+			sheet.appendChild(el("h3", {}, t("app.sessionInfo")));
 			const dl = el("dl", { className: "sheet-dl" });
 			const addRow = (label: string, value: string): void => {
 				const row = el("div");
@@ -326,25 +350,25 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 				row.appendChild(el("dd", {}, value));
 				dl.appendChild(row);
 			};
-			addRow("任务", current?.title ?? "未命名会话");
-			addRow("工作区", current?.cwd ?? "未绑定");
-			addRow("状态", current?.running === true ? "运行中" : "空闲");
-			addRow("会话 ID", view.sessionId.slice(0, 12) + "…");
+			addRow(t("app.task"), current?.title ?? t("app.untitledSession"));
+			addRow(t("app.workspace"), current?.cwd ?? t("app.unbound"));
+			addRow(t("app.status"), current?.running === true ? t("app.running") : t("app.idle"));
+			addRow(t("app.sessionId"), view.sessionId.slice(0, 12) + "…");
 			sheet.appendChild(dl);
 			sheet.appendChild(
 				el(
 					"p",
 					{ className: "muted" },
-					"审查、终端与完整编辑器仅在桌面 DSH 侧栏提供；手机端负责观察、短回复与审批。",
+					t("app.desktopOnly"),
 				),
 			);
 		} else {
-			sheet.appendChild(el("h3", {}, "连接信息"));
+			sheet.appendChild(el("h3", {}, t("app.connectionInfo")));
 			sheet.appendChild(
-				el("p", { className: "muted" }, "已与桌面建立端到端加密连接。待处理审批会显示在列表顶部。"),
+				el("p", { className: "muted" }, t("app.connectionBody")),
 			);
 		}
-		const close = el("button", { type: "button", className: "ghost" }, "关闭");
+		const close = el("button", { type: "button", className: "ghost" }, t("common.close"));
 		close.addEventListener("click", () => {
 			state.sheet = false;
 			render();
@@ -367,7 +391,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		wrap.appendChild(scroller);
 		const composer = el("form", { className: "composer" });
 		if (running) {
-			const stop = el("button", { type: "button", className: "ghost danger" }, state.busy ? "停止中…" : "停止生成");
+			const stop = el("button", { type: "button", className: "ghost danger" }, state.busy ? t("app.stopping") : t("app.stop"));
 			stop.disabled = state.busy;
 			stop.addEventListener("click", () => {
 				void run(async () => {
@@ -378,12 +402,12 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		}
 		const row = el("div", { className: "composer-row" });
 		const input = el("textarea") as HTMLTextAreaElement;
-		input.placeholder = "继续给 Agent 发指令";
+		input.placeholder = t("app.composerPlaceholder");
 		input.addEventListener("input", () => {
 			input.style.height = "auto";
 			input.style.height = `${String(Math.min(input.scrollHeight, 120))}px`;
 		});
-		const send = el("button", { type: "submit" }, state.busy ? "…" : "发送");
+		const send = el("button", { type: "submit" }, state.busy ? "…" : t("app.send"));
 		send.disabled = state.busy;
 		composer.addEventListener("submit", (event) => {
 			event.preventDefault();
@@ -420,12 +444,12 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 
 	const renderApproval = (approval: PendingApproval, showContext: boolean): HTMLElement => {
 		const card = el("div", { className: "card" });
-		card.appendChild(el("strong", {}, `审批 · ${approval.toolName}`));
+		card.appendChild(el("strong", {}, t("app.approval.title", { tool: approval.toolName })));
 		if (showContext) {
 			const ctx = sessionContext(approval.sessionId);
 			const ctxRow = el("p", { className: "ctx" });
 			ctxRow.textContent = `${ctx.workspace} · ${ctx.title}`;
-			const link = el("button", { type: "button", className: "ctx-link" }, "打开任务");
+			const link = el("button", { type: "button", className: "ctx-link" }, t("app.openTask"));
 			link.addEventListener("click", () => {
 				void openSession(approval.sessionId);
 			});
@@ -434,8 +458,8 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		}
 		if (approval.reason !== undefined) card.appendChild(el("p", {}, approval.reason));
 		const actions = el("div", { className: "actions" });
-		const allow = el("button", { type: "button" }, "允许一次");
-		const reject = el("button", { type: "button", className: "ghost" }, "拒绝");
+		const allow = el("button", { type: "button" }, t("app.allowOnce"));
+		const reject = el("button", { type: "button", className: "ghost" }, t("app.deny"));
 		allow.addEventListener("click", () => {
 			void answerApproval(approval, "allowed-once");
 		});
@@ -457,7 +481,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			if (item.header !== undefined) card.appendChild(el("p", {}, item.question));
 			if (item.options.length === 0) {
 				const other = el("textarea") as HTMLTextAreaElement;
-				other.placeholder = "回答";
+				other.placeholder = t("app.answer");
 				other.setAttribute("data-qid", item.id);
 				other.setAttribute("data-kind", "custom");
 				card.appendChild(other);
@@ -475,7 +499,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 				}
 			}
 		}
-		const submit = el("button", { type: "submit" }, "提交");
+		const submit = el("button", { type: "submit" }, t("app.submit"));
 		card.addEventListener("submit", (event) => {
 			event.preventDefault();
 			void answerQuestion(question, card);
@@ -493,7 +517,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 				outcome,
 			});
 			state.approvals = state.approvals.filter((item) => item.rpcId !== approval.rpcId);
-			showToast(outcome === "allowed-once" ? "已允许" : "已拒绝");
+			showToast(outcome === "allowed-once" ? t("app.allowed") : t("app.denied"));
 		});
 	};
 
@@ -518,7 +542,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 				answers,
 			});
 			state.questions = state.questions.filter((item) => item.rpcId !== question.rpcId);
-			showToast("已提交回答");
+			showToast(t("app.answered"));
 		});
 	};
 
@@ -528,7 +552,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			state.sessions = Array.isArray(listed?.items)
 				? listed.items.map(parseSession).filter((row): row is SessionRow => row !== null && !row.blank)
 				: [];
-			showToast("已刷新");
+			showToast(t("app.refreshed"));
 		});
 	};
 
@@ -577,7 +601,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		try {
 			await work();
 		} catch (error) {
-			state.error = error instanceof Error ? error.message : "请求失败";
+			state.error = error instanceof Error ? error.message : t("app.requestFailed");
 		} finally {
 			state.busy = false;
 			render();
@@ -633,6 +657,9 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 	};
 
 	rpc.onPush(handlePush);
+	subscribeLocale(() => {
+		render();
+	});
 	void run(async () => {
 		await rpc.request("host.subscribe", {});
 		const listed = asRecord(await rpc.request("session.list", {}));
@@ -761,9 +788,9 @@ function foldTranscript(entries: unknown[]): TranscriptLine[] {
 }
 
 function labelOf(role: TranscriptLine["role"]): string {
-	if (role === "user") return "你";
-	if (role === "assistant") return "助手";
-	if (role === "tool") return "工具";
+	if (role === "user") return t("app.role.you");
+	if (role === "assistant") return t("app.role.assistant");
+	if (role === "tool") return t("app.role.tool");
 	return "";
 }
 
@@ -856,7 +883,7 @@ function groupByCwd(sessions: SessionRow[]): WorkspaceGroup[] {
 		if (group === undefined) {
 			group = {
 				key,
-				label: session.cwd === undefined ? "未绑定工作区" : basenameOf(session.cwd),
+				label: session.cwd === undefined ? t("app.unboundWorkspace") : basenameOf(session.cwd),
 				...(session.cwd === undefined ? {} : { cwd: session.cwd }),
 				sessions: [],
 			};
@@ -893,15 +920,6 @@ function appendMarkdown(root: HTMLElement, text: string): void {
 			}
 		}
 	}
-}
-
-function formatAgo(timestamp: number): string {
-	if (timestamp <= 0) return "";
-	const delta = Date.now() - timestamp;
-	if (delta < 60_000) return "刚刚";
-	if (delta < 3_600_000) return `${String(Math.floor(delta / 60_000))} 分钟前`;
-	if (delta < 86_400_000) return `${String(Math.floor(delta / 3_600_000))} 小时前`;
-	return `${String(Math.floor(delta / 86_400_000))} 天前`;
 }
 
 function el(tag: string, attrs: Record<string, string> = {}, text?: string): HTMLElement {

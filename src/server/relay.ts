@@ -321,7 +321,7 @@ export class RendezvousClient {
 			this.#sendControl({
 				type: "claim_result",
 				requestId: claim.requestId,
-				error: { code: "not-found", message: "配对码无效或已过期" },
+				error: { code: "not-found", message: "pairing code invalid or expired" },
 			});
 			return;
 		}
