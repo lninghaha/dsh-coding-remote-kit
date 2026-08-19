@@ -1,6 +1,6 @@
 # 00 · Project Rules: Versions, Releases & Maintenance
 
-> Applies to the `dsh-mobile-remote` open-source plugin repository.
+> Applies to the `dsh-coding-remote-kit` open-source plugin repository (GitHub and npm; formerly developed as `dsh-mobile-remote`).
 > This file is the single source of truth for repo conventions and governs `README` plus the (future) release flow.
 > Principle: **publish like any general open source project, and never leak development privacy.** Anything facing external users must be public, generic and durable; anything internal (accounts, hosts, tokens, paths, credentials) stays local and must never reach git or the packed artifact.
 
@@ -87,7 +87,7 @@ Every document belongs to one of two layers, and the two never mix:
 
 ## 3. Versioning & The Release Loop
 
-[Semantic Versioning (SemVer)](https://semver.org/): `MAJOR.MINOR.PATCH`. The project is currently `0.0.0` (pre-release).
+[Semantic Versioning (SemVer)](https://semver.org/): `MAJOR.MINOR.PATCH`. The project is currently `0.1.0`.
 
 | Change | Version action |
 |---|---|
@@ -113,7 +113,7 @@ pnpm test:sandbox  (Docker check + isolated-install + verify)
 commit the passing slice (conventional, atomic)
 ```
 
-**First public release (not enabled yet):** bump `package.json` and `PLUGIN_VERSION` together, annotated tag `v<version>` on a clean tree, then publish only after maintainer approval. Do not add a tag-triggered npm workflow until Trusted Publishing is bound.
+**Release:** bump `package.json` and `PLUGIN_VERSION` together, fold `CHANGELOG.md` `Unreleased` into `## v<version>`, annotated tag `v<version>` on a clean tree, then `npm publish --access public` after maintainer approval. Do not add a tag-triggered npm workflow until Trusted Publishing is bound.
 
 Never change user-facing docs without syncing README. Never tag from a dirty tree.
 

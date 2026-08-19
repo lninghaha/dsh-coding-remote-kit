@@ -1,8 +1,10 @@
-# 安装与使用 · dsh-mobile-remote
+# 安装与使用 · dsh-coding-remote-kit
 
 本仓库是 DeepSeek Harness 的**社区**手机远程插件，宿主钉死 `@deepseek-ai/dsh@0.1.0-rc.7`。不暗示 DeepSeek 官方背书。
 
-当前版本 **`0.0.0`**（尚未发 npm）。请从本仓库 pack 出的 tarball 安装，或在维护者提供的路径安装**已经拷出仓库**的 `.tgz`。
+npm 包名是 **`dsh-coding-remote-kit`**。GitHub：[`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit)。npm 上的 `dsh-mobile-remote` 是另一个微信插件，不要装那个。
+
+当前版本 **`0.1.0`**。
 
 ## 前置条件
 
@@ -14,16 +16,15 @@
 ## 安装
 
 ```bash
+# 普通用户：当前 npm 发布版
+dsh plugin --profile web add dsh-coding-remote-kit@0.1.0
+
 # 开发者：先过 Docker 沙箱门禁（不碰本机 3080 / $DSH_HOME）
 pnpm test:sandbox
-
-# 打包
 pnpm pack
-
-# 把 tarball 拷到仓库外，再 add（不要 file: 指向本仓库 output/）
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-mobile-remote-0.0.0.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-mobile-remote-0.0.0.tgz"
+cp dsh-coding-remote-kit-0.1.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.1.0.tgz"
 ```
 
 目标始终是 `$DSH_HOME`（默认 `~/.dsh`）的 **web profile**，不要写进某个 git checkout 里的 `.dsh`。
@@ -34,7 +35,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-mobile-remote-0.0.0.tgz"
 
 ```bash
 # 会变成 link: 源码树；入口 import 失败会拖死整棵 dsh web
-dsh plugin --profile web add ./dsh-mobile-remote
+dsh plugin --profile web add ./dsh-coding-remote-kit
 ```
 
 ## 配对
@@ -80,7 +81,7 @@ Offer 有 TTL（默认 10 分钟）。设备可在设置页吊销；吊销后该
 ```yaml
 - insert:
     - id: mobile-remote
-      name: dsh-mobile-remote
+      name: dsh-coding-remote-kit
       config:
         enabled: true
         bind: "127.0.0.1"

@@ -2,7 +2,7 @@
 
 > 中文版 · [**English**](02-architecture.md)
 
-本文描述 `dsh-mobile-remote` 的内部架构，是 `README.md` 技术说明的来源，面向贡献者与维护者。
+本文描述 `dsh-coding-remote-kit` 的内部架构，是 `README.md` 技术说明的来源，面向贡献者与维护者。
 
 宿主钉死：`@deepseek-ai/dsh@0.1.0-rc.7`。升级需另开 ADR（`docs/01-mvp-scope.md`）。
 

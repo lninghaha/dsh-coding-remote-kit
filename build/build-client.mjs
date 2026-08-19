@@ -37,7 +37,7 @@ await build({
 		"process.env.NODE_ENV": JSON.stringify("production"),
 	},
 	banner: {
-		js: 'window.__ModuleLoader__.load({id:"dsh-mobile-remote",factory:(require)=>{var module={exports:{}};var exports=module.exports;',
+		js: 'window.__ModuleLoader__.load({id:"dsh-coding-remote-kit",factory:(require)=>{var module={exports:{}};var exports=module.exports;',
 	},
 	footer: {
 		js: "return module.exports;}});",

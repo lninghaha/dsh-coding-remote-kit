@@ -1,6 +1,6 @@
 # Contributing
 
-Welcome! `dsh-mobile-remote` is an open-source DeepSeek Harness plugin for paired phone access. Read `docs/00-project-rules.md` first — it defines document layers, versioning, commit hygiene, and the host-DSH boundary.
+Welcome! `dsh-coding-remote-kit` is an open-source DeepSeek Harness plugin for paired phone access. Read `docs/00-project-rules.md` first — it defines document layers, versioning, commit hygiene, and the host-DSH boundary.
 
 ## Code of Conduct
 

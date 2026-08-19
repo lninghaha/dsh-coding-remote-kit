@@ -1,12 +1,13 @@
 <!-- banner -->
 <div align="center">
 
-# dsh-mobile-remote
+# dsh-coding-remote-kit
 
-**v0.0.0** · DeepSeek Harness `0.1.0-rc.7`
+**v0.1.0** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
 
 **面向 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) 的远程手机访问插件。** 把手机配对到已经在跑 `dsh web` 的桌面，观察会话并做一组窄写操作——不必把完整 Web API 暴露出去。
 
+[![npm](https://img.shields.io/npm/v/dsh-coding-remote-kit.svg)](https://www.npmjs.com/package/dsh-coding-remote-kit)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
@@ -19,6 +20,20 @@
 社区插件。**与 DeepSeek 无隶属关系，也不暗示官方背书。** 产品意图更接近 [Orca Mobile Companion](https://www.onorca.dev/docs/mobile)，而不是第二份桌面 IDE。
 
 改这个仓库之前先读 [`AGENTS.md`](AGENTS.md)：**禁止自行重启生产 `dsh-web`。** 只准备 tarball，由操作者重启。
+
+## 名称
+
+最初 GitHub 仓库名是 `dsh-mobile-remote`。npm 上的 **`dsh-mobile-remote` 是另一个项目**（微信遥控插件）。本插件发布名为 `dsh-coding-remote-kit`。
+
+| | 请用这个 | 说明 |
+|---|---|---|
+| npm | `dsh-coding-remote-kit@0.1.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.1.0` |
+| GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | 旧 checkout 名 `dsh-mobile-remote` |
+| Cordis 插件 id | `mobile-remote` | 不变 |
+| 设置页 HTTP | `/api/mobile-remote/*` | 不变 |
+| 存储 | `$DSH_HOME/storages/mobile-remote/` | 不变 |
+
+**不要**执行 `dsh plugin add dsh-mobile-remote`——那会装到别人的微信插件。
 
 ## 状态
 
@@ -51,24 +66,26 @@
 ## 快速开始
 
 ```bash
-# 1. 隔离 Docker 门禁（不碰本机 3080 / $DSH_HOME）
-pnpm test:sandbox
-
-# 2. 打包并把 tarball 拷出本仓库
-pnpm pack
-mkdir -p "$HOME/.dsh/packages"
-cp dsh-mobile-remote-0.0.0.tgz "$HOME/.dsh/packages/"
-
-# 3. 装进 web profile
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-mobile-remote-0.0.0.tgz"
+dsh plugin --profile web add dsh-coding-remote-kit@0.1.0
 ```
 
 然后由**操作者**在自己的时间窗重启现有 `dsh web`。打开 **设置 → 移动远程**，生成配对 offer，手机扫码（或手输 PIN）。
+
+源码 checkout（开发）：
+
+```bash
+pnpm test:sandbox
+pnpm pack
+mkdir -p "$HOME/.dsh/packages"
+cp dsh-coding-remote-kit-0.1.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.1.0.tgz"
+```
 
 不要对本工作树执行 `dsh plugin add ./`。pnpm 11 会把某些 `file:` tarball 解析成 `link:` 源码树，入口 import 失败会拖死整个 GUI。
 
 ## 目录
 
+- [名称](#名称)
 - [状态](#状态)
 - [特性](#特性)
 - [本插件解决的问题](#本插件解决的问题)
@@ -184,6 +201,7 @@ MVP 决策（路线 B）：[docs/01-mvp-scope.md](docs/01-mvp-scope.md)。
 ## 相关项目
 
 - [dsh-coding-subscription-oauth](https://github.com/lninghaha/dsh-coding-subscription-oauth) — 同作者的兄弟插件；本仓库文档布局参照它。
+- GitHub：[`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit)。
 - 本插件独立于用量中心插件 `dsh-hub-oauth-gateway`。
 - 不替代官方 `@deepseek-ai/dsh`。
 

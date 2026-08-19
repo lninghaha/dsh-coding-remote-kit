@@ -1,8 +1,12 @@
 {
-  "name": "dsh-mobile-remote",
+  "name": "dsh-coding-remote-kit",
   "description": "DeepSeek Harness mobile pairing remote plugin: E2EE companion over a dual-plane allowlisted RPC (LAN / Tailscale / optional Cloudflare Quick Tunnel).",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": false,
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@11.21.0",
@@ -11,17 +15,18 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lninghaha/dsh-mobile-remote.git"
+    "url": "git+https://github.com/lninghaha/dsh-coding-remote-kit.git"
   },
-  "bugs": "https://github.com/lninghaha/dsh-mobile-remote/issues",
-  "homepage": "https://github.com/lninghaha/dsh-mobile-remote#readme",
+  "bugs": "https://github.com/lninghaha/dsh-coding-remote-kit/issues",
+  "homepage": "https://github.com/lninghaha/dsh-coding-remote-kit#readme",
   "keywords": [
     "deepseek-harness",
     "dsh-plugin",
     "mobile",
     "pairing",
     "e2ee",
-    "companion"
+    "companion",
+    "dsh-coding-remote-kit"
   ],
   "main": "./lib/server/index.js",
   "exports": {

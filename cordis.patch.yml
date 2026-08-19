@@ -2,7 +2,7 @@
 # DeepSeek Harness profile bundle (`dsh plugin add`).
 - insert:
     - id: mobile-remote
-      name: dsh-mobile-remote
+      name: dsh-coding-remote-kit
       config:
         enabled: true
         bind: "127.0.0.1"

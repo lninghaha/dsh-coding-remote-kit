@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# Isolated install gate for dsh-mobile-remote. Reproduces the DSH loader path
+# Isolated install gate for dsh-coding-remote-kit. Reproduces the DSH loader path
 # (`import(packageName)` of the packed ESM entry) without touching the host
 # ~/.dsh profile or port 3080. Test images: test-dsh-mobile-remote:*
 #
@@ -29,10 +29,11 @@ RUN --network=none pnpm build && pnpm test
 
 FROM check AS isolated-install
 RUN --network=none pnpm pack \
+	&& tgz="$(ls /workspace/dsh-coding-remote-kit-*.tgz)" \
 	&& mkdir -p /tmp/consumer \
-	&& printf '{"name":"dsh-mobile-remote-sandbox-consumer","private":true,"type":"module"}\n' > /tmp/consumer/package.json \
+	&& printf '{"name":"dsh-coding-remote-kit-sandbox-consumer","private":true,"type":"module"}\n' > /tmp/consumer/package.json \
 	&& cd /tmp/consumer \
-	&& pnpm add --offline --ignore-scripts /workspace/dsh-mobile-remote-0.0.0.tgz \
-	&& node --input-type=module -e "const m = await import('dsh-mobile-remote'); if (m.name !== 'mobile-remote' || typeof m.apply !== 'function' || !Array.isArray(m.inject)) process.exit(1); console.log('ok', m.name, m.inject, typeof m.apply);"
+	&& pnpm add --offline --ignore-scripts "${tgz}" \
+	&& node --input-type=module -e "const m = await import('dsh-coding-remote-kit'); if (m.name !== 'mobile-remote' || typeof m.apply !== 'function' || !Array.isArray(m.inject)) process.exit(1); console.log('ok', m.name, m.inject, typeof m.apply);"
 
 FROM isolated-install AS verify

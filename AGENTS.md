@@ -1,4 +1,4 @@
-# 项目规则（dsh-mobile-remote）
+# 项目规则（dsh-coding-remote-kit）
 
 本仓库是挂在生产 `dsh web` 上的 Cordis 插件。入口 `import` 失败会 **fail-fast 拖死整棵插件树**，表现为 3080 拒连。下面规则对在本仓库干活的人和 agent 一律生效。
 
@@ -30,7 +30,7 @@ Agent **不得**自行执行下列任何操作：
 | Agent | Docker 沙箱门禁、`pnpm pack`、把 tgz **拷到仓库外**（如 `$DSH_HOME/packages/`）、`dsh plugin --profile web add <tgz>`、只读探活、写运维日志 | 重启 `dsh-web`、`link:` 工作树、改本机代理 / 防火墙 / Tailscale |
 | 操作者 | 在自己的时间窗重启 `dsh web`、确认 3080=200 | — |
 
-tarball **不要**放在本仓库根下再 `pnpm add`：pnpm 11 会把 `file:.../output/*.tgz` 解析成 `link:` 源码树。先拷到 `$DSH_HOME/packages/dsh-mobile-remote-<ver>.tgz` 再 add。
+tarball **不要**放在本仓库根下再 `pnpm add`：pnpm 11 会把 `file:.../output/*.tgz` 解析成 `link:` 源码树。先拷到 `$DSH_HOME/packages/dsh-coding-remote-kit-<ver>.tgz` 再 add。
 
 安装前门禁：`pnpm test:sandbox` 必须绿。未绿禁止改生产 profile。
 

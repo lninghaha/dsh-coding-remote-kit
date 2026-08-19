@@ -2,7 +2,7 @@
 
 > [**中文版**](02-architecture.zh-CN.md) · English
 
-This document describes the internal architecture of `dsh-mobile-remote`. It is the source for the technical notes in `README.md` and is intended for contributors and maintainers.
+This document describes the internal architecture of `dsh-coding-remote-kit`. It is the source for the technical notes in `README.md` and is intended for contributors and maintainers.
 
 Host pin: `@deepseek-ai/dsh@0.1.0-rc.7`. Changing the pin requires a new ADR (`docs/01-mvp-scope.md`).
 
