@@ -32,6 +32,7 @@ RUN --network=none pnpm pack \
 	&& tgz="$(ls /workspace/dsh-coding-remote-kit-*.tgz)" \
 	&& mkdir -p /tmp/consumer \
 	&& printf '{"name":"dsh-coding-remote-kit-sandbox-consumer","private":true,"type":"module"}\n' > /tmp/consumer/package.json \
+	&& printf 'autoInstallPeers: false\n' > /tmp/consumer/pnpm-workspace.yaml \
 	&& cd /tmp/consumer \
 	&& pnpm add --offline --ignore-scripts "${tgz}" \
 	&& node --input-type=module -e "const m = await import('dsh-coding-remote-kit'); if (m.name !== 'mobile-remote' || typeof m.apply !== 'function' || !Array.isArray(m.inject)) process.exit(1); console.log('ok', m.name, m.inject, typeof m.apply);"

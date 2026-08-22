@@ -86,3 +86,28 @@ test("client adapter can mount again on the same Cordis context after disposal",
 	cleanup();
 	assert.equal(counter.counts.dispose, 2);
 });
+
+test("client adapter uses Cordis reflection without reading uninjected slots", () => {
+	const client = loadClientBundle();
+	const counter = slotsCounter();
+	let cleanup;
+	let delayedCalls = 0;
+	const target = {
+		get(name) { return name === "slots" ? counter.slots : undefined; },
+		inject() { delayedCalls += 1; return () => undefined; },
+		effect(factory) { cleanup = factory(); },
+	};
+	const context = new Proxy(target, {
+		get(object, property, receiver) {
+			if (property === "slots") throw new Error('cannot get property "slots" without inject');
+			return Reflect.get(object, property, receiver);
+		},
+	});
+
+	client.apply(context);
+
+	assert.deepEqual(counter.counts, { inject: 1, register: 1, dispose: 0 });
+	assert.equal(delayedCalls, 0);
+	cleanup();
+	assert.equal(counter.counts.dispose, 1);
+});

@@ -74,11 +74,19 @@ test("one optional service lookup failure does not hide later host capabilities"
 });
 
 test("host compatibility reports a missing apiProxy as a supported degraded capability", () => {
-	const resolved = resolveHostCompatibility({
+	const context = {
 		logger: {},
 		webServer: { register() { return () => {}; } },
 		effect() {},
-	});
+	};
+	const resolved = resolveHostCompatibility(new Proxy(context, {
+		get(target, property, receiver) {
+			if (property === "apiProxy" || property === "ownerRequestPolicy") {
+				throw new Error(`cannot get property "${String(property)}" without inject`);
+			}
+			return Reflect.get(target, property, receiver);
+		},
+	}));
 	assert.equal(resolved.diagnostics.status, "degraded");
 	assert.equal(resolved.diagnostics.capabilities.apiProxy.state, "missing");
 	assert.equal(resolved.diagnostics.recommendations.length, 1);

@@ -7,7 +7,7 @@ import {
 	OWNER_PROOF_HEADER,
 } from "../lib/server/security.js";
 
-function createHarness() {
+function createHarness(overrides = {}) {
 	const handlers = new Map();
 	const ownerRequestPolicy = createOwnerRequestPolicy({
 		trustedProxy: {
@@ -57,6 +57,7 @@ function createHarness() {
 				async putInvite() {},
 			},
 			async installCloudflared() { throw new Error("not used"); },
+			...overrides,
 		},
 	);
 	return handlers;
@@ -110,6 +111,19 @@ test("remote status reports trusted-proxy access only after owner proof", async 
 	await handlers.get("/api/mobile-remote/status")(request({ headers: proxyHeaders }), allowed);
 	assert.equal(allowed.status, 200);
 	assert.equal(JSON.parse(allowed.body).accessMode, "trusted-https-proxy");
+});
+
+test("status resolves compatibility at request time", async () => {
+	let status = "degraded";
+	const handlers = createHarness({ compatibility: () => ({ status }) });
+	const first = response();
+	await handlers.get("/api/mobile-remote/status")(request({ headers: proxyHeaders }), first);
+	assert.equal(JSON.parse(first.body).compatibility.status, "degraded");
+
+	status = "healthy";
+	const second = response();
+	await handlers.get("/api/mobile-remote/status")(request({ headers: proxyHeaders }), second);
+	assert.equal(JSON.parse(second.body).compatibility.status, "healthy");
 });
 
 test("remote mutations need independent CSRF proof and the plugin mutation marker", async () => {

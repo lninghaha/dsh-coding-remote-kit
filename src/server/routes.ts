@@ -73,7 +73,7 @@ export interface ManagementDeps {
 	readonly relay: RelayDeps;
 	/** Opt-in official binary install. Must not run at apply() time. */
 	installCloudflared(): Promise<{ asset: string; path: string }>;
-	readonly compatibility?: HostCompatibilityDiagnostics;
+	readonly compatibility?: HostCompatibilityDiagnostics | (() => HostCompatibilityDiagnostics);
 }
 
 export interface TunnelDeps {
@@ -295,7 +295,7 @@ export function registerManagementRoutes(
 				activeDevices: deps.registry.activeDeviceCount(),
 				tunnel: deps.tunnel.snapshot(),
 				relay: deps.relay.snapshot(),
-				compatibility: deps.compatibility,
+				compatibility: typeof deps.compatibility === "function" ? deps.compatibility() : deps.compatibility,
 			});
 		}),
 		() => register("/api/mobile-remote/tunnel", ["GET", "POST"], async (request, response) => {

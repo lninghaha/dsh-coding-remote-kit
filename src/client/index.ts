@@ -28,6 +28,7 @@ interface SlotsApi {
 
 interface ClientApplyContext {
 	readonly slots?: SlotsApi;
+	get?(name: string): unknown;
 	inject?(names: readonly string[], factory: (context: ClientApplyContext) => unknown): unknown;
 	effect?(factory: () => void | (() => void)): unknown;
 }
@@ -1166,6 +1167,23 @@ function isSlotsApi(value: unknown): value is SlotsApi {
 	return typeof candidate.inject === "function" && typeof candidate.register === "function";
 }
 
+function slotsOf(context: ClientApplyContext): SlotsApi | undefined {
+	let slots: unknown;
+	try {
+		if (typeof context.get === "function") slots = context.get("slots");
+	} catch {
+		// Older client runtimes may not expose a usable reflection helper.
+	}
+	if (slots === undefined) {
+		try {
+			slots = context.slots;
+		} catch {
+			// Strict Cordis rejects optional service reads outside an inject scope.
+		}
+	}
+	return isSlotsApi(slots) ? slots : undefined;
+}
+
 function asDisposer(value: unknown): () => void {
 	return typeof value === "function" ? value as () => void : () => undefined;
 }
@@ -1242,9 +1260,10 @@ export function apply(ctx: ClientApplyContext): void {
 	let disposeRecovery: () => void = () => undefined;
 
 	const attach = (candidate: ClientApplyContext): void => {
-		if (disposed || registered || !isSlotsApi(candidate.slots)) return;
+		const slots = slotsOf(candidate);
+		if (disposed || registered || slots === undefined) return;
 		registered = true;
-		disposeSlot = registerSettingsSlot(candidate.slots);
+		disposeSlot = registerSettingsSlot(slots);
 		disposeRecovery();
 		disposeRecovery = () => undefined;
 	};
@@ -1254,7 +1273,7 @@ export function apply(ctx: ClientApplyContext): void {
 	};
 	disposeRecovery = mountRecoveryEntry(retry);
 	attach(ctx);
-	const disposeWait = typeof ctx.inject === "function"
+	const disposeWait = !registered && typeof ctx.inject === "function"
 		? asDisposer(ctx.inject(["slots"], (candidate) => {
 			attach(candidate);
 			return () => undefined;

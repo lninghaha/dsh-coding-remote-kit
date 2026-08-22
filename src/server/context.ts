@@ -100,6 +100,10 @@ export interface MobileRemoteHostContext {
 	readonly apiProxy?: HostApiProxy;
 	readonly ownerRequestPolicy?: OwnerRequestPolicy;
 	get?(name: string): unknown;
+	inject?(
+		deps: readonly string[],
+		callback: (context: MobileRemoteHostContext) => void | (() => void | Promise<void>),
+	): unknown;
 	effect(setup: () => void | (() => void | Promise<void>), label?: string): void;
 }
 
@@ -189,15 +193,23 @@ function lookupService(ctx: MobileRemoteHostContext, name: string): unknown {
 	}
 }
 
+function injectedService(ctx: MobileRemoteHostContext, name: keyof MobileRemoteHostContext): unknown {
+	try {
+		return ctx[name];
+	} catch {
+		return undefined;
+	}
+}
+
 /**
  * Normalize DSH's injected and service-locator host faces into one stable
  * plugin boundary. The structured result is safe to expose in diagnostics and
  * makes a missing host service observable instead of a late import failure.
  */
 export function resolveHostCompatibility(ctx: MobileRemoteHostContext): HostCompatibilityAdapter {
-	const injectedApiProxy = ctx.apiProxy;
-	const injectedWebServer = ctx.webServer;
-	const injectedOwnerRequestPolicy = ctx.ownerRequestPolicy;
+	const injectedApiProxy = injectedService(ctx, "apiProxy");
+	const injectedWebServer = injectedService(ctx, "webServer");
+	const injectedOwnerRequestPolicy = injectedService(ctx, "ownerRequestPolicy");
 	// Probe optional services independently: one missing service must not prevent
 	// discovery of a later capability during a DSH upgrade or partial unload.
 	const lookedUpApiProxy = injectedApiProxy === undefined ? lookupService(ctx, "apiProxy") : undefined;

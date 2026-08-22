@@ -110,6 +110,20 @@ test("unknown mux / host frames are dropped", () => {
 	assert.equal(mapHostFrame({ type: "host/workspace-changed" }), null);
 });
 
+test("a late apiProxy capability becomes usable without reloading the plugin", async () => {
+	let apiProxy;
+	const hub = createUpstreamHub(() => apiProxy, silentLogger());
+	const unavailable = await hub.list();
+	assert.equal(unavailable.ok, false);
+	assert.equal(unavailable.error.message, "apiProxy is unavailable");
+
+	apiProxy = createFakeApi([]);
+	const available = await hub.list();
+	assert.equal(available.ok, true);
+	assert.equal(available.value.items[0].sessionId, "sess-1");
+	hub.stop();
+});
+
 test("in-process handshake + fake apiProxy list/subscribe/respond", async () => {
 	const finished = completeHandshake();
 	const respondCalls = [];

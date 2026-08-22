@@ -26,6 +26,15 @@ export const Config = RuntimeConfigSchema;
 const LOOPBACK = "127.0.0.1";
 const ALL_INTERFACES = "0.0.0.0";
 
+function asDisposer(value: unknown): () => void | Promise<void> {
+	if (typeof value === "function") return value as () => void | Promise<void>;
+	if (typeof value === "object" && value !== null) {
+		const dispose = (value as { dispose?: unknown }).dispose;
+		if (typeof dispose === "function") return () => dispose.call(value) as void | Promise<void>;
+	}
+	return () => undefined;
+}
+
 /** Plugin entry boundary: DSH fails the entire plugin tree on an uncaught import/apply error. */
 export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): Promise<void> {
 	try {
@@ -77,7 +86,36 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 	});
 	cleanupSteps.push(() => tunnel.stop());
 
-	const host = resolveHostCompatibility(ctx);
+	let host = resolveHostCompatibility(ctx);
+	let activeApiProxy = host.apiProxy;
+	const resolveApiProxy = () => {
+		const latest = resolveHostCompatibility(ctx);
+		if (latest.apiProxy !== undefined) {
+			host = latest;
+			activeApiProxy = latest.apiProxy;
+		}
+		return activeApiProxy;
+	};
+	if (typeof ctx.inject === "function") {
+		try {
+			const apiProxyFiber = ctx.inject(["apiProxy"], (injectedContext) => {
+				const injectedHost = resolveHostCompatibility(injectedContext);
+				if (injectedHost.apiProxy === undefined) return () => undefined;
+				host = injectedHost;
+				activeApiProxy = injectedHost.apiProxy;
+				logger.info("mobile-remote: apiProxy capability attached");
+				return () => {
+					if (activeApiProxy === injectedHost.apiProxy) {
+						activeApiProxy = undefined;
+						host = resolveHostCompatibility(ctx);
+					}
+				};
+			});
+			cleanupSteps.push(asDisposer(apiProxyFiber));
+		} catch {
+			logger.warn("mobile-remote: apiProxy capability watcher unavailable; using safe lazy lookup");
+		}
+	}
 	const fallbackOwnerRequestPolicy = createOwnerRequestPolicy(config.ownerRequest);
 	const ownerRequestPolicy = safeguardOwnerRequestPolicy(host.ownerRequestPolicy ?? fallbackOwnerRequestPolicy);
 	let ownerRequestDiagnostics: readonly OwnerRequestDiagnostic[] = [];
@@ -97,11 +135,10 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 			"mobile-remote: trustedHosts no longer authorizes remote Settings; configure ownerRequest.trustedProxy or use SSH loopback",
 		);
 	}
-	const apiProxy = host.apiProxy;
-	if (apiProxy === undefined) {
+	if (activeApiProxy === undefined) {
 		logger.warn("mobile-remote: apiProxy service unavailable; session RPC will return upstream_error");
 	}
-	const upstream = createUpstreamHub(apiProxy, logger);
+	const upstream = createUpstreamHub(resolveApiProxy, logger);
 	cleanupSteps.push(() => upstream.stop());
 
 	const mobileDir = fileURLToPath(new URL("../mobile/", import.meta.url));
@@ -188,12 +225,15 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 					putInvite: (input) => rendezvous.putInvite(input),
 				},
 				installCloudflared: () => installOfficialCloudflared(),
-				compatibility: {
-					...host.diagnostics,
-					ownerRequest: {
-						source: host.ownerRequestPolicy === undefined ? "plugin-fallback" : "host",
-						diagnostics: ownerRequestDiagnostics,
-					},
+				compatibility: () => {
+					resolveApiProxy();
+					return {
+						...host.diagnostics,
+						ownerRequest: {
+							source: host.ownerRequestPolicy === undefined ? "plugin-fallback" : "host",
+							diagnostics: ownerRequestDiagnostics,
+						},
+					};
 				},
 			});
 		} catch (error) {

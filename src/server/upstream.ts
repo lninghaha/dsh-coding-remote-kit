@@ -109,12 +109,17 @@ const INITIAL_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 15_000;
 const HUGE_STRING = 4_096;
 
-export function createUpstreamHub(apiProxy: HostApiProxy | undefined, logger: MobileRemoteLogger): UpstreamHub {
+export function createUpstreamHub(
+	apiProxySource: HostApiProxy | undefined | (() => HostApiProxy | undefined),
+	logger: MobileRemoteLogger,
+): UpstreamHub {
 	const subscribers = new Set<Subscriber>();
 	const controller = new AbortController();
 	let streaming = false;
 	let muxTask: Promise<void> | null = null;
 	let hostTask: Promise<void> | null = null;
+	const resolveApiProxy = (): HostApiProxy | undefined =>
+		typeof apiProxySource === "function" ? apiProxySource() : apiProxySource;
 
 	const unavailable = (what: string): FoldedError => ({
 		code: "upstream_error",
@@ -130,9 +135,11 @@ export function createUpstreamHub(apiProxy: HostApiProxy | undefined, logger: Mo
 	};
 
 	const ensureStreaming = (): void => {
-		if (streaming || apiProxy === undefined || controller.signal.aborted) return;
+		if (streaming || controller.signal.aborted) return;
 		streaming = true;
 		muxTask = runIterator("mux", controller.signal, logger, async (signal) => {
+			const apiProxy = resolveApiProxy();
+			if (apiProxy === undefined) throw new Error("apiProxy is unavailable");
 			for await (const frame of apiProxy.events.mux({ rpcId: randomUUID(), payload: {} }, signal)) {
 				if (signal.aborted) return;
 				const mapped = mapMuxFrame(frame.rpcId, frame.payload);
@@ -145,6 +152,8 @@ export function createUpstreamHub(apiProxy: HostApiProxy | undefined, logger: Mo
 			}
 		});
 		hostTask = runIterator("host", controller.signal, logger, async (signal) => {
+			const apiProxy = resolveApiProxy();
+			if (apiProxy === undefined) throw new Error("apiProxy is unavailable");
 			for await (const frame of apiProxy.events.host({ rpcId: randomUUID(), payload: {} }, signal)) {
 				if (signal.aborted) return;
 				const mapped = mapHostFrame(frame.payload);
@@ -173,6 +182,7 @@ export function createUpstreamHub(apiProxy: HostApiProxy | undefined, logger: Mo
 	};
 
 	const list = async (): Promise<FoldedResult<SessionListResult>> => {
+		const apiProxy = resolveApiProxy();
 		if (apiProxy === undefined) return { ok: false, error: unavailable("apiProxy") };
 		const folded = await callUnary(apiProxy.sessions.list.bind(apiProxy.sessions), {});
 		if (!folded.ok) return folded;
@@ -188,6 +198,7 @@ export function createUpstreamHub(apiProxy: HostApiProxy | undefined, logger: Mo
 	};
 
 	const history = async (params: HistoryParams): Promise<FoldedResult<HistoryResult>> => {
+		const apiProxy = resolveApiProxy();
 		if (apiProxy === undefined) return { ok: false, error: unavailable("apiProxy") };
 		const payload: { sessionId: string; beforeSeq?: number; maxMessages?: number } = { sessionId: params.sessionId };
 		if (params.beforeSeq !== undefined) payload.beforeSeq = params.beforeSeq;
@@ -199,6 +210,7 @@ export function createUpstreamHub(apiProxy: HostApiProxy | undefined, logger: Mo
 	};
 
 	const prompt = async (params: PromptParams): Promise<FoldedResult<unknown>> => {
+		const apiProxy = resolveApiProxy();
 		if (apiProxy === undefined) return { ok: false, error: unavailable("apiProxy") };
 		const payload: {
 			sessionId: string;
@@ -215,11 +227,13 @@ export function createUpstreamHub(apiProxy: HostApiProxy | undefined, logger: Mo
 	};
 
 	const cancel = async (sessionId: string): Promise<FoldedResult<unknown>> => {
+		const apiProxy = resolveApiProxy();
 		if (apiProxy === undefined) return { ok: false, error: unavailable("apiProxy") };
 		return callUnary(apiProxy.sessions.cancel.bind(apiProxy.sessions), { sessionId });
 	};
 
 	const create = async (params: { cwd?: string }): Promise<FoldedResult<{ sessionId: string }>> => {
+		const apiProxy = resolveApiProxy();
 		if (apiProxy === undefined) return { ok: false, error: unavailable("apiProxy") };
 		const createFn = apiProxy.sessions.create;
 		if (typeof createFn !== "function") {
@@ -237,6 +251,7 @@ export function createUpstreamHub(apiProxy: HostApiProxy | undefined, logger: Mo
 	};
 
 	const respond = async (input: RespondInput): Promise<FoldedResult<unknown>> => {
+		const apiProxy = resolveApiProxy();
 		if (apiProxy === undefined) return { ok: false, error: unavailable("apiProxy") };
 		const value =
 			input.kind === "approval"

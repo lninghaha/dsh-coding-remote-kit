@@ -1,7 +1,7 @@
 {
   "name": "dsh-coding-remote-kit",
   "description": "DeepSeek Harness mobile pairing remote plugin: E2EE companion over a dual-plane allowlisted RPC (LAN / Tailscale / optional Cloudflare Quick Tunnel or self-hosted rendezvous).",
-	"version": "0.4.0",
+	"version": "0.4.1",
   "private": false,
   "publishConfig": {
     "access": "public",
@@ -95,7 +95,7 @@
     "check": "pnpm build && pnpm test",
     "test": "node --test tests/*.test.js",
     "test:e2e": "bash scripts/e2e-mobile-scroll.sh",
-    "test:sandbox": "bash scripts/sandbox-check.sh"
+    "test:sandbox": "node scripts/sandbox-check.mjs"
   },
   "dependencies": {
     "js-sha256": "^1.0.0",

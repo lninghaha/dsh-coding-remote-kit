@@ -4,6 +4,12 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+## v0.4.1 - 2026-08-22
+
+### Fixed
+
+- Probe optional DSH host services through a guarded compatibility boundary so strict Cordis injection checks cannot fail the complete plugin tree during startup.
+
 ## v0.4.0 - 2026-08-22
 
 ### Added
