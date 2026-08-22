@@ -13,6 +13,7 @@ import { base64UrlEncode } from "../shared/base64.js";
 import { DEVICE_SCOPE, MAX_PENDING_OFFERS } from "../shared/constants.js";
 import { formatPairCode, normalizePairCode, pairCodeFromBytes } from "../shared/pair-code.js";
 import type { PairingOffer } from "../shared/offer.js";
+import { normalizeDeviceName } from "../shared/device-name.js";
 import { constantTimeEqualHex, randomBytes } from "./crypto.js";
 import { appendJsonLine, readJsonFile, writeFileAtomic } from "./storage.js";
 
@@ -22,6 +23,7 @@ export interface DeviceRecord {
 	readonly deviceId: string;
 	readonly tokenHash: string;
 	readonly phonePublicKeyB64?: string;
+	readonly displayName?: string;
 	readonly scope: typeof DEVICE_SCOPE;
 	readonly createdAt: number;
 	readonly lastSeenAt: number;
@@ -140,6 +142,21 @@ export class DeviceRegistry {
 		const updated: DeviceRecord = { ...device, lastSeenAt: now };
 		this.#devices[this.#devices.indexOf(device)] = updated;
 		this.save();
+	}
+
+	/** Persist an optional user-selected device name without exposing token material. */
+	rename(deviceId: string, displayName: string): DeviceRecord | null {
+		const device = this.findById(deviceId);
+		if (device === null || device.revokedAt !== undefined) return null;
+		const parsed = normalizeDeviceName(displayName);
+		if (!parsed.ok || parsed.value === undefined) return null;
+		const updated: DeviceRecord = {
+			...device,
+			displayName: parsed.value,
+		};
+		this.#devices[this.#devices.indexOf(device)] = updated;
+		this.save();
+		return updated;
 	}
 
 	save(): void {

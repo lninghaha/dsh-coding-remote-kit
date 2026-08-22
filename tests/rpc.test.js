@@ -14,6 +14,7 @@ const ALLOWED = [
 	"session.cancel",
 	"session.create",
 	"respond",
+	"device.name",
 ];
 
 function auditSink() {
@@ -35,13 +36,44 @@ test("status.get is allowed and returns the frozen status result", async () => {
 	assert.equal(result.result.deviceScope, "mobile");
 });
 
-test("allowlist matrix: ten methods are not forbidden", async () => {
+test("allowlist matrix: supported methods are not forbidden", async () => {
 	assert.deepEqual([...MOBILE_RPC_METHOD_ALLOWLIST], ALLOWED);
 	for (const method of ALLOWED) {
 		assert.equal(isMethodAllowed(method), true, method);
 		const result = await dispatchRpc({ id: 1, method, params: {} });
 		assert.notEqual(result.error?.code, "forbidden", method);
 	}
+});
+
+test("device.name updates only the authenticated device and does not log the name", async () => {
+	const audit = auditSink();
+	let renamed = null;
+	const result = await dispatchRpc(
+		{ id: 8, method: "device.name", params: { name: "Pocket DSH" } },
+		{
+			deviceId: "dev-3",
+			audit,
+			renameDevice(deviceId, name) {
+				renamed = { deviceId, name };
+				return true;
+			},
+		},
+	);
+	assert.equal(result.ok, true);
+	assert.deepEqual(renamed, { deviceId: "dev-3", name: "Pocket DSH" });
+	assert.equal(audit.entries[0].event, "device_named");
+	assert.equal(JSON.stringify(audit.entries[0]).includes("Pocket DSH"), false);
+});
+
+test("device.name rejects control characters", async () => {
+	let called = false;
+	const result = await dispatchRpc(
+		{ id: 9, method: "device.name", params: { name: "Pocket\u0000DSH" } },
+		{ deviceId: "dev-3", renameDevice() { called = true; return true; } },
+	);
+	assert.equal(result.ok, false);
+	assert.equal(result.error.code, "invalid_params");
+	assert.equal(called, false);
 });
 
 test("methods outside the allowlist are forbidden", async () => {

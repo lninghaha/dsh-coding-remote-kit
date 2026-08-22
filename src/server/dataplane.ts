@@ -252,6 +252,7 @@ export class MobileDataPlane {
 			audit: this.audit,
 			logger: this.logger,
 			upstream: this.upstream,
+			renameDevice: (deviceId, displayName) => this.#deps.registry.rename(deviceId, displayName) !== null,
 			admit: () => this.admit(),
 			release: () => this.release(),
 			now: () => this.#now(),

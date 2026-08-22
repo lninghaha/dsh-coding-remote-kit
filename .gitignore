@@ -20,6 +20,8 @@ DSH_HOME/
 .cfresearch/
 .research/
 ccr/
+.playwright-mcp/
+remote-current-*.png
 
 # local-only design docs, fault investigation & reference materials (not published)
 # Promoted docs are negated below (see docs/00-project-rules.md).

@@ -29,6 +29,7 @@ import { base64Decode, base64Encode } from "./base64.js";
 import { sha256Bytes } from "./hkdf.js";
 import { buildTranscript, type TranscriptMessage } from "./transcript.js";
 import { assertExactKeys, assertInteger, assertString, ProtocolValidationError } from "./validation.js";
+import { normalizeDeviceName } from "./device-name.js";
 
 export interface HelloCapabilities {
 	readonly framing: number[];
@@ -66,6 +67,14 @@ export interface AuthMessage {
 	readonly v: number;
 	readonly transcriptHashB64: string;
 	readonly deviceToken: string;
+	readonly deviceName?: string;
+	readonly clientMetadata?: ClientMetadata;
+}
+
+export interface ClientMetadata {
+	readonly mobileProtocolVersion: number;
+	readonly locale: string;
+	readonly platform?: string;
 }
 
 export interface AuthenticatedMessage {
@@ -245,29 +254,84 @@ export function computeTranscriptHash(hello: object, ready: object): Uint8Array 
 }
 
 /** Build an encrypted e2ee_auth. */
-export function buildAuth(transcriptHash: Uint8Array, deviceToken: string): AuthMessage {
+export function buildAuth(
+	transcriptHash: Uint8Array,
+	deviceToken: string,
+	identity: { readonly deviceName?: string; readonly clientMetadata?: ClientMetadata } = {},
+): AuthMessage {
+	const normalizedName = normalizeDeviceName(identity.deviceName);
+	if (!normalizedName.ok) throw new ProtocolValidationError("deviceName contains control characters");
 	return {
 		type: "e2ee_auth",
 		v: E2EE_VERSION,
 		transcriptHashB64: base64Encode(transcriptHash),
 		deviceToken,
+		...(normalizedName.value === undefined ? {} : { deviceName: normalizedName.value }),
+		...(identity.clientMetadata === undefined ? {} : { clientMetadata: validateClientMetadata(identity.clientMetadata) }),
 	};
 }
 
 export interface ParsedAuth {
 	readonly transcriptHash: Uint8Array;
 	readonly deviceToken: string;
+	readonly deviceName?: string;
+	readonly clientMetadata?: ClientMetadata;
 }
 
-/** Validate a received e2ee_auth (exactly 4 keys). */
+/** Validate an e2ee_auth while accepting the frozen legacy four-key shape. */
 export function validateAuth(value: unknown): ParsedAuth {
-	assertExactKeys(value, ["type", "v", "transcriptHashB64", "deviceToken"]);
+	assertOptionalAuthKeys(value);
 	if (value.type !== "e2ee_auth") throw new ProtocolValidationError("unexpected message type");
 	assertInteger(value.v, "v");
 	if (value.v !== E2EE_VERSION) throw new ProtocolValidationError("unsupported e2ee version");
 	const transcriptHash = decodeKeyB64(value.transcriptHashB64, "transcriptHashB64");
 	assertString(value.deviceToken, "deviceToken");
-	return { transcriptHash, deviceToken: value.deviceToken };
+	if (value.deviceName !== undefined && typeof value.deviceName !== "string") {
+		throw new ProtocolValidationError("deviceName must be a string");
+	}
+	const normalizedName = normalizeDeviceName(value.deviceName);
+	if (!normalizedName.ok) throw new ProtocolValidationError("deviceName contains control characters");
+	const clientMetadata = value.clientMetadata === undefined ? undefined : validateClientMetadata(value.clientMetadata);
+	return {
+		transcriptHash,
+		deviceToken: value.deviceToken,
+		...(normalizedName.value === undefined ? {} : { deviceName: normalizedName.value }),
+		...(clientMetadata === undefined ? {} : { clientMetadata }),
+	};
+}
+
+function assertOptionalAuthKeys(value: unknown): asserts value is Record<string, unknown> {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new ProtocolValidationError("expected an object");
+	}
+	const required = ["type", "v", "transcriptHashB64", "deviceToken"];
+	const allowed = new Set([...required, "deviceName", "clientMetadata"]);
+	const keys = Object.keys(value);
+	if (required.some((key) => !keys.includes(key)) || keys.some((key) => !allowed.has(key))) {
+		throw new ProtocolValidationError(`unexpected e2ee_auth keys: [${keys.sort().join(", ")}]`);
+	}
+}
+
+function validateClientMetadata(value: unknown): ClientMetadata {
+	assertExactKeys(
+		value,
+		typeof value === "object" && value !== null && "platform" in value
+			? ["mobileProtocolVersion", "locale", "platform"]
+			: ["mobileProtocolVersion", "locale"],
+	);
+	assertInteger(value.mobileProtocolVersion, "clientMetadata.mobileProtocolVersion");
+	assertString(value.locale, "clientMetadata.locale");
+	if (value.platform !== undefined) assertString(value.platform, "clientMetadata.platform");
+	for (const [field, text] of [["locale", value.locale], ["platform", value.platform]] as const) {
+		if (typeof text === "string" && /[\p{Cc}\p{Cf}]/u.test(text)) {
+			throw new ProtocolValidationError(`clientMetadata.${field} contains control characters`);
+		}
+	}
+	return {
+		mobileProtocolVersion: value.mobileProtocolVersion,
+		locale: value.locale,
+		...(value.platform === undefined ? {} : { platform: value.platform }),
+	};
 }
 
 /** Build an encrypted e2ee_authenticated (exactly 6 keys). */

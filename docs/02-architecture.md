@@ -4,7 +4,7 @@
 
 This document describes the internal architecture of `dsh-coding-remote-kit`. It is the source for the technical notes in `README.md` and is intended for contributors and maintainers.
 
-Host pin: `@deepseek-ai/dsh@0.1.0-rc.7`. Changing the pin requires a new ADR (`docs/01-mvp-scope.md`).
+Host pin: `@deepseek-ai/dsh@0.1.0-rc.6`. Changing the pin requires a new ADR (`docs/01-mvp-scope.md`).
 
 ## 1. Dual plane
 
@@ -12,7 +12,7 @@ Host pin: `@deepseek-ai/dsh@0.1.0-rc.7`. Changing the pin requires a new ADR (`d
 Harness webServer (loopback, typically 127.0.0.1:3080)
   └─ management routes /api/mobile-remote/*
        pairing offers, device list, revoke, tunnel / rendezvous switch
-       Host + browser-context + CSRF guards; non-loopback → 403
+       OwnerRequestPolicy: loopback/SSH or complete trusted-HTTPS proxy proof
 
 Dedicated data plane (default 127.0.0.1:6879, may widen to 0.0.0.0)
   ├─ GET  /m, /m/*     static mobile page (cache-control: no-store)
@@ -66,10 +66,10 @@ Re-exports Cordis `name` / `inject` / `Config` / `apply` from `src/server/index.
 ### `src/server/`
 
 - `index.ts`: plugin `apply`. Storage, server key, data-plane listen, management routes, tunnel + rendezvous disposers.
-- `config.ts`: Zod `enabled` / `bind` / `port` / `offerTtlMs` / `trustedHosts`.
+- `config.ts`: Zod `enabled` / `bind` / `port` / `offerTtlMs` / fail-closed `ownerRequest`; legacy `trustedHosts` no longer grants access.
 - `context.ts`: host `apiProxy` + `webServer` typing.
 - `routes.ts`: one `webServer.register` per path (DSH de-duplicates by path, not method). GET/POST branch inside the handler.
-- `security.ts`: loopback / Host / browser context / CSRF / bounded JSON body.
+- `security.ts`: prefer a host owner policy; fallback validates loopback/SSH or trusted HTTPS peer + Origin/Host + owner proof + Fetch Metadata + independent CSRF, with bounded JSON bodies. A throwing or malformed host policy fails closed.
 - `dataplane.ts`: dedicated `node:http` + `ws` on the data-plane port; static `/m`; `/m/claim`; `/m/ws`.
 - `connection.ts`: `acceptMobileSocket` — E2EE + RPC session used by `/m/ws` and by rendezvous accept sockets.
 - `e2ee.ts` / `crypto.ts`: server handshake, token lookup, tweetnacl secretbox.

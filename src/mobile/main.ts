@@ -5,6 +5,7 @@
 import nacl from "tweetnacl";
 import { base64Decode, base64Encode, utf8Decode, utf8Encode } from "../shared/base64.js";
 import { MOBILE_PROTOCOL_VERSION } from "../shared/constants.js";
+import { normalizeDeviceName } from "../shared/device-name.js";
 import {
 	bootstrapLocale,
 	getLocale,
@@ -19,9 +20,10 @@ import { evaluateVersionGate } from "../shared/version.js";
 import { startConnectedApp } from "./app.js";
 import { generateClientKeyPair, MobileE2eeSession } from "./e2ee.js";
 import { clearPersistedOffer, loadPersistedOffer, persistOffer } from "./persist.js";
-import { MobileRpcClient } from "./rpc.js";
+import { MobileRpcClient, type MobilePush, type MobilePushHandler } from "./rpc.js";
 
 const KEY_KEY = "dshmr.key";
+const DEVICE_NAME_KEY = "dshmr.deviceName";
 
 type NoticeTone = "info" | "error" | "warn";
 
@@ -41,8 +43,26 @@ interface NoticeOptions {
 }
 
 let lastOffer: PairingOffer | null = null;
-let lastConnectOptions: { fallbackToPin?: boolean } = {};
+let lastConnectOptions: { fallbackToPin?: boolean; deviceName?: string } = {};
 let rerenderCurrent: (() => void) | null = null;
+let activeSocket: WebSocketLike | null = null;
+let disposeConnectedApp: (() => void) | null = null;
+let connectionGeneration = 0;
+
+function disposeConnection(): void {
+	connectionGeneration += 1;
+	disposeConnectedApp?.();
+	disposeConnectedApp = null;
+	const socket = activeSocket;
+	activeSocket = null;
+	if (socket !== null) {
+		socket.onopen = null;
+		socket.onmessage = null;
+		socket.onerror = null;
+		socket.onclose = null;
+		if (socket.readyState < 2) socket.close();
+	}
+}
 
 function appendLanguageSwitcher(container: HTMLElement): void {
 	const wrap = document.createElement("div");
@@ -83,6 +103,9 @@ function renderNoticeCard(getOptions: () => NoticeOptions): void {
 	wrap.className = "notice-wrap";
 	const card = document.createElement("div");
 	card.className = `notice-card${options.tone === "error" ? " error" : options.tone === "warn" ? " warn" : ""}`;
+	card.setAttribute("role", options.tone === "error" ? "alert" : "status");
+	card.setAttribute("aria-live", options.tone === "error" ? "assertive" : "polite");
+	if (options.loading) card.setAttribute("aria-busy", "true");
 	if (options.loading) {
 		const spinner = document.createElement("div");
 		spinner.className = "spinner";
@@ -152,7 +175,9 @@ function loadOrCreateKey(): { secretKey: Uint8Array; publicKey: Uint8Array } {
 
 type Phase = "awaiting-ready" | "awaiting-authenticated" | "authenticated";
 
-function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {}): void {
+function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; deviceName?: string } = {}): void {
+	disposeConnection();
+	const generation = connectionGeneration;
 	lastOffer = offer;
 	lastConnectOptions = options;
 	let phase: Phase = "awaiting-ready";
@@ -162,7 +187,10 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 		clientPublicKey: keyPair.publicKey,
 		pinnedPublicKeyB64: offer.publicKeyB64,
 	});
+	let closeNoticeShown = false;
 	const failNotice = (titleKey: Parameters<typeof t>[0], messageKey: Parameters<typeof t>[0], vars?: Record<string, string | number>): void => {
+		if (generation !== connectionGeneration) return;
+		closeNoticeShown = true;
 		renderNoticeCard(() => ({
 			title: t(titleKey),
 			message: t(messageKey, vars),
@@ -191,6 +219,7 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 	let ws: WebSocketLike;
 	try {
 		ws = new WebSocket(offer.endpoint);
+		activeSocket = ws;
 	} catch {
 		if (options.fallbackToPin === true) {
 			bootPairForm();
@@ -213,12 +242,15 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 	};
 	const rpc = new MobileRpcClient(sendEncrypted);
 	let appStarted = false;
+	const isCurrent = (): boolean => generation === connectionGeneration && activeSocket === ws;
 
 	ws.onopen = () => {
+		if (!isCurrent()) return;
 		ws.send(JSON.stringify(session.hello));
 	};
 
 	ws.onmessage = (event) => {
+		if (!isCurrent()) return;
 		if (typeof event.data !== "string") return;
 		const text = event.data;
 		if (phase === "awaiting-ready") {
@@ -241,6 +273,9 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 				return;
 			}
 			phase = "awaiting-authenticated";
+			// Keep the frozen four-field v1 auth shape for compatibility with older
+			// desktops. Optional identity fields remain accepted by newer servers,
+			// while the official client applies the device name after authentication.
 			const auth = session.auth(offer.deviceToken);
 			ws.send(base64Encode(session.sealOut(utf8Encode(JSON.stringify(auth)))));
 			return;
@@ -274,7 +309,8 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 		}
 		if (message.type === "e2ee_error") {
 			const code = (message.error as { code?: string } | undefined)?.code ?? "unknown";
-			failNotice("pair.failed.title", "pair.failed.serverRejected", { code });
+			if (code === "unauthorized") failNotice("pair.permissionDenied.title", "pair.permissionDenied.body");
+			else failNotice("pair.failed.title", "pair.failed.serverRejected", { code });
 			ws.close();
 			return;
 		}
@@ -293,6 +329,7 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 	};
 
 	ws.onerror = () => {
+		if (!isCurrent()) return;
 		if (phase !== "authenticated" && options.fallbackToPin === true) {
 			bootPairForm();
 			return;
@@ -301,7 +338,12 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 	};
 
 	ws.onclose = () => {
+		if (!isCurrent()) return;
+		activeSocket = null;
+		disposeConnectedApp?.();
+		disposeConnectedApp = null;
 		rpc.failAll("disconnected");
+		if (closeNoticeShown) return;
 		if (phase === "authenticated" || appStarted) {
 			document.body.classList.remove("connected");
 			const retryOffer = lastOffer;
@@ -330,7 +372,7 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 			}));
 			return;
 		}
-		if (options.fallbackToPin === true && phase !== "authenticated") {
+		if (options.fallbackToPin === true) {
 			bootPairForm();
 		}
 	};
@@ -367,12 +409,18 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean } = {})
 		} catch {
 			// status.get failed → fail open (still show the connected state).
 		}
+		if (!isCurrent()) return;
 		appStarted = true;
 		rerenderCurrent = null;
 		const app = root();
 		app.textContent = "";
 		app.className = "shell";
-		startConnectedApp(app, client);
+		disposeConnectedApp = startConnectedApp(app, client);
+		const deviceName = options.deviceName?.trim();
+		if (deviceName !== undefined && deviceName.length > 0) {
+			// 新桌面会保存名称，旧桌面拒绝该附加 RPC 也不影响冻结的 v1 握手或已连会话。
+			void client.request("device.name", { name: deviceName }).catch(() => undefined);
+		}
 	}
 }
 
@@ -392,22 +440,57 @@ function bootE2eList(): void {
 			});
 		}
 	}
+	let pushHandler: MobilePushHandler | null = null;
+	let promptRequests = 0;
+	let pushDisposals = 0;
 	const client = {
-		async request(method: string) {
+		async request(method: string, params?: Record<string, unknown>) {
 			if (method === "host.subscribe") return { accepted: true };
 			if (method === "session.list") return { items };
+			if (method === "session.history") {
+				return { events: [{ event: { type: "assistant/message", data: { text: "Ready for mobile input." } } }] };
+			}
+			if (method === "session.subscribe" || method === "session.unsubscribe") return { accepted: true };
+			if (method === "session.prompt") {
+				promptRequests += 1;
+				await new Promise((resolve) => setTimeout(resolve, 80));
+				return { accepted: true, params };
+			}
 			return {};
 		},
-		onPush() {},
+		onPush(handler: MobilePushHandler) {
+			pushHandler = handler;
+			let subscribed = true;
+			return () => {
+				if (!subscribed) return;
+				subscribed = false;
+				pushDisposals += 1;
+				if (pushHandler === handler) pushHandler = null;
+			};
+		},
 	} as unknown as MobileRpcClient;
 	rerenderCurrent = null;
 	const app = root();
 	app.textContent = "";
 	app.className = "shell";
-	startConnectedApp(app, client);
+	const dispose = startConnectedApp(app, client);
+	Object.assign(globalThis, {
+		__dshmrE2e: {
+			push(push: MobilePush) { pushHandler?.(push); },
+			pushHostUpdate() {
+				pushHandler?.({
+					push: "host.event",
+					data: { type: "host/session-status", sessionId: "s-0-0", running: true },
+				});
+			},
+			dispose,
+			metrics() { return { promptRequests, pushDisposals, subscribed: pushHandler !== null }; },
+		},
+	});
 }
 
 function bootPairForm(): void {
+	disposeConnection();
 	rerenderCurrent = bootPairForm;
 	document.documentElement.classList.add("connected");
 	document.body.classList.add("connected");
@@ -421,24 +504,48 @@ function bootPairForm(): void {
 	card.className = "pair-card";
 
 	const heading = document.createElement("h1");
+	heading.id = "pair-title";
 	heading.textContent = t("pair.enterPin");
 	const hint = document.createElement("p");
+	hint.id = "pair-hint";
 	hint.className = "hint";
 	hint.textContent = t("pair.form.hint");
 
 	const input = document.createElement("input") as HTMLInputElement;
+	input.id = "pair-code";
 	input.placeholder = "XXXX-XXXX";
 	input.autocomplete = "one-time-code";
 	input.setAttribute("inputmode", "text");
 	input.setAttribute("autocapitalize", "characters");
 	input.setAttribute("spellcheck", "false");
+	input.setAttribute("aria-describedby", "pair-hint pair-error");
+	const pinLabel = document.createElement("label");
+	pinLabel.setAttribute("for", "pair-code");
+	pinLabel.textContent = t("pair.form.pinLabel");
+	const deviceName = document.createElement("input") as HTMLInputElement;
+	deviceName.id = "device-name";
+	deviceName.type = "text";
+	deviceName.placeholder = t("pair.form.deviceNamePlaceholder");
+	deviceName.autocomplete = "nickname";
+	deviceName.value = readDeviceName();
+	deviceName.setAttribute("aria-describedby", "device-name-hint pair-error");
+	const deviceNameLabel = document.createElement("label");
+	deviceNameLabel.setAttribute("for", "device-name");
+	deviceNameLabel.textContent = t("pair.form.deviceNameLabel");
+	const deviceNameHint = document.createElement("p");
+	deviceNameHint.id = "device-name-hint";
+	deviceNameHint.className = "hint";
+	deviceNameHint.textContent = t("pair.form.deviceNameHint");
 
 	const button = document.createElement("button");
 	button.type = "button";
 	button.textContent = t("pair.form.connect");
 
 	const err = document.createElement("p");
+	err.id = "pair-error";
 	err.className = "err";
+	err.setAttribute("role", "alert");
+	err.setAttribute("aria-live", "polite");
 
 	const formatInput = (raw: string): string => {
 		const normalized = normalizePairCode(raw);
@@ -452,13 +559,21 @@ function bootPairForm(): void {
 			input.value = formatted;
 		}
 		err.textContent = "";
-		if (isCompletePairCode(input.value)) submit();
+		input.setAttribute("aria-invalid", "false");
 	});
 
 	const submit = (): void => {
 		err.textContent = "";
 		if (!isCompletePairCode(input.value)) {
 			err.textContent = t("pair.form.incomplete");
+			input.setAttribute("aria-invalid", "true");
+			return;
+		}
+		const parsedName = normalizeDeviceName(deviceName.value);
+		if (!parsedName.ok) {
+			err.textContent = t("pair.form.deviceNameInvalid");
+			deviceName.setAttribute("aria-invalid", "true");
+			deviceName.focus();
 			return;
 		}
 		button.disabled = true;
@@ -482,7 +597,9 @@ function bootPairForm(): void {
 				} catch {
 					// ignore
 				}
-				connect(offer);
+				const name = parsedName.value ?? "";
+				writeDeviceName(name);
+				connect(offer, name.length > 0 ? { deviceName: name } : {});
 			} catch {
 				err.textContent = t("pair.form.submitFailed");
 				button.disabled = false;
@@ -492,6 +609,13 @@ function bootPairForm(): void {
 
 	button.addEventListener("click", submit);
 	input.addEventListener("keydown", (event) => {
+		if (event.key === "Enter") submit();
+	});
+	deviceName.addEventListener("input", () => {
+		deviceName.setAttribute("aria-invalid", "false");
+		err.textContent = "";
+	});
+	deviceName.addEventListener("keydown", (event) => {
 		if (event.key === "Enter") submit();
 	});
 
@@ -504,7 +628,9 @@ function bootPairForm(): void {
 		err.textContent = t("pair.cleared");
 	});
 
-	card.append(heading, hint, input, button, err, clearBtn);
+	card.setAttribute("role", "region");
+	card.setAttribute("aria-labelledby", "pair-title");
+	card.append(heading, hint, pinLabel, input, deviceNameLabel, deviceName, deviceNameHint, button, err, clearBtn);
 	appendLanguageSwitcher(card);
 	wrap.appendChild(card);
 	app.appendChild(wrap);
@@ -526,7 +652,8 @@ function boot(): void {
 			persisted = null;
 		}
 		if (persisted !== null) {
-			connect(persisted, { fallbackToPin: true });
+			const deviceName = readDeviceName();
+			connect(persisted, deviceName.length > 0 ? { fallbackToPin: true, deviceName } : { fallbackToPin: true });
 			return;
 		}
 		bootPairForm();
@@ -552,7 +679,24 @@ function boot(): void {
 	} catch {
 		// non-persistent storage is acceptable
 	}
-	connect(offer);
+	const deviceName = readDeviceName();
+	connect(offer, deviceName.length > 0 ? { deviceName } : {});
+}
+
+function readDeviceName(): string {
+	try {
+		return localStorage.getItem(DEVICE_NAME_KEY) ?? "";
+	} catch {
+		return "";
+	}
+}
+
+function writeDeviceName(value: string): void {
+	try {
+		localStorage.setItem(DEVICE_NAME_KEY, value);
+	} catch {
+		// Naming is optional and must never block pairing.
+	}
 }
 
 bootstrapLocale();

@@ -12,14 +12,32 @@ const BindAddressSchema = z
 	.or(z.string().regex(/^\d{1,3}(\.\d{1,3}){3}$/))
 	.catch("127.0.0.1");
 
+const TrustedProxySchema = z
+	.object({
+		peers: z.array(z.string().min(1)).default([]),
+		origins: z.array(z.string().min(1)).default([]),
+		ownerProof: z.string().optional(),
+		csrfToken: z.string().optional(),
+	})
+	.strict();
+
+const OwnerRequestSchema = z
+	.object({
+		loopbackAccessMode: z.enum(["loopback", "ssh-tunnel"]).default("loopback"),
+		trustedProxy: TrustedProxySchema.optional(),
+	})
+	.strict()
+	.default({});
+
 export const RuntimeConfigSchema = z
 	.object({
 		enabled: z.boolean().default(true),
 		bind: BindAddressSchema,
 		port: z.number().int().min(1024).max(65_535).default(6879),
 		offerTtlMs: z.number().int().default(600_000),
-		/** Extra Host names allowed when the TCP peer is loopback (Caddy). */
+		/** @deprecated A trusted Host alone no longer authorizes remote management. */
 		trustedHosts: z.array(z.string().min(1)).default([]),
+		ownerRequest: OwnerRequestSchema,
 	})
 	.strict();
 

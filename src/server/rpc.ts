@@ -8,6 +8,7 @@
 
 import { MOBILE_RPC_METHOD_ALLOWLIST } from "../shared/constants.js";
 import { statusGetResult } from "../shared/handshake.js";
+import { normalizeDeviceName } from "../shared/device-name.js";
 import type { AuditLogger } from "./registry.js";
 import type { RespondInput, UpstreamHub } from "./upstream.js";
 
@@ -31,6 +32,7 @@ export interface RpcDispatchContext {
 	readonly deviceId?: string;
 	readonly audit?: Pick<AuditLogger, "log">;
 	readonly connection?: RpcConnection;
+	renameDevice?(deviceId: string, displayName: string): boolean;
 }
 
 function error(id: string | number | null, code: string, message: string): Record<string, unknown> {
@@ -164,9 +166,21 @@ async function dispatchAllowed(
 		}
 		case "respond":
 			return dispatchRespond(id, params, ctx);
+		case "device.name":
+			return dispatchDeviceName(id, params, ctx);
 		default:
 			return error(id, "unknown_method", `method "${method}" is not implemented`);
 	}
+}
+
+function dispatchDeviceName(id: string | number, params: Record<string, unknown>, ctx: RpcDispatchContext): Record<string, unknown> {
+	if (ctx.deviceId === undefined || ctx.renameDevice === undefined) return error(id, "upstream_error", "device registry is unavailable");
+	const parsed = normalizeDeviceName(params.name);
+	if (!parsed.ok) return error(id, "invalid_params", "name contains control characters");
+	if (parsed.value === undefined) return error(id, "invalid_params", "name is required");
+	if (!ctx.renameDevice(ctx.deviceId, parsed.value)) return error(id, "unauthenticated", "device is unavailable");
+	ctx.audit?.log({ event: "device_named", deviceId: ctx.deviceId });
+	return ok(id, { accepted: true });
 }
 
 function parseRespond(params: Record<string, unknown>): RespondInput | { error: string } {

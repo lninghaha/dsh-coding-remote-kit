@@ -9,27 +9,32 @@ import {
 	type Locale,
 } from "../shared/i18n/index.js";
 
-export const inject = ["slots"];
+// Slots is an optional host capability. Older DSH clients must still load the
+// plugin and receive the standalone recovery entry below.
+export const inject: string[] = [];
 
 interface SlotsApi {
-	inject(name: string, factory: () => unknown): void;
+	inject(name: string, factory: () => unknown): unknown;
 	register(
 		options: {
 			name: string;
 			id: string;
 			order?: number;
-			label?: string;
+			label?: unknown;
 		},
 		component: unknown,
 	): unknown;
 }
 
 interface ClientApplyContext {
-	slots: SlotsApi;
+	readonly slots?: SlotsApi;
+	inject?(names: readonly string[], factory: (context: ClientApplyContext) => unknown): unknown;
+	effect?(factory: () => void | (() => void)): unknown;
 }
 
 interface StatusInfo {
 	enabled: boolean;
+	accessMode?: "loopback" | "ssh-tunnel" | "trusted-https-proxy";
 	bind: string;
 	port: number;
 	listening: boolean;
@@ -37,6 +42,21 @@ interface StatusInfo {
 	activeDevices: number;
 	tunnel: TunnelSnapshot;
 	relay: RelaySnapshot;
+	compatibility?: {
+		apiProxy: { available: boolean; source: string };
+		webServer: { available: boolean; source: string };
+		coreAbi?: string;
+		dshVersion?: string | null;
+		verifiedBom?: { id?: string };
+		status?: "healthy" | "degraded" | "incompatible";
+		capabilities?: Readonly<Record<string, { state: "available" | "missing" | "incompatible"; contract: string; reason?: string }>>;
+		diagnostics?: readonly string[];
+		recommendations?: readonly string[];
+		ownerRequest?: {
+			source: "host" | "plugin-fallback";
+			diagnostics: readonly { id: string; level: "info" | "error"; message: string }[];
+		};
+	};
 }
 
 interface TunnelSnapshot {
@@ -56,6 +76,7 @@ interface RelaySnapshot {
 }
 
 type Channel = "lan" | "public" | "relay";
+type ResourceState = "loading" | "ready" | "empty" | "unavailable" | "permissionDenied" | "stale";
 
 interface OfferInfo {
 	qrText: string;
@@ -67,6 +88,7 @@ interface OfferInfo {
 
 interface DeviceInfo {
 	deviceId: string;
+	displayName?: string;
 	createdAt: number;
 	lastSeenAt: number;
 	revokedAt?: number;
@@ -126,12 +148,15 @@ async function copyText(text: string): Promise<boolean> {
 	}
 }
 
-function MobileRemoteSettings() {
+export function MobileRemoteSettings() {
 	const [status, setStatus] = useState<StatusInfo | null>(null);
 	const [channel, setChannel] = useState<Channel>("lan");
 	const [offerInfo, setOfferInfo] = useState<OfferInfo | null>(null);
 	const [devices, setDevices] = useState<DeviceInfo[]>([]);
 	const [statusError, setStatusError] = useState<string | null>(null);
+	const [devicesError, setDevicesError] = useState<string | null>(null);
+	const [statusState, setStatusState] = useState<ResourceState>("loading");
+	const [devicesState, setDevicesState] = useState<ResourceState>("loading");
 	const [channelError, setChannelError] = useState<string | null>(null);
 	const [offerError, setOfferError] = useState<string | null>(null);
 	const [remainingMs, setRemainingMs] = useState<number | null>(null);
@@ -143,6 +168,8 @@ function MobileRemoteSettings() {
 	const [relayToken, setRelayToken] = useState("");
 	const [copyToast, setCopyToast] = useState<string | null>(null);
 	const [revokePendingId, setRevokePendingId] = useState<string | null>(null);
+	const [showAdvancedNetwork, setShowAdvancedNetwork] = useState(false);
+	const [channelChosen, setChannelChosen] = useState(false);
 	const [locale, setLocaleState] = useState<Locale>(() => bootstrapLocale());
 
 	const switchLocale = (next: Locale) => {
@@ -168,6 +195,7 @@ function MobileRemoteSettings() {
 	};
 
 	const refreshStatus = () => {
+		if (status === null) setStatusState("loading");
 		void (async () => {
 			try {
 				const response = await fetch("/api/mobile-remote/status", {
@@ -176,20 +204,24 @@ function MobileRemoteSettings() {
 				const payload = (await response.json()) as StatusInfo & { error?: { message?: string } };
 				if (!response.ok || typeof payload.bind !== "string") {
 					setStatusError(formatApiError(response, payload, t("settings.status.readFailed")));
+					setStatusState(response.status === 401 || response.status === 403 ? "permissionDenied" : status === null ? "unavailable" : "stale");
 					return;
 				}
 				setStatusError(null);
 				setStatus(payload);
+				setStatusState("ready");
 				if (typeof payload.relay?.url === "string" && payload.relay.url.length > 0) {
 					setRelayOrigin(payload.relay.url);
 				}
 			} catch {
 				setStatusError(t("settings.status.readFailed"));
+				setStatusState(status === null ? "unavailable" : "stale");
 			}
 		})();
 	};
 
 	const refreshDevices = () => {
+		if (devices.length === 0) setDevicesState("loading");
 		void (async () => {
 			try {
 				const response = await fetch("/api/mobile-remote/devices", {
@@ -197,12 +229,17 @@ function MobileRemoteSettings() {
 				});
 				const payload = (await response.json()) as { devices?: DeviceInfo[]; error?: { message?: string } };
 				if (!response.ok) {
-					setStatusError(formatApiError(response, payload, t("settings.devices.readFailed")));
+					setDevicesError(formatApiError(response, payload, t("settings.devices.readFailed")));
+					setDevicesState(response.status === 401 || response.status === 403 ? "permissionDenied" : devices.length === 0 ? "unavailable" : "stale");
 					return;
 				}
-				setDevices(Array.isArray(payload.devices) ? payload.devices : []);
+				const rows = Array.isArray(payload.devices) ? payload.devices : [];
+				setDevicesError(null);
+				setDevices(rows);
+				setDevicesState(rows.length === 0 ? "empty" : "ready");
 			} catch {
-				setStatusError(t("settings.devices.readFailed"));
+				setDevicesError(t("settings.devices.readFailed"));
+				setDevicesState(devices.length === 0 ? "unavailable" : "stale");
 			}
 		})();
 	};
@@ -368,6 +405,7 @@ function MobileRemoteSettings() {
 	};
 
 	const createOffer = () => {
+		setChannelChosen(true);
 		setOfferError(null);
 		void (async () => {
 			try {
@@ -431,6 +469,14 @@ function MobileRemoteSettings() {
 			? Math.max(0, Math.min(100, (remainingMs / offerInfo.initialRemainingMs) * 100))
 			: 0;
 	const progressUrgent = remainingMs !== null && remainingMs > 0 && remainingMs <= 60_000;
+	const activeDevice = devices.find((device) => device.revokedAt === undefined);
+	const flowStep = activeDevice !== undefined ? 4 : offerInfo !== null ? 3 : channelChosen ? 2 : 1;
+	const flowLabels = [
+		t("settings.flow.connection"),
+		t("settings.flow.pair"),
+		t("settings.flow.name"),
+		t("settings.flow.done"),
+	];
 
 	const box: Record<string, string | number> = {
 		display: "grid",
@@ -516,6 +562,38 @@ function MobileRemoteSettings() {
 			),
 		),
 		createElement(
+			"ol",
+			{
+				style: {
+					margin: 0,
+					padding: 0,
+					listStyle: "none",
+					display: "grid",
+					gridTemplateColumns: "repeat(auto-fit, minmax(8rem, 1fr))",
+					gap: "8px",
+				},
+				"aria-label": t("settings.flow.label"),
+			},
+			...flowLabels.map((label, index) => {
+				const step = index + 1;
+				return createElement(
+					"li",
+					{
+						key: label,
+						...(step === flowStep ? { "aria-current": "step" } : {}),
+						style: {
+							padding: "8px 10px",
+							borderRadius: "8px",
+							background: step === flowStep ? "rgba(59,130,246,.14)" : "rgba(127,127,127,.08)",
+							opacity: step > flowStep ? 0.55 : 1,
+							fontSize: "13px",
+						},
+					},
+					`${String(step)}. ${label}`,
+				);
+			}),
+		),
+		createElement(
 			"div",
 			{
 				style: {
@@ -530,16 +608,15 @@ function MobileRemoteSettings() {
 				{ style: { display: "grid", gap: "4px" } },
 				createElement("strong", { style: { fontSize: "14px" } }, t("settings.status.title")),
 				status === null
-					? createElement("span", { style: muted }, statusError ?? t("settings.status.reading"))
+					? createElement(
+							"span",
+							{ style: statusState === "permissionDenied" || statusState === "unavailable" ? errStyle : muted, role: "status" },
+							statusError ?? t("settings.status.reading"),
+						)
 					: createElement(
 							"span",
 							{ style: { fontSize: "13px" } },
-							t("settings.status.summary", {
-								listen: status.listening ? t("settings.status.listening") : t("settings.status.notListening"),
-								port: String(status.port),
-								reach: status.networkReach === "lan" ? t("settings.status.lanOpen") : t("settings.status.loopbackOnly"),
-								n: String(status.activeDevices),
-							}),
+							statusState === "stale" ? t("settings.state.stale") : t("settings.status.ready"),
 						),
 			),
 			createElement(
@@ -557,8 +634,116 @@ function MobileRemoteSettings() {
 			statusError !== null && status === null
 				? createElement("p", { style: { ...errStyle, gridColumn: "1 / -1" } }, statusError)
 				: null,
+			status !== null
+				? createElement(
+						"div",
+						{ style: { display: "grid", gap: "6px", gridColumn: "1 / -1" } },
+						createElement(
+							"button",
+							{
+								type: "button",
+								onClick: () => setShowAdvancedNetwork((value) => !value),
+								"aria-expanded": showAdvancedNetwork,
+								style: { justifySelf: "start" },
+							},
+							showAdvancedNetwork ? t("settings.advanced.hide") : t("settings.advanced.show"),
+						),
+						showAdvancedNetwork
+							? createElement(
+									"p",
+									{ style: muted },
+									t("settings.status.summary", {
+										listen: status.listening ? t("settings.status.listening") : t("settings.status.notListening"),
+										port: String(status.port),
+										reach: status.networkReach === "lan" ? t("settings.status.lanOpen") : t("settings.status.loopbackOnly"),
+										n: String(status.activeDevices),
+									}),
+								)
+							: null,
+					)
+				: null,
 		),
 		createElement("p", { style: muted }, t("settings.intro")),
+		flowStep === 4
+			? createElement("p", { style: { ...muted, color: "var(--dshmr-ok)" }, role: "status" }, t("settings.flow.completed"))
+			: flowStep === 3
+				? createElement("p", { style: muted, role: "status" }, t("settings.flow.nameHint"))
+				: null,
+		status?.compatibility !== undefined
+			? createElement(
+					"details",
+					{ style: { ...box, padding: "10px 12px" } },
+					createElement(
+						"summary",
+						{
+							style: {
+								cursor: "pointer",
+								fontWeight: 600,
+								color:
+									status.compatibility.status === "incompatible"
+										? "var(--dshmr-danger)"
+										: status.compatibility.status === "degraded"
+											? "var(--dshmr-warn)"
+											: "inherit",
+							},
+						},
+						status.compatibility.status === "incompatible"
+							? t("settings.compatibility.incompatible")
+							: status.compatibility.status === "degraded"
+								? t("settings.compatibility.degraded")
+								: status.compatibility.apiProxy.available && status.compatibility.webServer.available
+									? t("settings.compatibility.ready")
+									: t("settings.compatibility.missing", {
+										services: [
+											...(status.compatibility.apiProxy.available ? [] : ["apiProxy"]),
+											...(status.compatibility.webServer.available ? [] : ["webServer"]),
+										].join(", "),
+									}),
+					),
+					createElement(
+						"dl",
+						{ style: { display: "grid", gridTemplateColumns: "max-content minmax(0, 1fr)", gap: "5px 12px", margin: "8px 0 0", fontSize: "12px" } },
+						createElement("dt", null, t("settings.compatibility.dshVersion")),
+						createElement("dd", { style: { margin: 0, wordBreak: "break-all" } }, status.compatibility.dshVersion ?? t("settings.compatibility.unknown")),
+						createElement("dt", null, t("settings.compatibility.coreAbi")),
+						createElement("dd", { style: { margin: 0, wordBreak: "break-all" } }, status.compatibility.coreAbi ?? t("settings.compatibility.unknown")),
+						createElement("dt", null, t("settings.compatibility.accessMode")),
+						createElement("dd", { style: { margin: 0 } }, status.accessMode === undefined ? t("settings.compatibility.unknown") : t(`settings.accessMode.${status.accessMode}`)),
+					),
+					status.compatibility.capabilities === undefined
+						? null
+						: createElement(
+								"ul",
+								{ style: { ...muted, margin: "8px 0 0", paddingLeft: "18px" } },
+								...Object.entries(status.compatibility.capabilities).map(([name, capability]) =>
+									createElement(
+										"li",
+										{ key: name },
+										`${name}: ${capability.state} · ${capability.contract}${capability.reason === undefined ? "" : ` · ${capability.reason}`}`,
+									),
+								),
+							),
+					status.compatibility.ownerRequest?.diagnostics.some((item) => item.level === "error")
+						? createElement(
+								"p",
+								{ style: errStyle, role: "alert" },
+								status.compatibility.ownerRequest.diagnostics
+									.filter((item) => item.level === "error")
+									.map((item) => item.message)
+									.join(" · "),
+							)
+						: null,
+					status.compatibility.recommendations?.length
+						? createElement(
+								"ul",
+								{ style: { ...muted, margin: "8px 0 0", paddingLeft: "18px" } },
+								...status.compatibility.recommendations.map((recommendation) =>
+									createElement("li", { key: recommendation }, recommendation),
+								),
+							)
+						: null,
+				)
+			: null,
 		createElement(
 			"div",
 			{ style: box },
@@ -570,6 +755,7 @@ function MobileRemoteSettings() {
 					type: "radio",
 					name: "channel",
 					checked: lanMode,
+					onClick: () => setChannelChosen(true),
 					onChange: selectLan,
 				}),
 				t("settings.channel.lan"),
@@ -581,6 +767,7 @@ function MobileRemoteSettings() {
 					type: "radio",
 					name: "channel",
 					checked: publicMode,
+					onClick: () => setChannelChosen(true),
 					onChange: () => {
 						setChannel("public");
 						if (status?.relay?.running) void relayAction("stop");
@@ -595,6 +782,7 @@ function MobileRemoteSettings() {
 					type: "radio",
 					name: "channel",
 					checked: relayMode,
+					onClick: () => setChannelChosen(true),
 					onChange: () => {
 						setChannel("relay");
 						if (status?.tunnel.running) void tunnelAction("stop");
@@ -859,7 +1047,17 @@ function MobileRemoteSettings() {
 			"div",
 			{ style: box },
 			createElement("strong", { style: { fontSize: "14px" } }, t("settings.devices.title")),
-			devices.length === 0
+			devicesState === "loading"
+				? createElement("p", { style: muted, role: "status" }, t("common.loading"))
+				: devicesState === "permissionDenied" || devicesState === "unavailable"
+					? createElement(
+							"div",
+							{ style: { display: "grid", gap: "6px" }, role: devicesState === "permissionDenied" ? "alert" : "status" },
+							createElement("p", { style: errStyle }, t(`settings.state.${devicesState}`)),
+							devicesError === null ? null : createElement("p", { style: errStyle }, devicesError),
+							createElement("button", { type: "button", onClick: refreshDevices, style: { justifySelf: "start" } }, t("common.retry")),
+						)
+					: devices.length === 0
 				? createElement("p", { style: muted }, t("settings.devices.empty"))
 				: createElement(
 						"ul",
@@ -868,6 +1066,11 @@ function MobileRemoteSettings() {
 							const revoked = device.revokedAt !== undefined;
 							const online = !revoked && deviceOnline(device.lastSeenAt);
 							const pending = revokePendingId === device.deviceId;
+							const deviceName = device.displayName?.trim();
+							const deviceDetails = t("settings.devices.phoneLine", {
+								ago: formatAgo(device.lastSeenAt),
+								id: device.deviceId.slice(0, 8),
+							});
 							return createElement(
 								"li",
 								{
@@ -883,23 +1086,28 @@ function MobileRemoteSettings() {
 								},
 								createElement(
 									"span",
-									{ style: { wordBreak: "break-all", flex: "1 1 auto" } },
+									{ style: { wordBreak: "break-all", flex: "1 1 auto", display: "grid", gap: "3px" } },
 									createElement(
 										"span",
-										{
-											style: {
-												display: "inline-block",
-												fontSize: "11px",
-												padding: "1px 6px",
-												borderRadius: "999px",
-												marginRight: "6px",
-												background: revoked ? "rgba(127,127,127,0.2)" : online ? "rgba(34,197,94,0.2)" : "rgba(127,127,127,0.15)",
-												color: revoked ? "inherit" : online ? "#15803d" : "inherit",
+										null,
+										createElement(
+											"span",
+											{
+												style: {
+													display: "inline-block",
+													fontSize: "11px",
+													padding: "1px 6px",
+													borderRadius: "999px",
+													marginRight: "6px",
+													background: revoked ? "rgba(127,127,127,0.2)" : online ? "rgba(34,197,94,0.2)" : "rgba(127,127,127,0.15)",
+													color: revoked ? "inherit" : online ? "#15803d" : "inherit",
+												},
 											},
-										},
-										revoked ? t("settings.devices.revoked") : online ? t("settings.devices.online") : t("settings.devices.offline"),
+											revoked ? t("settings.devices.revoked") : online ? t("settings.devices.online") : t("settings.devices.offline"),
+										),
+										deviceName || deviceDetails,
 									),
-									t("settings.devices.phoneLine", { ago: formatAgo(device.lastSeenAt), id: device.deviceId.slice(0, 8) }),
+									deviceName ? createElement("span", { style: muted }, deviceDetails) : null,
 								),
 								!revoked
 									? createElement(
@@ -938,13 +1146,33 @@ function MobileRemoteSettings() {
 							);
 						}),
 					),
+			devicesState === "stale"
+				? createElement(
+						"div",
+						{ style: { display: "grid", gap: "4px" }, role: "status" },
+						createElement("p", { style: warnStyle }, t("settings.state.stale")),
+						devicesError === null ? null : createElement("p", { style: warnStyle }, devicesError),
+					)
+				: null,
 		),
 	);
 }
 
-export function apply(ctx: ClientApplyContext): void {
-	ctx.slots.inject("settings.section", () =>
-		ctx.slots.register(
+const installedContexts = new WeakSet<object>();
+
+function isSlotsApi(value: unknown): value is SlotsApi {
+	if (typeof value !== "object" || value === null) return false;
+	const candidate = value as { inject?: unknown; register?: unknown };
+	return typeof candidate.inject === "function" && typeof candidate.register === "function";
+}
+
+function asDisposer(value: unknown): () => void {
+	return typeof value === "function" ? value as () => void : () => undefined;
+}
+
+function registerSettingsSlot(slots: SlotsApi): () => void {
+	const dispose = slots.inject("settings.section", () =>
+		slots.register(
 			{
 				name: "settings.section",
 				id: "mobile-remote",
@@ -954,4 +1182,89 @@ export function apply(ctx: ClientApplyContext): void {
 			MobileRemoteSettings,
 		),
 	);
+	return asDisposer(dispose);
+}
+
+function mountRecoveryEntry(onRetry: () => void): () => void {
+	if (typeof document === "undefined") return () => undefined;
+	const host = document.createElement("aside");
+	host.id = "dsh-mobile-remote-recovery";
+	host.setAttribute("aria-label", t("settings.nav"));
+	host.style.position = "fixed";
+	host.style.right = "16px";
+	host.style.bottom = "16px";
+	host.style.zIndex = "2147483000";
+	host.style.display = "grid";
+	host.style.gap = "8px";
+	host.style.maxWidth = "min(22rem, calc(100vw - 32px))";
+	const trigger = document.createElement("button");
+	trigger.type = "button";
+	trigger.textContent = t("settings.recovery.open");
+	trigger.setAttribute("aria-expanded", "false");
+	trigger.setAttribute("aria-controls", "dsh-mobile-remote-recovery-panel");
+	trigger.style.padding = "8px 12px";
+	trigger.style.borderRadius = "8px";
+	trigger.style.outlineOffset = "3px";
+	const panel = document.createElement("div");
+	panel.id = "dsh-mobile-remote-recovery-panel";
+	panel.setAttribute("role", "status");
+	panel.hidden = true;
+	panel.style.padding = "12px";
+	panel.style.border = "1px solid rgba(127,127,127,.35)";
+	panel.style.borderRadius = "10px";
+	panel.style.background = "Canvas";
+	panel.style.color = "CanvasText";
+	const message = document.createElement("p");
+	message.textContent = t("settings.recovery.message");
+	message.style.margin = "0 0 8px";
+	const retry = document.createElement("button");
+	retry.type = "button";
+	retry.textContent = t("common.retry");
+	retry.addEventListener("click", onRetry);
+	panel.append(message, retry);
+	trigger.addEventListener("click", () => {
+		panel.hidden = !panel.hidden;
+		trigger.setAttribute("aria-expanded", String(!panel.hidden));
+		if (!panel.hidden) retry.focus();
+		else trigger.focus();
+	});
+	host.append(trigger, panel);
+	document.body.append(host);
+	return () => host.remove();
+}
+
+export function apply(ctx: ClientApplyContext): void {
+	if (typeof ctx !== "object" || ctx === null || installedContexts.has(ctx)) return;
+	installedContexts.add(ctx);
+	let disposeSlot: () => void = () => undefined;
+	let registered = false;
+	let disposed = false;
+	let disposeRecovery: () => void = () => undefined;
+
+	const attach = (candidate: ClientApplyContext): void => {
+		if (disposed || registered || !isSlotsApi(candidate.slots)) return;
+		registered = true;
+		disposeSlot = registerSettingsSlot(candidate.slots);
+		disposeRecovery();
+		disposeRecovery = () => undefined;
+	};
+	const retry = (): void => {
+		attach(ctx);
+		if (!registered && typeof location !== "undefined") location.reload();
+	};
+	disposeRecovery = mountRecoveryEntry(retry);
+	attach(ctx);
+	const disposeWait = typeof ctx.inject === "function"
+		? asDisposer(ctx.inject(["slots"], (candidate) => {
+			attach(candidate);
+			return () => undefined;
+		}))
+		: () => undefined;
+	ctx.effect?.(() => () => {
+		disposed = true;
+		disposeWait();
+		disposeSlot();
+		disposeRecovery();
+		installedContexts.delete(ctx);
+	});
 }

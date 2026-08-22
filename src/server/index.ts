@@ -2,8 +2,8 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { base64Encode } from "../shared/base64.js";
 import { type RuntimeConfig, RuntimeConfigSchema } from "./config.js";
-import { trustedHostsFromRuntime } from "./security.js";
-import { isHostApiProxy, type MobileRemoteHostContext } from "./context.js";
+import { createOwnerRequestPolicy, safeguardOwnerRequestPolicy, type OwnerRequestDiagnostic } from "./security.js";
+import { resolveHostCompatibility, type MobileRemoteHostContext } from "./context.js";
 import { MobileDataPlane } from "./dataplane.js";
 import { loadOrCreateServerKey } from "./keys.js";
 import { networkCandidates } from "./net.js";
@@ -17,16 +17,45 @@ import { createUpstreamHub } from "./upstream.js";
 
 export const name = "mobile-remote";
 
-export const inject = ["apiProxy", "webServer"] as const;
+// Only the management-plane web server is a hard host dependency. apiProxy is
+// capability-detected so installs that lack session RPC still load safely.
+export const inject = ["webServer"] as const;
 
 export const Config = RuntimeConfigSchema;
 
 const LOOPBACK = "127.0.0.1";
 const ALL_INTERFACES = "0.0.0.0";
 
+/** Plugin entry boundary: DSH fails the entire plugin tree on an uncaught import/apply error. */
 export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): Promise<void> {
+	try {
+		await applyRuntime(ctx, rawConfig);
+	} catch (error) {
+		const kind = error instanceof Error ? error.name : "error";
+		try {
+			ctx.logger.error(`mobile-remote failed to load safely (${kind}); no compatibility exception escaped the plugin entry`);
+		} catch {
+			// Logging is host-controlled; it must not turn a recovered load failure into a fatal one.
+		}
+	}
+}
+
+async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): Promise<void> {
 	const config: RuntimeConfig = RuntimeConfigSchema.parse(rawConfig ?? {});
 	const { logger } = ctx;
+	const cleanupSteps: Array<() => void | Promise<void>> = [];
+	let cleanupStarted = false;
+	const cleanupRuntime = async (): Promise<void> => {
+		if (cleanupStarted) return;
+		cleanupStarted = true;
+		for (const cleanup of cleanupSteps.reverse()) {
+			try {
+				await cleanup();
+			} catch {
+				logger.warn("mobile-remote runtime cleanup failed (details redacted)");
+			}
+		}
+	};
 	logger.info(
 		`mobile-remote loaded, enabled=${String(config.enabled)}, bind=${config.bind}, port=${String(config.port)}`,
 	);
@@ -46,18 +75,34 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 	const tunnel = new CloudflareQuickTunnel({
 		persistFile: join(storageDirectory, "tunnel.json"),
 	});
-	ctx.effect(
-		() => () => void tunnel.stop(),
-		"mobile-remote: cloudflare quick tunnel (must stop on unload)",
-	);
+	cleanupSteps.push(() => tunnel.stop());
 
-	const injected = ctx.apiProxy ?? ctx.get?.("apiProxy");
-	const apiProxy = isHostApiProxy(injected) ? injected : undefined;
+	const host = resolveHostCompatibility(ctx);
+	const fallbackOwnerRequestPolicy = createOwnerRequestPolicy(config.ownerRequest);
+	const ownerRequestPolicy = safeguardOwnerRequestPolicy(host.ownerRequestPolicy ?? fallbackOwnerRequestPolicy);
+	let ownerRequestDiagnostics: readonly OwnerRequestDiagnostic[] = [];
+	try {
+		ownerRequestDiagnostics = ownerRequestPolicy.diagnostics();
+	} catch {
+		ownerRequestDiagnostics = [
+			{
+				id: "owner-request.diagnostics-unavailable",
+				level: "error",
+				message: "owner request policy diagnostics are unavailable; requests remain fail closed",
+			},
+		];
+	}
+	if (config.trustedHosts.length > 0 && config.ownerRequest.trustedProxy === undefined) {
+		logger.warn(
+			"mobile-remote: trustedHosts no longer authorizes remote Settings; configure ownerRequest.trustedProxy or use SSH loopback",
+		);
+	}
+	const apiProxy = host.apiProxy;
 	if (apiProxy === undefined) {
 		logger.warn("mobile-remote: apiProxy service unavailable; session RPC will return upstream_error");
 	}
 	const upstream = createUpstreamHub(apiProxy, logger);
-	ctx.effect(() => () => upstream.stop(), "mobile-remote: upstream hub");
+	cleanupSteps.push(() => upstream.stop());
 
 	const mobileDir = fileURLToPath(new URL("../mobile/", import.meta.url));
 	const dataPlane = new MobileDataPlane({
@@ -70,6 +115,7 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 		port: config.port,
 		upstream,
 	});
+	cleanupSteps.push(() => dataPlane.close());
 
 	const rendezvous = new RendezvousClient({
 		persistFile: join(storageDirectory, "relay.json"),
@@ -77,10 +123,7 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 		offers,
 		connectionDeps: () => dataPlane.connectionDeps(),
 	});
-	ctx.effect(
-		() => () => void rendezvous.stop(),
-		"mobile-remote: rendezvous client (must stop on unload)",
-	);
+	cleanupSteps.push(() => rendezvous.stop());
 
 	// Startup bind: keep LAN reachability across restarts for active devices.
 	const startBind =
@@ -90,7 +133,7 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 		logger.info(`mobile-remote data plane listening on ${dataPlane.host}:${String(config.port)}`);
 	} catch (error) {
 		logger.warn(`mobile-remote data plane failed to listen (${error instanceof Error ? error.name : "error"})`);
-		ctx.effect(() => () => void dataPlane.close(), "mobile-remote: data plane");
+		await cleanupRuntime();
 		return;
 	}
 
@@ -111,44 +154,59 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 		};
 	};
 
-	const webServer = ctx.webServer;
+	const webServer = host.webServer;
 	if (webServer === undefined) {
 		logger.warn("mobile-remote: webServer service unavailable; management routes not registered");
 	} else {
-		const trustedHosts = [...config.trustedHosts, ...trustedHostsFromRuntime(ctx.get?.("webRuntime"))];
-		const disposers = registerManagementRoutes(webServer, {
-			logger,
-			now: () => Date.now(),
-			publicKeyB64: base64Encode(serverKeyPair.publicKey),
-			offerTtlMs: config.offerTtlMs,
-			registry,
-			offers,
-			audit,
-			trustedHosts,
-			listening: () => dataPlane.listening,
-			currentBind: () => dataPlane.host,
-			port: () => config.port,
-			widen,
-			advertise,
-			tunnel: {
-				snapshot: () => tunnel.snapshot(),
-				start: (options) => tunnel.start(options),
-				stop: () => tunnel.stop(),
-			},
-			relay: {
-				snapshot: () => rendezvous.snapshot(),
-				start: (options) => rendezvous.start(options),
-				stop: () => rendezvous.stop(),
-				createInvite: () => rendezvous.createInvite(),
-				advertise: (invite) => rendezvous.advertise(invite),
-				putInvite: (input) => rendezvous.putInvite(input),
-			},
-			installCloudflared: () => installOfficialCloudflared(),
-		});
-		for (const [index, dispose] of disposers.entries()) {
-			ctx.effect(() => dispose, `mobile-remote: route ${index + 1}`);
+		let disposers: readonly (() => void)[];
+		try {
+			disposers = registerManagementRoutes(webServer, {
+				logger,
+				now: () => Date.now(),
+				publicKeyB64: base64Encode(serverKeyPair.publicKey),
+				offerTtlMs: config.offerTtlMs,
+				registry,
+				offers,
+				audit,
+				ownerRequestPolicy,
+				listening: () => dataPlane.listening,
+				currentBind: () => dataPlane.host,
+				port: () => config.port,
+				widen,
+				advertise,
+				tunnel: {
+					snapshot: () => tunnel.snapshot(),
+					start: (options) => tunnel.start(options),
+					stop: () => tunnel.stop(),
+				},
+				relay: {
+					snapshot: () => rendezvous.snapshot(),
+					start: (options) => rendezvous.start(options),
+					stop: () => rendezvous.stop(),
+					createInvite: () => rendezvous.createInvite(),
+					advertise: (invite) => rendezvous.advertise(invite),
+					putInvite: (input) => rendezvous.putInvite(input),
+				},
+				installCloudflared: () => installOfficialCloudflared(),
+				compatibility: {
+					...host.diagnostics,
+					ownerRequest: {
+						source: host.ownerRequestPolicy === undefined ? "plugin-fallback" : "host",
+						diagnostics: ownerRequestDiagnostics,
+					},
+				},
+			});
+		} catch (error) {
+			await cleanupRuntime();
+			throw error;
 		}
+		cleanupSteps.push(...disposers);
 	}
 
-	ctx.effect(() => () => void dataPlane.close(), "mobile-remote: data plane");
+	try {
+		ctx.effect(() => () => cleanupRuntime(), "mobile-remote: atomic runtime group");
+	} catch (error) {
+		await cleanupRuntime();
+		throw error;
+	}
 }

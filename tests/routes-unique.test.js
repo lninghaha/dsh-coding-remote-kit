@@ -54,3 +54,35 @@ test("management exact paths are unique (DSH webServer keys by path, not method)
 	assert.equal(paths.filter((path) => path === "/api/mobile-remote/cloudflared").length, 1);
 	assert.equal(paths.filter((path) => path === "/api/mobile-remote/relay").length, 1);
 });
+
+for (const failingRegistration of [2, 7]) {
+	test(`management route registration rolls back all prior routes when registration ${failingRegistration} fails`, () => {
+		const active = [];
+		const released = [];
+		let attempts = 0;
+		const webServer = {
+			register(route) {
+				attempts += 1;
+				if (attempts === failingRegistration) throw new Error("duplicate exact route");
+				active.push(route.path);
+				return () => {
+					released.push(route.path);
+					const index = active.lastIndexOf(route.path);
+					if (index >= 0) active.splice(index, 1);
+				};
+			},
+		};
+		assert.throws(() => registerManagementRoutes(webServer, stubDeps()), /duplicate exact route/);
+		assert.deepEqual(active, []);
+		assert.deepEqual(released, failingRegistration === 2
+			? ["/api/mobile-remote/offers"]
+			: [
+				"/api/mobile-remote/cloudflared",
+				"/api/mobile-remote/devices",
+				"/api/mobile-remote/relay",
+				"/api/mobile-remote/tunnel",
+				"/api/mobile-remote/status",
+				"/api/mobile-remote/offers",
+			]);
+	});
+}

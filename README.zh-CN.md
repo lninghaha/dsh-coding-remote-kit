@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.3.0** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.4.0** · DeepSeek Harness `0.1.0-rc.6` · GitHub `dsh-coding-remote-kit`
 
 **面向 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) 的远程手机访问插件。** 把手机配对到已经在跑 `dsh web` 的桌面，观察会话并做一组窄写操作——不必把完整 Web API 暴露出去。
 
@@ -17,9 +17,13 @@
 
 ---
 
+> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.0` is their shared npm dependency, not a separate DSH plugin.
+
+---
+
 社区插件。**与 DeepSeek 无隶属关系，也不暗示官方背书。** 产品意图更接近 [Orca Mobile Companion](https://www.onorca.dev/docs/mobile)，而不是第二份桌面 IDE。
 
-改这个仓库之前先读 [`AGENTS.md`](AGENTS.md)：**禁止自行重启生产 `dsh-web`。** 只准备 tarball，由操作者重启。
+改这个仓库之前先读 [`AGENTS.md`](AGENTS.md)：**禁止自行重启生产 DSH Web 进程或其本机服务包装。** 只准备 tarball，由操作者通过测试机自己的进程管理器重启。
 
 ## 名称
 
@@ -27,7 +31,7 @@
 
 | | 请用这个 | 说明 |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.3.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.3.0` |
+| npm | `dsh-coding-remote-kit@0.4.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.4.0` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | 旧 checkout 名 `dsh-mobile-remote` |
 | Cordis 插件 id | `mobile-remote` | 不变 |
 | 设置页 HTTP | `/api/mobile-remote/*` | 不变 |
@@ -84,10 +88,10 @@
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.3.0
+dsh plugin --profile web add dsh-coding-remote-kit@0.4.0
 ```
 
-然后由**操作者**在自己的时间窗重启现有 `dsh web`。打开 **设置 → 移动远程**，生成配对 offer，手机扫码（或手输 PIN）。
+然后由**操作者**在自己的时间窗重启现有 DSH Web 进程。打开 **设置 → 移动远程**，生成配对 offer，手机扫码（或手输 PIN）。
 
 源码 checkout（开发）：
 
@@ -95,8 +99,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.3.0
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.3.0.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.3.0.tgz"
+cp dsh-coding-remote-kit-0.4.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.4.0.tgz"
 ```
 
 不要对本工作树执行 `dsh plugin add ./`。pnpm 11 会把某些 `file:` tarball 解析成 `link:` 源码树，入口 import 失败会拖死整个 GUI。
@@ -123,7 +127,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.3.0.tg
 
 ## 安装
 
-需要 DeepSeek Harness `0.1.0-rc.7`（钉死）与 Node.js 22.19+。完整步骤、配对与隧道说明见 [INSTALL.md](INSTALL.md)。
+需要 DeepSeek Harness `0.1.0-rc.6`（钉死）与 Node.js 22.19+。完整步骤、配对与隧道说明见 [INSTALL.md](INSTALL.md)。
 
 开发：
 

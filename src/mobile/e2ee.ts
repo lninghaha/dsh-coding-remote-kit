@@ -23,6 +23,7 @@ import {
 	validateAuthenticated,
 	validateReady,
 	type AuthMessage,
+	type ClientMetadata,
 	type HelloMessage,
 	type ReadyMessage,
 } from "../shared/handshake.js";
@@ -93,9 +94,12 @@ export class MobileE2eeSession {
 		}
 	}
 
-	auth(deviceToken: string): AuthMessage {
+	auth(
+		deviceToken: string,
+		identity: { readonly deviceName?: string; readonly clientMetadata?: ClientMetadata } = {},
+	): AuthMessage {
 		if (this.#transcriptHash === undefined) throw new Error("handshake not ready");
-		return buildAuth(this.#transcriptHash, deviceToken);
+		return buildAuth(this.#transcriptHash, deviceToken, identity);
 	}
 
 	receiveAuthenticated(authenticated: unknown): AuthenticatedOutcome {

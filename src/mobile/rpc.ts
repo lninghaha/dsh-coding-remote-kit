@@ -27,33 +27,47 @@ export class MobileRpcClient {
 	readonly #send: (value: unknown) => void;
 	readonly #pending = new Map<string | number, Pending>();
 	#nextId = 1;
-	#onPush: MobilePushHandler | null = null;
+	readonly #pushHandlers = new Set<MobilePushHandler>();
+	#failureReason: string | null = null;
 
 	constructor(send: (value: unknown) => void) {
 		this.#send = send;
 	}
 
-	onPush(handler: MobilePushHandler): void {
-		this.#onPush = handler;
+	onPush(handler: MobilePushHandler): () => void {
+		this.#pushHandlers.add(handler);
+		let subscribed = true;
+		return () => {
+			if (!subscribed) return;
+			subscribed = false;
+			this.#pushHandlers.delete(handler);
+		};
 	}
 
 	request(method: string, params?: Record<string, unknown>): Promise<unknown> {
+		if (this.#failureReason !== null) return Promise.reject(new Error(this.#failureReason));
 		const id = this.#nextId;
 		this.#nextId += 1;
 		return new Promise((resolve, reject) => {
 			this.#pending.set(id, { resolve, reject });
-			this.#send(params === undefined ? { id, method } : { id, method, params });
+			try {
+				this.#send(params === undefined ? { id, method } : { id, method, params });
+			} catch (error) {
+				this.#pending.delete(id);
+				reject(error instanceof Error ? error : new Error("request send failed"));
+			}
 		});
 	}
 
 	handleMessage(message: Record<string, unknown>): void {
 		if (typeof message.push === "string") {
 			const rpcId = typeof message.rpcId === "string" ? message.rpcId : undefined;
-			this.#onPush?.({
+			const push: MobilePush = {
 				push: message.push,
 				data: message.data,
 				...(rpcId === undefined ? {} : { rpcId }),
-			});
+			};
+			for (const handler of [...this.#pushHandlers]) handler(push);
 			return;
 		}
 		const id = message.id;
@@ -72,6 +86,7 @@ export class MobileRpcClient {
 	}
 
 	failAll(reason: string): void {
+		this.#failureReason = reason;
 		for (const pending of this.#pending.values()) pending.reject(new Error(reason));
 		this.#pending.clear();
 	}

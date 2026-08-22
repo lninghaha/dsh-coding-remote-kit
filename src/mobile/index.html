@@ -27,6 +27,7 @@
 			font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 		}
 		* { box-sizing: border-box; }
+		.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 		html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
 		body { display: flex; align-items: center; justify-content: center; padding: 24px; }
 		html.connected, body.connected { height: 100dvh; max-height: 100dvh; overflow: hidden; }
@@ -72,12 +73,14 @@
 			display: flex; flex-direction: column; gap: 12px;
 		}
 		.pair-card h1 { margin: 0; font-size: 18px; }
+		.pair-card label { font-size: 13px; font-weight: 600; }
 		.pair-card .hint { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 		.pair-card input {
 			font-size: 22px; letter-spacing: 0.12em; text-align: center;
 			font-variant-numeric: tabular-nums; text-transform: uppercase;
 		}
 		.pair-card .err { margin: 0; color: var(--err); font-size: 13px; }
+		.bar-err { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
 		.bar {
 			display: flex; align-items: center; gap: 10px;
 			padding: calc(10px + env(safe-area-inset-top)) 16px 12px;
@@ -192,6 +195,9 @@
 			min-height: auto; font-size: 12px; text-align: left;
 		}
 		.actions, .opt { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+		.opt { padding: 8px; border: 1px solid var(--line); border-radius: 10px; }
+		.opt input { flex: 0 0 auto; }
+		.opt-description { flex: 1 0 100%; margin-left: 24px; color: var(--muted); font-size: 12px; line-height: 1.4; }
 		.toast {
 			position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom));
 			transform: translateX(-50%); z-index: 30;
@@ -205,6 +211,10 @@
 		.lang-switch button { min-height: auto; padding: 4px 6px; font-size: 12px; background: transparent; color: var(--muted); }
 		.lang-switch button.active { color: var(--text); font-weight: 600; }
 		.bar-actions .lang-switch { justify-content: flex-end; }
+		button:focus-visible, input:focus-visible, textarea:focus-visible, [role="dialog"]:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 72%, transparent); outline-offset: 2px; }
+		@media (prefers-reduced-motion: reduce) {
+			*, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+		}
 	</style>
 </head>
 <body>

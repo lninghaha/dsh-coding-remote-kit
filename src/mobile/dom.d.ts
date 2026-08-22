@@ -28,6 +28,7 @@ interface HTMLElement {
 	value: string;
 	disabled: boolean;
 	checked: boolean;
+	hidden: boolean;
 	placeholder: string;
 	type: string;
 	name: string;
@@ -36,6 +37,7 @@ interface HTMLElement {
 	dataset: Record<string, string>;
 	readonly children: { readonly length: number; item(index: number): HTMLElement | null };
 	appendChild(child: HTMLElement): HTMLElement;
+	append(...nodes: Array<HTMLElement | string>): void;
 	removeChild(child: HTMLElement): HTMLElement;
 	replaceChildren(...nodes: Array<HTMLElement | string>): void;
 	setAttribute(name: string, value: string): void;
@@ -48,6 +50,7 @@ interface HTMLElement {
 interface EventLike {
 	preventDefault(): void;
 	readonly target: HTMLElement | null;
+	readonly key?: string;
 }
 
 interface HTMLCanvasElement extends HTMLElement {
@@ -60,6 +63,9 @@ interface Document {
 	getElementById(id: string): HTMLElement | null;
 	createElement(tag: string): HTMLElement;
 	readonly body: HTMLElement;
+	readonly activeElement?: HTMLElement | null;
+	addEventListener(type: string, listener: (event: EventLike) => void): void;
+	removeEventListener(type: string, listener: (event: EventLike) => void): void;
 }
 
 interface StorageLike {
@@ -73,6 +79,7 @@ interface LocationLike {
 	readonly hash: string;
 	readonly origin: string;
 	readonly host: string;
+	reload(): void;
 }
 
 interface WebSocketMessageEvent {

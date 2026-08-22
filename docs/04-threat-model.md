@@ -28,7 +28,7 @@
 1. **未认证连接只处理握手。** 数据面在完成配对握手之前，不接受任何业务 RPC、不返回会话内容。
 2. **秘密落地约束。** `deviceToken` 只存 SHA-256 哈希；私钥、注册表、审计文件权限 0600（所在目录 0700）；密钥永不进入日志、截图或仓库。
 3. **RPC 白名单默认拒绝。** 未知方法一律拒绝。写操作（审批、提问应答、短回复）写入审计记录，可归因到 `deviceId`。
-4. **管理面回环围栏。** 管理面只绑回环，校验 `Host`、浏览器上下文与 CSRF 守卫；来自非回环的请求一律 403。
+4. **管理面 owner 围栏。** 管理面始终只绑回环。本机/SSH 必须是 loopback TCP peer 与匹配的 loopback Host/Origin；HTTPS 反代还必须同时满足精确 peer allowlist、精确 HTTPS Origin/Host、代理鉴权后注入的 owner proof、`Sec-Fetch-Site: same-origin` 与独立 mutation CSRF proof。非受信 peer 的 `X-Forwarded-*` 一律忽略，配置不完整 fail closed。
 5. **不触碰宿主围栏。** 不修改、不削弱 `dsh web` `/api` 的绑定与鉴权；不抢 `api-proxy` 的审批 / 提问 provider。
 6. **文档占位。** 一切公开示例使用 `example.com` / `127.0.0.1` / `YOUR_TOKEN`，不出现真实地址或凭据。
 

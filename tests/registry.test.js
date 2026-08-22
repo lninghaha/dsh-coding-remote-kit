@@ -36,7 +36,7 @@ test("device registry create / lookup / revoke / persist-reload", () => {
 	assert.equal(reloaded.activeDeviceCount(), 0);
 });
 
-test("file permissions 0600, directory 0700", () => {
+test("file permissions 0600, directory 0700", { skip: process.platform === "win32" }, () => {
 	const dir = ensureStorageDir();
 	loadOrCreateServerKey(dir);
 	const registry = new DeviceRegistry(dir);

@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.3.0** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.4.0** · DeepSeek Harness `0.1.0-rc.6` · GitHub `dsh-coding-remote-kit`
 
 **Удалённый доступ с телефона к [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Сопрягите телефон с компьютером, где уже работает `dsh web`, наблюдайте сессии и выполняйте узкий набор записей — не открывая полный Web API.
 
@@ -17,6 +17,10 @@
 
 ---
 
+> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.0` is their shared npm dependency, not a separate DSH plugin.
+
+---
+
 Сообщественный плагин. **Не связан с DeepSeek и не одобрен DeepSeek.** Замысел продукта ближе к [Orca Mobile Companion](https://www.onorca.dev/docs/mobile), чем ко второй копии настольной IDE.
 
 Перед правками в этом репозитории прочитайте [`AGENTS.md`](AGENTS.md): **не перезапускайте производственный `dsh-web` самостоятельно.** Подготовьте tarball; перезапуск делает оператор.
@@ -27,7 +31,7 @@
 
 | | Используйте это | Примечания |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.3.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.3.0` |
+| npm | `dsh-coding-remote-kit@0.4.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.4.0` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | прежнее имя checkout `dsh-mobile-remote` |
 | id плагина Cordis | `mobile-remote` | без изменений |
 | HTTP страницы настроек | `/api/mobile-remote/*` | без изменений |
@@ -84,7 +88,7 @@
 ## Быстрый старт
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.3.0
+dsh plugin --profile web add dsh-coding-remote-kit@0.4.0
 ```
 
 Затем **оператор** перезапускает существующий процесс `dsh web` в своём окне. Откройте **Settings → 移動远程**, создайте предложение сопряжения, отсканируйте QR (или введите PIN) на телефоне.
@@ -95,8 +99,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.3.0
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.3.0.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.3.0.tgz"
+cp dsh-coding-remote-kit-0.4.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.4.0.tgz"
 ```
 
 Не выполняйте `dsh plugin add ./` из этого рабочего дерева. pnpm 11 воспринимает некоторые пути `file:` tarball как источник `link:`, и сбой входного import валит весь GUI.
@@ -123,7 +127,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.3.0.tg
 
 ## Установка
 
-Нужны DeepSeek Harness `0.1.0-rc.7` (закреплён) и Node.js 22.19+. Полные шаги, сопряжение и заметки о туннеле: [INSTALL.md](INSTALL.md).
+Нужны DeepSeek Harness `0.1.0-rc.6` (закреплён) и Node.js 22.19+. Полные шаги, сопряжение и заметки о туннеле: [INSTALL.md](INSTALL.md).
 
 Разработка:
 

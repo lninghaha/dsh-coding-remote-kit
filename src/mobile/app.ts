@@ -53,7 +53,7 @@ type View = { name: "list" } | { name: "session"; sessionId: string };
 
 const SEARCH_DEBOUNCE_MS = 200;
 
-export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void {
+export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): () => void {
 	document.documentElement.classList.add("connected");
 	document.body.classList.add("connected");
 	const state = {
@@ -71,16 +71,24 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		showAll: new Set<string>(),
 		approvals: [] as PendingApproval[],
 		questions: [] as PendingQuestion[],
+		pendingActions: new Set<string>(),
+		scrollSessionToEnd: false,
+		listState: "loading" as "loading" | "ready" | "empty" | "unavailable" | "permissionDenied" | "stale",
+		retry: null as (() => void) | null,
 	};
 
+	let disposed = false;
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
 	let searchTimer: ReturnType<typeof setTimeout> | null = null;
+	let sheetTriggerKey: string | null = null;
 
 	const showToast = (message: string): void => {
+		if (disposed) return;
 		state.toast = message;
 		render();
 		if (toastTimer !== null) clearTimeout(toastTimer);
 		toastTimer = setTimeout(() => {
+			if (disposed) return;
 			state.toast = null;
 			render();
 		}, 2200);
@@ -117,6 +125,8 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 	};
 
 	const render = (): void => {
+		if (disposed) return;
+		const preserved = capturePreservedControls(root);
 		const list = root.querySelector(".col:not(.session)");
 		const transcript = root.querySelector(".transcript");
 		const listTop = list instanceof HTMLElement ? list.scrollTop : 0;
@@ -126,20 +136,33 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		const transTop = trans?.scrollTop ?? 0;
 		root.replaceChildren();
 		root.appendChild(renderChrome());
-		if (state.error !== null) root.appendChild(el("div", { className: "bar-err" }, state.error));
+		const live = el("div", { className: "sr-only", "aria-live": "polite", "aria-atomic": "true" });
+		live.textContent = state.error ?? state.toast ?? "";
+		root.appendChild(live);
+		if (state.error !== null) {
+			const error = el("div", { className: "bar-err", role: "alert" }, state.error);
+			if (state.retry !== null) {
+				const retry = el("button", { type: "button", className: "ghost" }, t("common.retry"));
+				retry.addEventListener("click", state.retry);
+				error.appendChild(retry);
+			}
+			root.appendChild(error);
+		}
 		const view = state.view;
 		if (view.name === "list") root.appendChild(renderList());
 		else root.appendChild(renderSession(view.sessionId));
 		if (state.sheet) root.appendChild(renderSheet());
 		if (state.toast !== null) {
-			const toast = el("div", { className: "toast show" }, state.toast);
+			const toast = el("div", { className: "toast show", role: "status" }, state.toast);
 			root.appendChild(toast);
 		}
+		restorePreservedControls(root, preserved);
 		const nextList = root.querySelector(".col:not(.session)");
 		const nextTrans = root.querySelector(".transcript");
 		if (nextList instanceof HTMLElement) nextList.scrollTop = listTop;
 		if (nextTrans instanceof HTMLElement) {
-			nextTrans.scrollTop = stickBottom ? nextTrans.scrollHeight : transTop;
+			nextTrans.scrollTop = state.scrollSessionToEnd || stickBottom ? nextTrans.scrollHeight : transTop;
+			state.scrollSessionToEnd = false;
 		}
 	};
 
@@ -166,7 +189,9 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			const actions = el("div", { className: "bar-actions" });
 			appendLanguageSwitcher(actions);
 			const more = el("button", { className: "ghost", type: "button" }, t("app.info"));
+			more.setAttribute("data-sheet-trigger", "session-info");
 			more.addEventListener("click", () => {
+				sheetTriggerKey = "session-info";
 				state.sheet = true;
 				render();
 			});
@@ -214,6 +239,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		const search = el("input") as HTMLInputElement;
 		search.className = "search";
 		search.type = "search";
+		search.setAttribute("data-preserve-key", "session-search");
 		search.placeholder = t("app.filterPlaceholder");
 		search.value = state.query;
 		search.addEventListener("input", () => {
@@ -238,6 +264,22 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			el("span", { className: "muted" }, t("app.workspaceCount", { workspaces: groups.length, tasks: state.sessions.length })),
 		);
 		wrap.appendChild(section);
+		if (state.listState === "loading") {
+			wrap.appendChild(el("p", { className: "empty-hint", role: "status" }, t("app.loadingSessions")));
+			return wrap;
+		}
+		if (state.listState === "permissionDenied" || state.listState === "unavailable" || state.listState === "stale") {
+			const status = el("div", {
+				className: "empty-hint",
+				role: state.listState === "permissionDenied" ? "alert" : "status",
+			});
+			status.appendChild(el("p", {}, t(`app.state.${state.listState}`)));
+			const retry = el("button", { type: "button" }, t("common.retry"));
+			retry.addEventListener("click", () => void refreshList());
+			status.appendChild(retry);
+			wrap.appendChild(status);
+			if (state.listState !== "stale") return wrap;
+		}
 		if (state.sessions.length === 0) {
 			wrap.appendChild(
 				el(
@@ -333,12 +375,9 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 
 	const renderSheet = (): HTMLElement => {
 		const wrap = el("div");
-		const mask = el("div", { className: "sheet-mask" });
-		mask.addEventListener("click", () => {
-			state.sheet = false;
-			render();
-		});
-		const sheet = el("div", { className: "sheet" });
+		const mask = el("div", { className: "sheet-mask", "aria-hidden": "true" });
+		mask.addEventListener("click", closeSheet);
+		const sheet = el("div", { className: "sheet", role: "dialog", "aria-modal": "true", "aria-label": t("app.connectionInfo") });
 		const view = state.view;
 		if (view.name === "session") {
 			const current = state.sessions.find((row) => row.sessionId === view.sessionId);
@@ -369,14 +408,26 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			);
 		}
 		const close = el("button", { type: "button", className: "ghost" }, t("common.close"));
-		close.addEventListener("click", () => {
-			state.sheet = false;
-			render();
-		});
+		close.addEventListener("click", closeSheet);
 		sheet.appendChild(close);
 		wrap.appendChild(mask);
 		wrap.appendChild(sheet);
+		queueMicrotask(() => {
+			if (!disposed && state.sheet) close.focus();
+		});
 		return wrap;
+	};
+
+	const closeSheet = (): void => {
+		if (!state.sheet) return;
+		state.sheet = false;
+		const restoreKey = sheetTriggerKey;
+		render();
+		queueMicrotask(() => {
+			if (disposed || restoreKey === null) return;
+			const trigger = root.querySelector(`[data-sheet-trigger="${restoreKey}"]`);
+			if (trigger instanceof HTMLElement) trigger.focus();
+		});
 	};
 
 	const renderSession = (sessionId: string): HTMLElement => {
@@ -402,6 +453,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		}
 		const row = el("div", { className: "composer-row" });
 		const input = el("textarea") as HTMLTextAreaElement;
+		input.setAttribute("data-preserve-key", `composer:${sessionId}`);
 		input.placeholder = t("app.composerPlaceholder");
 		input.addEventListener("input", () => {
 			input.style.height = "auto";
@@ -423,9 +475,6 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		row.appendChild(send);
 		composer.appendChild(row);
 		wrap.appendChild(composer);
-		queueMicrotask(() => {
-			scroller.scrollTop = scroller.scrollHeight;
-		});
 		return wrap;
 	};
 
@@ -443,7 +492,8 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 	};
 
 	const renderApproval = (approval: PendingApproval, showContext: boolean): HTMLElement => {
-		const card = el("div", { className: "card" });
+		const pending = state.pendingActions.has(`approval:${approval.rpcId}`);
+		const card = el("div", { className: "card", "aria-busy": String(pending) });
 		card.appendChild(el("strong", {}, t("app.approval.title", { tool: approval.toolName })));
 		if (showContext) {
 			const ctx = sessionContext(approval.sessionId);
@@ -458,8 +508,10 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		}
 		if (approval.reason !== undefined) card.appendChild(el("p", {}, approval.reason));
 		const actions = el("div", { className: "actions" });
-		const allow = el("button", { type: "button" }, t("app.allowOnce"));
+		const allow = el("button", { type: "button" }, pending ? t("app.submitting") : t("app.allowOnce"));
 		const reject = el("button", { type: "button", className: "ghost" }, t("app.deny"));
+		allow.disabled = pending;
+		reject.disabled = pending;
 		allow.addEventListener("click", () => {
 			void answerApproval(approval, "allowed-once");
 		});
@@ -473,7 +525,8 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 	};
 
 	const renderQuestion = (question: PendingQuestion): HTMLElement => {
-		const card = el("form", { className: "card" });
+		const pending = state.pendingActions.has(`question:${question.rpcId}`);
+		const card = el("form", { className: "card", "aria-busy": String(pending) });
 		const ctx = sessionContext(question.sessionId);
 		card.appendChild(el("p", { className: "ctx" }, `${ctx.workspace} · ${ctx.title}`));
 		for (const item of question.questions) {
@@ -484,6 +537,8 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 				other.placeholder = t("app.answer");
 				other.setAttribute("data-qid", item.id);
 				other.setAttribute("data-kind", "custom");
+				other.setAttribute("data-preserve-key", `question:${question.rpcId}:${item.id}:custom`);
+				other.disabled = pending;
 				card.appendChild(other);
 			} else {
 				for (const option of item.options) {
@@ -493,13 +548,19 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 					input.name = `q-${question.rpcId}-${item.id}`;
 					input.value = option.label;
 					input.setAttribute("data-qid", item.id);
+					input.setAttribute("data-preserve-key", `question:${question.rpcId}:${item.id}:${option.label}`);
+					input.disabled = pending;
 					label.appendChild(input);
 					label.appendChild(el("span", {}, option.label));
+					if (option.description !== undefined) {
+						label.appendChild(el("span", { className: "opt-description" }, option.description));
+					}
 					card.appendChild(label);
 				}
 			}
 		}
-		const submit = el("button", { type: "submit" }, t("app.submit"));
+		const submit = el("button", { type: "submit" }, pending ? t("app.submitting") : t("app.submit"));
+		submit.disabled = pending;
 		card.addEventListener("submit", (event) => {
 			event.preventDefault();
 			void answerQuestion(question, card);
@@ -509,7 +570,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 	};
 
 	const answerApproval = async (approval: PendingApproval, outcome: "allowed-once" | "rejected"): Promise<void> => {
-		await run(async () => {
+		await runAction(`approval:${approval.rpcId}`, async () => {
 			await rpc.request("respond", {
 				rpcId: approval.rpcId,
 				sessionId: approval.sessionId,
@@ -522,7 +583,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 	};
 
 	const answerQuestion = async (question: PendingQuestion, form: HTMLElement): Promise<void> => {
-		await run(async () => {
+		await runAction(`question:${question.rpcId}`, async () => {
 			const answers = question.questions.map((item) => {
 				const selected: string[] = [];
 				let custom: string | undefined;
@@ -552,8 +613,9 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 			state.sessions = Array.isArray(listed?.items)
 				? listed.items.map(parseSession).filter((row): row is SessionRow => row !== null && !row.blank)
 				: [];
+			state.listState = state.sessions.length === 0 ? "empty" : "ready";
 			showToast(t("app.refreshed"));
-		});
+		}, () => void refreshList());
 	};
 
 	const createSession = async (cwd?: string): Promise<void> => {
@@ -576,6 +638,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		state.events = Array.isArray(history?.events) ? history.events : [];
 		await rpc.request("session.subscribe", { sessionId });
 		state.view = { name: "session", sessionId };
+		state.scrollSessionToEnd = true;
 	};
 
 	const openSession = async (sessionId: string): Promise<void> => {
@@ -594,21 +657,52 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		render();
 	};
 
-	const run = async (work: () => Promise<void>): Promise<void> => {
+	const run = async (work: () => Promise<void>, retry: (() => void) | null = null): Promise<void> => {
+		if (disposed || state.busy) return;
 		state.busy = true;
 		state.error = null;
+		state.retry = null;
 		render();
 		try {
 			await work();
+			if (disposed) return;
 		} catch (error) {
+			if (disposed) return;
 			state.error = error instanceof Error ? error.message : t("app.requestFailed");
+			state.retry = retry;
+			if (state.view.name === "list") {
+				const code = error instanceof Error ? error.message.split(":", 1)[0] : "";
+				state.listState = code === "forbidden" || code === "unauthenticated"
+					? "permissionDenied"
+					: state.sessions.length > 0 ? "stale" : "unavailable";
+			}
 		} finally {
+			if (disposed) return;
 			state.busy = false;
 			render();
 		}
 	};
 
+	const runAction = async (key: string, work: () => Promise<void>): Promise<void> => {
+		if (disposed || state.pendingActions.has(key)) return;
+		state.pendingActions.add(key);
+		state.error = null;
+		render();
+		try {
+			await work();
+			if (disposed) return;
+		} catch (error) {
+			if (disposed) return;
+			state.error = error instanceof Error ? error.message : t("app.requestFailed");
+		} finally {
+			if (disposed) return;
+			state.pendingActions.delete(key);
+			render();
+		}
+	};
+
 	const handlePush = (push: MobilePush): void => {
+		if (disposed) return;
 		if (push.push === "host.event") {
 			applyHostEvent(state.sessions, push.data);
 			render();
@@ -656,8 +750,24 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		}
 	};
 
-	rpc.onPush(handlePush);
-	subscribeLocale(() => {
+	const disposePush = rpc.onPush(handlePush);
+	const onKeyDown = (event: EventLike): void => {
+		if (!state.sheet) return;
+		if (event.key === "Escape") {
+			event.preventDefault();
+			closeSheet();
+			return;
+		}
+		if (event.key === "Tab") {
+			const dialogButton = root.querySelector(".sheet button");
+			if (dialogButton instanceof HTMLElement) {
+				event.preventDefault();
+				dialogButton.focus();
+			}
+		}
+	};
+	document.addEventListener("keydown", onKeyDown);
+	const disposeLocale = subscribeLocale(() => {
 		render();
 	});
 	void run(async () => {
@@ -666,8 +776,18 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): void
 		state.sessions = Array.isArray(listed?.items)
 			? listed.items.map(parseSession).filter((row): row is SessionRow => row !== null && !row.blank)
 			: [];
-	});
+		state.listState = state.sessions.length === 0 ? "empty" : "ready";
+	}, () => void refreshList());
 	render();
+	return () => {
+		if (disposed) return;
+		disposed = true;
+		disposePush();
+		disposeLocale();
+		document.removeEventListener("keydown", onKeyDown);
+		if (toastTimer !== null) clearTimeout(toastTimer);
+		if (searchTimer !== null) clearTimeout(searchTimer);
+	};
 }
 
 function parseSession(raw: unknown): SessionRow | null {
@@ -919,6 +1039,63 @@ function appendMarkdown(root: HTMLElement, text: string): void {
 				root.appendChild(document.createTextNode(chunk));
 			}
 		}
+	}
+}
+
+interface PreservedControl {
+	readonly value: string;
+	readonly checked: boolean;
+	readonly selectionStart: number | null;
+	readonly selectionEnd: number | null;
+}
+
+interface PreservedControls {
+	readonly values: Map<string, PreservedControl>;
+	readonly focusKey: string | null;
+}
+
+/** Keep in-progress answers intact when background pushes rebuild the UI. */
+function capturePreservedControls(root: HTMLElement): PreservedControls {
+	const values = new Map<string, PreservedControl>();
+	let focusKey: string | null = null;
+	collectInputs(root, (node) => {
+		const key = node.getAttribute("data-preserve-key");
+		if (key === null) return;
+		values.set(key, {
+			value: node.value,
+			checked: node.checked,
+			selectionStart: node.selectionStart,
+			selectionEnd: node.selectionEnd,
+		});
+		if (document.activeElement === node) focusKey = key;
+	});
+	return { values, focusKey };
+}
+
+function restorePreservedControls(root: HTMLElement, preserved: PreservedControls): void {
+	let focusTarget: HTMLInputElement | HTMLTextAreaElement | null = null;
+	let focusValue: PreservedControl | null = null;
+	collectInputs(root, (node) => {
+		const key = node.getAttribute("data-preserve-key");
+		if (key === null) return;
+		const value = preserved.values.get(key);
+		if (value === undefined) return;
+		node.value = value.value;
+		node.checked = value.checked;
+		if (key === preserved.focusKey) {
+			focusTarget = node;
+			focusValue = value;
+		}
+	});
+	if (focusTarget !== null) {
+		const target = focusTarget;
+		const value = focusValue;
+		queueMicrotask(() => {
+			target.focus();
+			if (value !== null && value.selectionStart !== null && value.selectionEnd !== null) {
+				target.setSelectionRange(value.selectionStart, value.selectionEnd);
+			}
+		});
 	}
 }
 

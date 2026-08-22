@@ -11,6 +11,7 @@ import { utf8Encode } from "../lib/shared/base64.js";
 test("serializeDevice never includes tokenHash", () => {
 	const device = {
 		deviceId: "dev-1",
+		displayName: "Pixel",
 		tokenHash: "should-not-leak",
 		phonePublicKeyB64: "also-not-in-public-row",
 		scope: "mobile",
@@ -21,6 +22,7 @@ test("serializeDevice never includes tokenHash", () => {
 	const publicDevice = serializeDevice(device);
 	assert.deepEqual(publicDevice, {
 		deviceId: "dev-1",
+		displayName: "Pixel",
 		createdAt: 10,
 		lastSeenAt: 20,
 		revokedAt: 30,
@@ -117,4 +119,15 @@ test("GET /api/mobile-remote/devices omits tokenHash", async () => {
 	assert.equal(Object.hasOwn(parsed.devices[0], "tokenHash"), false);
 	assert.equal(response.body.includes("tokenHash"), false);
 	void chunks;
+});
+
+test("optional device name is persisted and remains absent for legacy records", () => {
+	const dir = mkdtempSync(join(tmpdir(), "dshmr-device-name-"));
+	const registry = new DeviceRegistry(dir);
+	const device = registry.upsertDevice({ tokenHash: sha256Hex(utf8Encode("named-device-token")) }, 1000);
+	assert.equal(serializeDevice(device).displayName, undefined);
+	const renamed = registry.rename(device.deviceId, "Pocket DSH");
+	assert.equal(renamed?.displayName, "Pocket DSH");
+	assert.equal(devicesResponseBody(registry).devices[0].displayName, "Pocket DSH");
+	assert.equal(registry.rename(device.deviceId, "Pocket\u0000DSH"), null);
 });

@@ -1,5 +1,5 @@
 /**
- * Management-plane routes (mounted on the host `webServer`, loopback-only).
+ * Management-plane routes (mounted on the loopback-bound host `webServer`).
  *
  *   POST /api/mobile-remote/offers  → widen (if needed) + create a pairing offer
  *   GET  /api/mobile-remote/status  → bind / port / listening / devices
@@ -18,12 +18,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { encodeOffer, offerQrText } from "../shared/offer.js";
 import type { AuditLogger, DeviceRecord, DeviceRegistry, OfferRegistry } from "./registry.js";
+import type { HostCompatibilityDiagnostics } from "./context.js";
 import type { CloudflareQuickTunnelSnapshot } from "./tunnel.js";
 import { validateRelayStartBody, type RendezvousSnapshot } from "./relay.js";
 import { ProtocolValidationError } from "../shared/validation.js";
 import {
-	isTrustedManagementRequest,
-	passesBrowserContextGuard,
+	LOOPBACK_OWNER_REQUEST_POLICY,
+	type OwnerAccessMode,
+	type OwnerRequestPolicy,
 	passesCsrfGuard,
 	readJsonBody,
 	writeJson,
@@ -59,8 +61,8 @@ export interface ManagementDeps {
 	listening(): boolean;
 	currentBind(): string;
 	port(): number;
-	/** Host names allowed in addition to loopback when the peer is loopback. */
-	readonly trustedHosts: readonly string[];
+	/** Owner authentication boundary. Defaults to strict loopback-only access. */
+	readonly ownerRequestPolicy?: OwnerRequestPolicy;
 	/** Rebind the data plane to 0.0.0.0 and persist networkReach=lan. */
 	widen(): Promise<void>;
 	/** Compute endpoint / pageUrl / candidate addresses for the current bind. */
@@ -71,6 +73,7 @@ export interface ManagementDeps {
 	readonly relay: RelayDeps;
 	/** Opt-in official binary install. Must not run at apply() time. */
 	installCloudflared(): Promise<{ asset: string; path: string }>;
+	readonly compatibility?: HostCompatibilityDiagnostics;
 }
 
 export interface TunnelDeps {
@@ -100,6 +103,7 @@ export function tunnelAdvertise(url: string): AdvertiseResult {
 
 export interface PublicDevice {
 	readonly deviceId: string;
+	readonly displayName?: string;
 	readonly createdAt: number;
 	readonly lastSeenAt: number;
 	readonly revokedAt?: number;
@@ -110,6 +114,7 @@ export interface PublicDevice {
 export function serializeDevice(device: DeviceRecord): PublicDevice {
 	return {
 		deviceId: device.deviceId,
+		...(device.displayName === undefined ? {} : { displayName: device.displayName }),
 		createdAt: device.createdAt,
 		lastSeenAt: device.lastSeenAt,
 		...(device.revokedAt === undefined ? {} : { revokedAt: device.revokedAt }),
@@ -134,21 +139,46 @@ function guard(
 	request: IncomingMessage,
 	response: ServerResponse,
 	method: string,
-	trustedHosts: readonly string[],
-): boolean {
-	if (!isTrustedManagementRequest(request, trustedHosts)) {
-		reject(response, 403, "forbidden", "management API is available only on loopback");
-		return false;
+	ownerRequestPolicy: OwnerRequestPolicy,
+): OwnerAccessMode | null {
+	let decision;
+	try {
+		decision = ownerRequestPolicy.authorize(request);
+	} catch {
+		reject(response, 403, "forbidden", "owner request policy rejected the request");
+		return null;
 	}
-	if (!passesBrowserContextGuard(request, trustedHosts)) {
-		reject(response, 403, "forbidden", "request failed the browser-context guard");
-		return false;
+	if (!decision.authorized) {
+		reject(response, 403, "forbidden", "owner authorization is required");
+		return null;
 	}
 	if (method !== "GET" && !passesCsrfGuard(request)) {
 		reject(response, 403, "csrf-rejected", "request failed the mutation guard");
-		return false;
+		return null;
 	}
-	return true;
+	return decision.accessMode;
+}
+
+/**
+ * DSH rejects a duplicate path while registering. Keep the route group atomic:
+ * if any later registration fails, release every earlier exact route before
+ * surfacing the original failure to the plugin entry boundary.
+ */
+function registerAtomically(factories: readonly (() => () => void)[], logger: ManagementLogger): readonly (() => void)[] {
+	const disposers: (() => void)[] = [];
+	try {
+		for (const factory of factories) disposers.push(factory());
+		return disposers;
+	} catch (error) {
+		for (const dispose of disposers.reverse()) {
+			try {
+				dispose();
+			} catch {
+				logger.warn("management route rollback failed (details redacted)");
+			}
+		}
+		throw error;
+	}
 }
 
 export function registerManagementRoutes(
@@ -158,20 +188,30 @@ export function registerManagementRoutes(
 	const register = (
 		path: string,
 		methods: readonly string[],
-		handler: (request: IncomingMessage, response: ServerResponse) => void | Promise<void>,
+		handler: (
+			request: IncomingMessage,
+			response: ServerResponse,
+			accessMode: OwnerAccessMode,
+		) => void | Promise<void>,
 	): (() => void) =>
 		webServer.register({
 			kind: "exact",
 			path,
 			handler: async (request, response) => {
-				if (!guard(request, response, request.method ?? "GET", deps.trustedHosts)) return;
+				const accessMode = guard(
+					request,
+					response,
+					request.method ?? "GET",
+					deps.ownerRequestPolicy ?? LOOPBACK_OWNER_REQUEST_POLICY,
+				);
+				if (accessMode === null) return;
 				if (!methods.includes(request.method ?? "")) {
 					response.setHeader("allow", methods.join(", "));
 					reject(response, 405, "method-not-allowed", "request method is not supported");
 					return;
 				}
 				try {
-					await handler(request, response);
+					await handler(request, response, accessMode);
 				} catch (error) {
 					deps.logger.warn("management request failed (details redacted)");
 					reject(response, 500, "internal", "management request failed");
@@ -179,8 +219,8 @@ export function registerManagementRoutes(
 			},
 		});
 
-	return [
-		register("/api/mobile-remote/offers", ["POST"], async (request, response) => {
+	return registerAtomically([
+		() => register("/api/mobile-remote/offers", ["POST"], async (request, response) => {
 			const body = await readJsonBody(request, response);
 			if (body === undefined) return;
 			// When the user has an explicit public tunnel running, path /m and /m/ws
@@ -244,9 +284,10 @@ export function registerManagementRoutes(
 				candidates,
 			});
 		}),
-		register("/api/mobile-remote/status", ["GET"], async (_request, response) => {
+		() => register("/api/mobile-remote/status", ["GET"], async (_request, response, accessMode) => {
 			writeJson(response, 200, {
 				enabled: true,
+				accessMode,
 				bind: deps.currentBind(),
 				port: deps.port(),
 				listening: deps.listening(),
@@ -254,9 +295,10 @@ export function registerManagementRoutes(
 				activeDevices: deps.registry.activeDeviceCount(),
 				tunnel: deps.tunnel.snapshot(),
 				relay: deps.relay.snapshot(),
+				compatibility: deps.compatibility,
 			});
 		}),
-		register("/api/mobile-remote/tunnel", ["GET", "POST"], async (request, response) => {
+		() => register("/api/mobile-remote/tunnel", ["GET", "POST"], async (request, response) => {
 			if ((request.method ?? "GET") === "GET") {
 				writeJson(response, 200, deps.tunnel.snapshot());
 				return;
@@ -297,7 +339,7 @@ export function registerManagementRoutes(
 			}
 			reject(response, 400, "invalid_params", "action must be 'start' or 'stop'");
 		}),
-		register("/api/mobile-remote/relay", ["GET", "POST"], async (request, response) => {
+		() => register("/api/mobile-remote/relay", ["GET", "POST"], async (request, response) => {
 			if ((request.method ?? "GET") === "GET") {
 				writeJson(response, 200, deps.relay.snapshot());
 				return;
@@ -338,10 +380,10 @@ export function registerManagementRoutes(
 			}
 			reject(response, 400, "invalid_params", "action must be 'start' or 'stop'");
 		}),
-		register("/api/mobile-remote/devices", ["GET"], async (_request, response) => {
+		() => register("/api/mobile-remote/devices", ["GET"], async (_request, response) => {
 			writeJson(response, 200, devicesResponseBody(deps.registry));
 		}),
-		register("/api/mobile-remote/cloudflared", ["POST"], async (request, response) => {
+		() => register("/api/mobile-remote/cloudflared", ["POST"], async (request, response) => {
 			const body = await readJsonBody(request, response);
 			if (body === undefined) return;
 			const record = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
@@ -359,7 +401,7 @@ export function registerManagementRoutes(
 				writeJson(response, 500, { ok: false, error: { code: "install-failed", message } });
 			}
 		}),
-		register("/api/mobile-remote/revoke", ["POST"], async (request, response) => {
+		() => register("/api/mobile-remote/revoke", ["POST"], async (request, response) => {
 			const body = await readJsonBody(request, response);
 			if (body === undefined) return;
 			const record = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
@@ -376,5 +418,5 @@ export function registerManagementRoutes(
 			deps.audit.log({ event: "device_revoked", deviceId }, deps.now());
 			writeJson(response, 200, { ok: true });
 		}),
-	];
+	], deps.logger);
 }

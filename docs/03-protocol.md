@@ -17,6 +17,7 @@
 | `session.cancel` | `{ sessionId }` | 上游 `accepted` |
 | `session.create` | `{ cwd? }` | 上游 `sessions.create`；审计只记 method + cwd basename |
 | `respond` | 见下 | `{ accepted: true }` |
+| `device.name` | `{ name }` | `{ accepted: true }`；仅作为认证身份字段未被保存时的兼容回退 |
 
 `session.prompt` / `session.cancel` / `respond` 记审计 `rpc_write`，`detail` 只有 `{ method, sessionId }`。
 
@@ -51,6 +52,31 @@ mux 重连后手机需再 `session.subscribe` / `host.subscribe`。`session.queu
 ```
 
 缺 `rpcId` 或 `sessionId` → `invalid_params`。
+
+## 认证身份扩展
+
+`e2ee_auth` 保留原有四个必填字段，并允许两个可选字段：
+
+```json
+{
+  "type": "e2ee_auth",
+  "v": 1,
+  "transcriptHashB64": "…",
+  "deviceToken": "…",
+  "deviceName": "Pocket DSH",
+  "clientMetadata": {
+    "mobileProtocolVersion": 1,
+    "locale": "zh-CN",
+    "platform": "Android"
+  }
+}
+```
+
+- 服务端接受可选 `deviceName` / `clientMetadata`，旧客户端完全不发送这些字段时仍按原四字段形状认证。
+- 官方移动端默认继续发送冻结的四字段认证消息，认证成功后再通过可选 `device.name` RPC 设置名称，因此新移动端仍能连接严格校验旧形状的桌面端；握手扩展保留给显式协商后的客户端。
+- `deviceName` 进行 Unicode NFC、首尾去空白和连续空白折叠；控制字符与格式控制字符会使认证失败。协议不自行声明无依据的长度上限。
+- `clientMetadata.platform` 可省略；元数据只用于兼容诊断，不进入握手 transcript，也不作为授权依据。
+- 新客户端在认证后仍可调用 `device.name`，用于对尚未消费身份扩展的兼容实现补写名称；它不是新协议的主命名路径。
 
 ## 会合中继外层（`dshmr-relay/v1`）
 

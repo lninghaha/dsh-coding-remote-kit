@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.3.0** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.4.0** · DeepSeek Harness `0.1.0-rc.6` · GitHub `dsh-coding-remote-kit`
 
 **Remote phone access for [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Pair a phone to the desktop that already runs `dsh web`, then observe sessions and perform a narrow set of writes — without exposing the full Web API.
 
@@ -17,9 +17,13 @@
 
 ---
 
+> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.0` is their shared npm dependency, not a separate DSH plugin.
+
+---
+
 Community plugin. **Not affiliated with, and not endorsed by, DeepSeek.** Product intent is closer to [Orca Mobile Companion](https://www.onorca.dev/docs/mobile) than to a second copy of the desktop IDE.
 
-Read [`AGENTS.md`](AGENTS.md) before changing this repo: **do not restart production `dsh-web` yourself.** Prepare the tarball; the operator restarts.
+Read [`AGENTS.md`](AGENTS.md) before changing this repo: **do not restart the production DSH Web process or its local service wrapper yourself.** Prepare the tarball; the operator restarts it through the machine's own process manager.
 
 ## Names
 
@@ -27,7 +31,7 @@ Developed first as GitHub `dsh-mobile-remote`. The npm name **`dsh-mobile-remote
 
 | | Use this | Notes |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.3.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.3.0` |
+| npm | `dsh-coding-remote-kit@0.4.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.4.0` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | previous checkout name `dsh-mobile-remote` |
 | Cordis plugin id | `mobile-remote` | unchanged |
 | Settings HTTP | `/api/mobile-remote/*` | unchanged |
@@ -84,7 +88,7 @@ Do **not** `dsh plugin add dsh-mobile-remote` — that installs the unrelated We
 ## Quick start
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.3.0
+dsh plugin --profile web add dsh-coding-remote-kit@0.4.0
 ```
 
 Then the **operator** restarts the existing `dsh web` process in their own window. Open **Settings → Mobile Remote**, create a pairing offer, scan the QR (or type the PIN) on the phone.
@@ -95,8 +99,8 @@ From a source checkout (development):
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.3.0.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.3.0.tgz"
+cp dsh-coding-remote-kit-0.4.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.4.0.tgz"
 ```
 
 Do not `dsh plugin add ./` from this working tree. pnpm 11 treats some `file:` tarball paths as `link:` source, and a bad entry import takes down the whole GUI.
@@ -123,7 +127,7 @@ Do not `dsh plugin add ./` from this working tree. pnpm 11 treats some `file:` t
 
 ## Install
 
-Requires DeepSeek Harness `0.1.0-rc.7` (pinned) and Node.js 22.19+. Full steps, pairing, and tunnel notes: [INSTALL.md](INSTALL.md).
+Requires DeepSeek Harness `0.1.0-rc.6` (pinned) and Node.js 22.19+. Full steps, pairing, and tunnel notes: [INSTALL.md](INSTALL.md).
 
 Development:
 

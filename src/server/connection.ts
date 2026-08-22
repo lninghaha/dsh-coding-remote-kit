@@ -20,7 +20,7 @@ import {
 	PAYLOAD_KIND_TEXT,
 } from "../shared/constants.js";
 import { base64Decode, base64Encode, utf8Decode, utf8Encode } from "../shared/base64.js";
-import { buildE2eeError } from "../shared/handshake.js";
+import { buildE2eeError, validateAuth } from "../shared/handshake.js";
 import { open, seal } from "../shared/frame.js";
 import { dispatchRpc } from "./rpc.js";
 import { ServerHandshake, type ResolveToken, type ServerSessionKeys } from "./e2ee.js";
@@ -40,6 +40,7 @@ export interface ConnectionDeps {
 	readonly audit: AuditLogger;
 	readonly logger: ConnectionLogger;
 	readonly upstream: UpstreamHub;
+	renameDevice?(deviceId: string, displayName: string): boolean;
 	/** Return false when the connection cap is exceeded. */
 	admit(): boolean;
 	release(): void;
@@ -265,6 +266,12 @@ class MobileConnection implements MobileConnectionHandle {
 	}
 
 	#handleAuth(message: unknown): void {
+		let deviceName: string | undefined;
+		try {
+			deviceName = validateAuth(message).deviceName;
+		} catch {
+			// ServerHandshake owns the canonical rejection path below.
+		}
 		const result = this.#handshake.finish(message);
 		if (!result.ok) {
 			this.#sendEncrypted(buildE2eeError(result.code === "unauthorized" ? "unauthorized" : "bad_auth"));
@@ -274,6 +281,9 @@ class MobileConnection implements MobileConnectionHandle {
 		this.#keys = result.keys ?? this.#keys;
 		this.#state = "authenticated";
 		this.#deviceId = result.deviceId ?? null;
+		if (this.#deviceId !== null && deviceName !== undefined) {
+			this.#deps.renameDevice?.(this.#deviceId, deviceName);
+		}
 		this.#subscriber = {
 			sessionIds: new Set<string>(),
 			host: false,
@@ -297,6 +307,7 @@ class MobileConnection implements MobileConnectionHandle {
 			...(this.#deviceId === null ? {} : { deviceId: this.#deviceId }),
 			audit: this.#deps.audit,
 			connection: this,
+			...(this.#deps.renameDevice === undefined ? {} : { renameDevice: this.#deps.renameDevice }),
 		});
 		if (this.#disposed) return;
 		this.#sendEncrypted(reply);

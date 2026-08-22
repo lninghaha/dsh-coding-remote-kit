@@ -74,7 +74,7 @@ export const MAX_OFFER_CODE_BYTES = 16 * 1024;
 export const DEVICE_SCOPE = "mobile";
 
 /** Version stamps reported by `status.get`. */
-export const PLUGIN_VERSION = "0.3.0";
+export const PLUGIN_VERSION = "0.4.0";
 export const DSH_VERSION = "0.1.0-rc.7";
 
 /**
@@ -92,6 +92,7 @@ export const MOBILE_RPC_METHOD_ALLOWLIST = [
 	"session.cancel",
 	"session.create",
 	"respond",
+	"device.name",
 ] as const;
 export type MobileRpcMethod = (typeof MOBILE_RPC_METHOD_ALLOWLIST)[number];
 

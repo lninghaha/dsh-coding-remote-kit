@@ -4,7 +4,7 @@
 
 本文描述 `dsh-coding-remote-kit` 的内部架构，是 `README.md` 技术说明的来源，面向贡献者与维护者。
 
-宿主钉死：`@deepseek-ai/dsh@0.1.0-rc.7`。升级需另开 ADR（`docs/01-mvp-scope.md`）。
+宿主钉死：`@deepseek-ai/dsh@0.1.0-rc.6`。升级需另开 ADR（`docs/01-mvp-scope.md`）。
 
 ## 1. 双平面
 
@@ -12,7 +12,7 @@
 Harness webServer（回环，通常 127.0.0.1:3080）
   └─ 管理面 /api/mobile-remote/*
        配对 offer、设备列表、吊销、隧道 / 会合中继开关
-       Host + 浏览器上下文 + CSRF；非回环 → 403
+       OwnerRequestPolicy：loopback/SSH 或完整受信 HTTPS 反代证明
 
 独立数据面（默认 127.0.0.1:6879，配对时可 widen 到 0.0.0.0）
   ├─ GET  /m, /m/*     手机静态页（cache-control: no-store）
@@ -66,10 +66,10 @@ src/server
 ### `src/server/`
 
 - `index.ts`：插件 `apply`。存储、服务端密钥、数据面监听、管理面路由、隧道与会合中继 disposer。
-- `config.ts`：Zod：`enabled` / `bind` / `port` / `offerTtlMs` / `trustedHosts`。
+- `config.ts`：Zod：`enabled` / `bind` / `port` / `offerTtlMs` / fail-closed `ownerRequest`；旧 `trustedHosts` 不再授予访问权限。
 - `context.ts`：宿主 `apiProxy` + `webServer` 类型。
 - `routes.ts`：每个 path 只 `webServer.register` 一次（DSH 按 path 去重、不认 HTTP method）。GET/POST 在 handler 内分支。
-- `security.ts`：回环 / Host / 浏览器上下文 / CSRF / 有界 JSON body。
+- `security.ts`：宿主 owner policy 优先；fallback 校验 loopback/SSH 或受信 HTTPS peer + Origin/Host + owner proof + Fetch Metadata + 独立 CSRF，并提供有界 JSON body。宿主策略异常或畸形时 fail closed。
 - `dataplane.ts`：数据面端口上的独立 `node:http` + `ws`；静态 `/m`；`/m/claim`；`/m/ws`。
 - `connection.ts`：`acceptMobileSocket` — `/m/ws` 与会合中继 accept 共用的 E2EE + RPC 会话。
 - `e2ee.ts` / `crypto.ts`：服务端握手、token 查找、tweetnacl secretbox。

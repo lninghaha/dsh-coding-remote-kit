@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.3.0** · DeepSeek Harness `0.1.0-rc.7` · GitHub `dsh-coding-remote-kit`
+**v0.4.0** · DeepSeek Harness `0.1.0-rc.6` · GitHub `dsh-coding-remote-kit`
 
 **[DeepSeek Harness](https://github.com/deepseek-ai/dsh)용 원격 휴대폰 접근.** 이미 `dsh web`을 실행 중인 데스크톱에 휴대폰을 페어링한 뒤, 세션을 관찰하고 좁은 범위의 쓰기만 수행합니다. 전체 Web API는 노출하지 않습니다.
 
@@ -17,6 +17,10 @@
 
 ---
 
+> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.0` is their shared npm dependency, not a separate DSH plugin.
+
+---
+
 커뮤니티 플러그인입니다. **DeepSeek와 무관하며 공식 후원도 없습니다.** 제품 의도는 데스크톱 IDE의 복제가 아니라 [Orca Mobile Companion](https://www.onorca.dev/docs/mobile)에 가깝습니다.
 
 이 저장소를 변경하기 전에 [`AGENTS.md`](AGENTS.md)를 읽으세요: **프로덕션 `dsh-web`을 직접 재시작하지 마세요.** tarball만 준비하고, 재시작은 운영자가 합니다.
@@ -27,7 +31,7 @@
 
 | | 이것을 사용 | 설명 |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.3.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.3.0` |
+| npm | `dsh-coding-remote-kit@0.4.0` | `dsh plugin --profile web add dsh-coding-remote-kit@0.4.0` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | 이전 checkout 이름 `dsh-mobile-remote` |
 | Cordis 플러그인 id | `mobile-remote` | 변경 없음 |
 | 설정 페이지 HTTP | `/api/mobile-remote/*` | 변경 없음 |
@@ -84,7 +88,7 @@
 ## 빠른 시작
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.3.0
+dsh plugin --profile web add dsh-coding-remote-kit@0.4.0
 ```
 
 그다음 **운영자**가 자신의 시간창에서 기존 `dsh web`을 재시작합니다. **Settings → 移動远程**를 열고 페어링 offer를 만든 뒤, 휴대폰에서 QR을 스캔(또는 PIN 입력)합니다.
@@ -95,8 +99,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.3.0
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.3.0.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.3.0.tgz"
+cp dsh-coding-remote-kit-0.4.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.4.0.tgz"
 ```
 
 이 작업 트리에서 `dsh plugin add ./`를 실행하지 마세요. pnpm 11은 일부 `file:` tarball 경로를 `link:` 소스로 취급하며, 진입 import가 실패하면 GUI 전체가 내려갑니다.
@@ -123,7 +127,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.3.0.tg
 
 ## 설치
 
-DeepSeek Harness `0.1.0-rc.7`(고정)과 Node.js 22.19+가 필요합니다. 전체 단계, 페어링, 터널 설명은 [INSTALL.md](INSTALL.md)를 보세요.
+DeepSeek Harness `0.1.0-rc.6`(고정)과 Node.js 22.19+가 필요합니다. 전체 단계, 페어링, 터널 설명은 [INSTALL.md](INSTALL.md)를 보세요.
 
 개발:
 

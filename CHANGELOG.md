@@ -4,6 +4,20 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+## v0.4.0 - 2026-08-22
+
+### Added
+
+- Add an exact DSH compatibility BOM, host/client adapters, compatibility diagnostics, trusted remote owner policy, optional device names, and accessible pairing/session states.
+
+### Changed
+
+- Preserve mobile drafts, focus, scroll, and in-flight actions across pushes; keep the official mobile client on the frozen four-field v1 auth shape and apply device names after authentication for older-desktop compatibility.
+
+### Security
+
+- Require exact trusted-proxy peer, HTTPS origin/host, owner proof, Fetch Metadata, and mutation CSRF evidence; keep DSH loopback-only and fail closed when remote owner configuration is incomplete.
+
 ## v0.3.0 - 2026-08-19
 
 ### Added
