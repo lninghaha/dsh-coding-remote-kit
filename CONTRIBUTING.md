@@ -73,7 +73,7 @@ Allowed: Docker sandbox, `pnpm pack`, copy to `$DSH_HOME/packages/`, read-only p
 
 ## Review & merging
 
-- At least one other person's approval is needed to merge when a second reviewer exists; otherwise the maintainer reviews.
+- The maintainer may review, approve, and merge; additional reviewers are optional and never a hard gate.
 - A PR that changes public behaviour must not be merged without README/changelog updates.
 - Do not force-push `main` or a published release tag.
 
