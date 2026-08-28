@@ -55,6 +55,22 @@ test("translate interpolates and falls back", () => {
 	assert.equal(isMessageKey("missing.key"), false);
 });
 
+test("P0 tunnel / diagnostics message keys exist in zh-CN and en", () => {
+	for (const key of [
+		"settings.tunnel.disclaimer",
+		"settings.tunnel.disclaimerRequired",
+		"settings.tunnel.binaryUntrusted",
+		"settings.diagnostics.title",
+		"settings.diagnostics.offerActive",
+		"settings.diagnostics.offerNone",
+		"settings.diagnostics.devices",
+	]) {
+		assert.equal(isMessageKey(key), true, key);
+		assert.ok(translate(key, "en").length > 0, key);
+		assert.ok(translate(key, "zh-CN").length > 0, key);
+	}
+});
+
 test("t uses active locale from setLocale", () => {
 	setLocale("en");
 	assert.equal(t("settings.nav"), "Mobile Remote");

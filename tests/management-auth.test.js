@@ -35,7 +35,7 @@ function createHarness(overrides = {}) {
 				revoke: () => null,
 				devices: [],
 			},
-			offers: { createOffer() { throw new Error("not used"); } },
+			offers: { createOffer() { throw new Error("not used"); }, count: () => 0 },
 			audit: { log() {} },
 			ownerRequestPolicy,
 			listening: () => true,
