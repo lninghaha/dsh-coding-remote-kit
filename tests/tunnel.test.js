@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { EventEmitter } from "node:events";
 import {
+	BinaryUntrustedError,
 	CloudflareQuickTunnel,
 	parseQuickTunnelUrl,
 	resolveCloudflaredBinary,
@@ -40,6 +44,23 @@ function fakeChild() {
 	return child;
 }
 
+function tempBinaryPath() {
+	const dir = mkdtempSync(join(tmpdir(), "dshmr-tunnel-"));
+	const path = join(dir, "cloudflared");
+	writeFileSync(path, "fake-cloudflared");
+	return path;
+}
+
+function okVerify(path) {
+	return {
+		ok: true,
+		status: "ok",
+		path,
+		sha256: "a".repeat(64),
+		release: "2026.8.2",
+	};
+}
+
 test("parses trycloudflare.com URL from a sample cloudflared banner", () => {
 	const banner = `INFO[0001] Cannot determine default configuration path. No file found at ~/.cloudflared/config.yml
 INFO[0001] Acquiring Quick Tunnel
@@ -67,14 +88,23 @@ test("parseQuickTunnelUrl rejects non-trycloudflare URLs", () => {
 test("start returns the URL from stderr then stop kills the child (no real tunnel)", async () => {
 	const child = fakeChild();
 	let spawnedArgs = null;
+	let spawnedResolve;
+	const spawned = new Promise((resolve) => {
+		spawnedResolve = resolve;
+	});
+	const binary = tempBinaryPath();
 	const tunnel = new CloudflareQuickTunnel({
-		binary: "/fake/cloudflared",
+		binary,
+		verifyBinary: okVerify,
 		spawn(_command, args) {
 			spawnedArgs = args;
+			spawnedResolve();
 			return child;
 		},
 	});
 	const startPromise = tunnel.start({ port: 6879, timeoutMs: 2000 });
+	await spawned;
+	await new Promise((resolve) => setImmediate(resolve));
 	child.stderr.write("... connecting\n");
 	child.stderr.write("https://happy-photo-7qx.trycloudflare.com\n");
 	child.stderr.write("Registered tunnel connection connIndex=0 location=nrt12 protocol=http2\n");
@@ -95,15 +125,51 @@ test("start returns the URL from stderr then stop kills the child (no real tunne
 	assert.equal(tunnel.snapshot().kind, null);
 });
 
+test("start refuses unverified binary (binary-untrusted)", async () => {
+	const binary = tempBinaryPath();
+	const tunnel = new CloudflareQuickTunnel({
+		binary,
+		verifyBinary: () => ({
+			ok: false,
+			status: "hash-mismatch",
+			path: binary,
+			message: "mismatch",
+		}),
+		spawn() {
+			throw new Error("must not spawn");
+		},
+	});
+	await assert.rejects(tunnel.start({ port: 6879, timeoutMs: 100 }), BinaryUntrustedError);
+	assert.equal(tunnel.snapshot().binaryOk, false);
+});
+
+test("start rejects bare PATH binary names as untrusted", async () => {
+	const tunnel = new CloudflareQuickTunnel({
+		binary: "cloudflared",
+		spawn() {
+			throw new Error("must not spawn");
+		},
+	});
+	await assert.rejects(tunnel.start({ port: 6879, timeoutMs: 100 }), /bare PATH/);
+});
+
 test("URL without Registered tunnel connection does not resolve", async () => {
 	const child = fakeChild();
+	let spawnedResolve;
+	const spawned = new Promise((resolve) => {
+		spawnedResolve = resolve;
+	});
 	const tunnel = new CloudflareQuickTunnel({
-		binary: "/fake/cloudflared",
+		binary: tempBinaryPath(),
+		verifyBinary: okVerify,
 		spawn() {
+			spawnedResolve();
 			return child;
 		},
 	});
 	const startPromise = tunnel.start({ port: 6879, timeoutMs: 40 });
+	await spawned;
+	await new Promise((resolve) => setImmediate(resolve));
 	child.stderr.write("https://only-url.trycloudflare.com\n");
 	await assert.rejects(startPromise, /timed out waiting for the tunnel to register/);
 	assert.equal(child.killed, true);
@@ -112,7 +178,8 @@ test("URL without Registered tunnel connection does not resolve", async () => {
 test("start times out (and kills the child) when no URL appears", async () => {
 	const child = fakeChild();
 	const tunnel = new CloudflareQuickTunnel({
-		binary: "/fake/cloudflared",
+		binary: tempBinaryPath(),
+		verifyBinary: okVerify,
 		spawn() {
 			return child;
 		},
@@ -127,13 +194,21 @@ test("start times out (and kills the child) when no URL appears", async () => {
 
 test("start rejects when the child exits before publishing a URL", async () => {
 	const child = fakeChild();
+	let spawnedResolve;
+	const spawned = new Promise((resolve) => {
+		spawnedResolve = resolve;
+	});
 	const tunnel = new CloudflareQuickTunnel({
-		binary: "/fake/cloudflared",
+		binary: tempBinaryPath(),
+		verifyBinary: okVerify,
 		spawn() {
+			spawnedResolve();
 			return child;
 		},
 	});
 	const startPromise = tunnel.start({ port: 6879, timeoutMs: 2000 });
+	await spawned;
+	await new Promise((resolve) => setImmediate(resolve));
 	child.emit("exit", 1, "SIGTERM");
 	await assert.rejects(startPromise, /exited/);
 	assert.equal(tunnel.snapshot().running, false);
@@ -147,7 +222,10 @@ test("tunnelAdvertise maps the public URL to /m and wss /m/ws with host-only can
 	});
 });
 
-test("resolveCloudflaredBinary returns a string command or null (never spawns)", () => {
+test("resolveCloudflaredBinary returns absolute path or null (never bare name)", () => {
 	const binary = resolveCloudflaredBinary();
 	assert.ok(binary === null || typeof binary === "string");
+	if (binary !== null) {
+		assert.ok(binary.includes("/") || binary.includes("\\"));
+	}
 });

@@ -16,13 +16,21 @@
  *  - Only ever funnel `127.0.0.1:<dataPlanePort>` (default 6879).
  *  - Never funnel `3080` / `dsh web`.
  *  - Stop the child on plugin unload / explicit stop.
- *  - `cloudflared` is resolved, never downloaded or installed.
+ *  - `cloudflared` is resolved, never downloaded or installed here.
+ *  - `start()` always re-verifies the binary against the pinned sha256 before spawn.
+ *    `snapshot().binaryOk` stays resolve-based until a verify has run this process.
  */
 
 import { spawn as nodeSpawn } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import {
+	isBareCommandName,
+	resolveExistingBinaryPath,
+	verifyCloudflaredBinary,
+	type CloudflaredVerifyResult,
+} from "./cloudflared-install.js";
 import { readJsonFile, writeFileAtomic } from "./storage.js";
 
 /** Extract the public Quick Tunnel URL from cloudflared banner output. */
@@ -38,31 +46,27 @@ export function isTunnelRegistered(text: string): boolean {
 
 const HINT_PATH = join(homedir(), ".local", "bin", "cloudflared");
 
-function pathBinaryExists(name: string): boolean {
-	for (const dir of (process.env.PATH ?? "").split(":")) {
-		if (dir === "") continue;
-		try {
-			if (existsSync(join(dir, name))) return true;
-		} catch {
-			// ignore unreadable PATH entries
-		}
-	}
-	return false;
+/** Resolve a resolve() result to a filesystem path for hashing (null if bare name missing). */
+export function filesystemPathForBinary(resolved: string): string | null {
+	return resolveExistingBinaryPath(resolved);
 }
 
 /**
  * Resolve the `cloudflared` binary to run. Priority:
- *   1. `CLOUDFLARED` env var
+ *   1. absolute `CLOUDFLARED` env var (bare names refused → null)
  *   2. `~/.local/bin/cloudflared`
- *   3. `cloudflared` on `PATH`
+ *   3. absolute path found via `PATH` lookup (never a bare name)
  * Returns `null` when nothing is found. Never downloads or installs.
  */
 export function resolveCloudflaredBinary(): string | null {
 	const env = process.env.CLOUDFLARED;
-	if (typeof env === "string" && env.trim().length > 0) return env;
+	if (typeof env === "string" && env.trim().length > 0) {
+		const trimmed = env.trim();
+		if (isBareCommandName(trimmed)) return null;
+		return existsSync(trimmed) ? trimmed : null;
+	}
 	if (existsSync(HINT_PATH)) return HINT_PATH;
-	if (pathBinaryExists("cloudflared")) return "cloudflared";
-	return null;
+	return resolveExistingBinaryPath("cloudflared");
 }
 
 export interface CloudflareQuickTunnelSnapshot {
@@ -87,6 +91,55 @@ export type SpawnFn = (
 	options?: Record<string, unknown>,
 ) => ChildLike;
 
+export type VerifyBinaryFn = (path: string) => CloudflaredVerifyResult | Promise<CloudflaredVerifyResult>;
+
+/** Thrown when a resolved binary fails pinned sha256 verification. */
+export class BinaryUntrustedError extends Error {
+	readonly code = "binary-untrusted" as const;
+
+	constructor(message: string) {
+		super(message);
+		this.name = "BinaryUntrustedError";
+	}
+}
+
+/**
+ * Re-verify before spawn. Refuses bare PATH names; only absolute paths spawn.
+ * Returns the absolute path trusted to spawn.
+ */
+export async function assertTrustedCloudflaredBinary(
+	resolved: string | null,
+	verify: VerifyBinaryFn = verifyCloudflaredBinary,
+): Promise<string> {
+	if (resolved === null) {
+		const env = process.env.CLOUDFLARED?.trim();
+		if (typeof env === "string" && isBareCommandName(env)) {
+			throw new BinaryUntrustedError(
+				"CLOUDFLARED bare PATH name is not pinned; set an absolute path to the official binary",
+			);
+		}
+		throw new Error("cloudflared binary not found; install it to ~/.local/bin/cloudflared");
+	}
+	if (isBareCommandName(resolved)) {
+		throw new BinaryUntrustedError(
+			"refusing to spawn cloudflared via bare PATH name; use an absolute pinned binary",
+		);
+	}
+	const filePath = filesystemPathForBinary(resolved);
+	if (filePath === null) {
+		throw new BinaryUntrustedError(
+			"cloudflared at PATH/env could not be resolved to a file for sha256 verification",
+		);
+	}
+	const result = await verify(filePath);
+	if (!result.ok) {
+		throw new BinaryUntrustedError(
+			"cloudflared at PATH/env does not match pinned release sha256; install the official pinned binary",
+		);
+	}
+	return result.path;
+}
+
 function isPidAlive(pid: number): boolean {
 	try {
 		process.kill(pid, 0);
@@ -103,9 +156,12 @@ function isPidAlive(pid: number): boolean {
 export class CloudflareQuickTunnel {
 	private readonly binary: string | null;
 	private readonly spawnImpl: SpawnFn;
+	private readonly verifyImpl: VerifyBinaryFn;
 	private readonly persistFile: string | null;
 	private child: ChildLike | null = null;
 	private url: string | null = null;
+	/** null until start() verifies; then true only when verify ok. */
+	private lastVerifyOk: boolean | null = null;
 
 	constructor(
 		options: {
@@ -115,15 +171,19 @@ export class CloudflareQuickTunnel {
 			spawn?: SpawnFn;
 			/** When set, persisted tunnel state is written here (storage helpers). */
 			persistFile?: string | null;
+			/** Override sha256 verify (tests). Defaults to pinned `verifyCloudflaredBinary`. */
+			verifyBinary?: VerifyBinaryFn;
 		} = {},
 	) {
 		this.binary = options.binary === undefined ? resolveCloudflaredBinary() : options.binary;
 		this.spawnImpl = options.spawn ?? ((command, args) => nodeSpawn(command, args) as unknown as ChildLike);
+		this.verifyImpl = options.verifyBinary ?? verifyCloudflaredBinary;
 		this.persistFile = options.persistFile ?? null;
 		if (this.persistFile !== null) this.#clearStalePersisted();
 	}
 
 	get binaryOk(): boolean {
+		if (this.lastVerifyOk !== null) return this.lastVerifyOk;
 		return this.binary !== null;
 	}
 
@@ -137,12 +197,15 @@ export class CloudflareQuickTunnel {
 		};
 	}
 
-	/** Start the tunnel and resolve with the public URL when it appears. */
+	/** Start the tunnel and resolve with the public URL when it appears. Always verifies first. */
 	async start(options: { port: number; timeoutMs?: number }): Promise<string> {
-		if (this.binary === null) {
-			throw new Error(
-				"cloudflared binary not found; install it to ~/.local/bin/cloudflared",
-			);
+		let trusted: string;
+		try {
+			trusted = await assertTrustedCloudflaredBinary(this.binary, this.verifyImpl);
+			this.lastVerifyOk = true;
+		} catch (error) {
+			this.lastVerifyOk = false;
+			throw error;
 		}
 		if (this.child !== null) {
 			if (this.url !== null) return this.url;
@@ -161,7 +224,7 @@ export class CloudflareQuickTunnel {
 		if (this.persistFile !== null) {
 			args.push("--logfile", join(dirname(this.persistFile), "cloudflared.log"));
 		}
-		const child = this.spawnImpl(this.binary, args);
+		const child = this.spawnImpl(trusted, args);
 		this.child = child;
 		this.url = null;
 		this.#persist();
@@ -195,7 +258,6 @@ export class CloudflareQuickTunnel {
 					fail(`cloudflared exited before publishing a tunnel URL`);
 					return;
 				}
-				// Unexpected exit after success: clear owned state so snapshot is accurate.
 				this.child = null;
 				this.url = null;
 				this.#removePersisted();
@@ -243,7 +305,6 @@ export class CloudflareQuickTunnel {
 		});
 	}
 
-	/** If a fresh instance finds a persisted tunnel whose child pid is dead, clear it. */
 	#clearStalePersisted(): void {
 		if (this.persistFile === null) return;
 		const persisted = readJsonFile<{ pid?: unknown }>(this.persistFile);
