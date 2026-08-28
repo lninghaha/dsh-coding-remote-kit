@@ -74,7 +74,7 @@ export const MAX_OFFER_CODE_BYTES = 16 * 1024;
 export const DEVICE_SCOPE = "mobile";
 
 /** Version stamps reported by `status.get`. */
-export const PLUGIN_VERSION = "0.5.0";
+export const PLUGIN_VERSION = "0.5.1";
 export const DSH_VERSION = "0.1.0-rc.7";
 
 /**

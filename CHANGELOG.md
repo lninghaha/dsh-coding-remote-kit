@@ -4,6 +4,12 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+## v0.5.1 - 2026-08-28
+
+### Fixed
+
+- Re-resolve `cloudflared` on each start and drive `binaryOk` from a live pin check, so Settings install can start Quick Tunnel without reloading `dsh-web`. Hash-mismatch recovery no longer sticks false until process restart.
+
 ## v0.5.0 - 2026-08-28
 
 ### Added
