@@ -1,8 +1,4 @@
 {
   "name": "dsh-coding-remote-kit",
-  "build": {
-    "dockerfile": "Dockerfile"
-  },
-  "user": "node",
-  "install": "pnpm install --frozen-lockfile && pnpm build"
+  "install": "pnpm install --frozen-lockfile\npnpm build"
 }
