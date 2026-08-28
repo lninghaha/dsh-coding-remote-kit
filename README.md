@@ -164,18 +164,20 @@ Open **Settings → Mobile Remote**:
 - create offer → QR + 8-digit PIN
 - device list and revoke
 - optional official `cloudflared` install (never runs at plugin `apply()`)
+- connection diagnostics (sanitized network candidates, cloudflared pin/verify, disclaimer version)
+- Quick Tunnel disclaimer checkbox (required before Start)
 
 ## Mobile RPC
 
 Allowlisted methods (everything else is `forbidden`):
 
-`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond`
+`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond` · `device.name`
 
 Pushes include session events plus `approval.requested` / `question.requested` (with `rpcId` for `respond`). Wire format: [docs/03-protocol.md](docs/03-protocol.md).
 
 ## Public tunnel
 
-Default **off**. When started from Settings, `cloudflared` Quick Tunnel points **only** at `127.0.0.1:<data-plane-port>`. `/m` becomes reachable on a `https://<random>.trycloudflare.com` URL; pairing still needs the fragment token (or PIN) and E2EE. The child process is killed on plugin unload / Stop.
+Default **off**. Start from Settings only after accepting the disclaimer (`disclaimerAccepted: true`). `cloudflared` Quick Tunnel points **only** at `127.0.0.1:<data-plane-port>`. `/m` becomes reachable on a `https://<random>.trycloudflare.com` URL; pairing still needs the fragment token (or PIN) and E2EE. The child process is killed on plugin unload / Stop.
 
 Never tunnel port `3080` / `dsh web`. A self-hosted rendezvous Worker (desktop and phone both outbound, business frames still E2EE) is optional; see [docs/05-cloud-relay.md](docs/05-cloud-relay.md). It needs a Cloudflare Workers Paid plan and is **not** a public relay operated by this project.
 

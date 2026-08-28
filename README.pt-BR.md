@@ -164,18 +164,20 @@ Abra **Settings → 移動远程**:
 - criar oferta → QR + PIN de 8 dígitos
 - lista de dispositivos e revogação
 - instalação opcional do `cloudflared` oficial (nunca roda no `apply()` do plugin)
+- diagnósticos de conexão (candidatos sanitizados, pin/verify do cloudflared, versão do aviso)
+- caixa de aviso do Quick Tunnel (obrigatória antes de Start)
 
 ## RPC móvel
 
 Métodos na allowlist (todo o resto é `forbidden`):
 
-`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond`
+`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond` · `device.name`
 
 Os pushes incluem eventos de sessão mais `approval.requested` / `question.requested` (com `rpcId` para `respond`). Formato de fio: [docs/03-protocol.md](docs/03-protocol.md).
 
 ## Túnel público
 
-Padrão **desligado**. Quando iniciado nas Configurações, o Quick Tunnel `cloudflared` aponta **somente** para `127.0.0.1:<data-plane-port>`. `/m` fica acessível em uma URL `https://<random>.trycloudflare.com`; o emparelhamento ainda precisa do token de fragmento (ou PIN) e E2EE. O processo filho é morto no unload / Stop do plugin.
+Padrão **desligado**. Inicie nas Configurações só após aceitar o aviso (`disclaimerAccepted: true`). O Quick Tunnel `cloudflared` aponta **somente** para `127.0.0.1:<data-plane-port>`. `/m` fica acessível em uma URL `https://<random>.trycloudflare.com`; o emparelhamento ainda precisa do token de fragmento (ou PIN) e E2EE. O processo filho é morto no unload / Stop do plugin.
 
 Nunca faça túnel da porta `3080` / `dsh web`. Um Worker de rendezvous auto-hospedado (desktop e celular ambos outbound, frames de negócio ainda E2EE) é opcional; veja [docs/05-cloud-relay.md](docs/05-cloud-relay.md). Precisa de um plano Cloudflare Workers Paid e **não** é um relay público operado por este projeto.
 

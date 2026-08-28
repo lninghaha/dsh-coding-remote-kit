@@ -164,18 +164,20 @@ Die Verwaltung bleibt hinter dem Loopback-Zaun des Host-Web. Die Datenebene ist 
 - Angebot erstellen → QR + 8-stellige PIN
 - Geräteliste und Widerruf
 - optionale offizielle `cloudflared`-Installation (läuft nie beim Plugin-`apply()`)
+- Verbindungsdiagnose (bereinigte Kandidaten, cloudflared-Pin/Verify, Disclaimer-Version)
+- Quick-Tunnel-Disclaimer-Checkbox (vor Start erforderlich)
 
 ## Mobile RPC
 
 Allowlist-Methoden (alles andere ist `forbidden`):
 
-`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond`
+`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond` · `device.name`
 
 Pushes umfassen Sitzungsereignisse plus `approval.requested` / `question.requested` (mit `rpcId` für `respond`). Drahtformat: [docs/03-protocol.md](docs/03-protocol.md).
 
 ## Öffentlicher Tunnel
 
-Standard **aus**. Wenn aus den Einstellungen gestartet, zeigt der `cloudflared`-Quick-Tunnel **nur** auf `127.0.0.1:<data-plane-port>`. `/m` wird unter einer `https://<random>.trycloudflare.com`-URL erreichbar; die Kopplung braucht weiterhin das Fragment-Token (oder die PIN) und E2EE. Der Kindprozess wird beim Plugin-Unload / Stop beendet.
+Standard **aus**. Start aus den Einstellungen erst nach Akzeptieren des Disclaimers (`disclaimerAccepted: true`). Der `cloudflared`-Quick-Tunnel zeigt **nur** auf `127.0.0.1:<data-plane-port>`. `/m` wird unter einer `https://<random>.trycloudflare.com`-URL erreichbar; die Kopplung braucht weiterhin das Fragment-Token (oder die PIN) und E2EE. Der Kindprozess wird beim Plugin-Unload / Stop beendet.
 
 Tunneln Sie niemals Port `3080` / `dsh web`. Ein selbst gehosteter Rendezvous-Worker (Desktop und Telefon beide outbound, Geschäftsframes weiterhin E2EE) ist optional; siehe [docs/05-cloud-relay.md](docs/05-cloud-relay.md). Er braucht einen Cloudflare-Workers-Paid-Plan und ist **kein** öffentliches Relay dieses Projekts.
 

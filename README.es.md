@@ -164,18 +164,20 @@ Abre **Settings → 移動远程**:
 - crear oferta → QR + PIN de 8 dígitos
 - lista de dispositivos y revocación
 - instalación opcional del `cloudflared` oficial (nunca se ejecuta en el `apply()` del plugin)
+- diagnósticos de conexión (candidatos sanitizados, pin/verify de cloudflared, versión del aviso)
+- casilla de aviso de Quick Tunnel (obligatoria antes de Start)
 
 ## RPC móvil
 
 Métodos en la allowlist (todo lo demás es `forbidden`):
 
-`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond`
+`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond` · `device.name`
 
 Los pushes incluyen eventos de sesión más `approval.requested` / `question.requested` (con `rpcId` para `respond`). Formato de cable: [docs/03-protocol.md](docs/03-protocol.md).
 
 ## Túnel público
 
-Por defecto **apagado**. Cuando se inicia desde Ajustes, el Quick Tunnel de `cloudflared` apunta **solo** a `127.0.0.1:<data-plane-port>`. `/m` queda alcanzable en una URL `https://<random>.trycloudflare.com`; el emparejamiento sigue necesitando el token de fragmento (o PIN) y E2EE. El proceso hijo se mata al unload / Stop del plugin.
+Por defecto **apagado**. Inicia desde Ajustes solo tras aceptar el aviso (`disclaimerAccepted: true`). El Quick Tunnel de `cloudflared` apunta **solo** a `127.0.0.1:<data-plane-port>`. `/m` queda alcanzable en una URL `https://<random>.trycloudflare.com`; el emparejamiento sigue necesitando el token de fragmento (o PIN) y E2EE. El proceso hijo se mata al unload / Stop del plugin.
 
 Nunca hagas túnel del puerto `3080` / `dsh web`. Un Worker de rendezvous autohospedado (escritorio y teléfono ambos outbound, frames de negocio aún E2EE) es opcional; ver [docs/05-cloud-relay.md](docs/05-cloud-relay.md). Necesita un plan Cloudflare Workers Paid y **no** es un relé público operado por este proyecto.
 

@@ -164,18 +164,20 @@ Ouvrez **Settings → 移動远程** :
 - créer une offre → QR + PIN à 8 chiffres
 - liste des appareils et révocation
 - installation optionnelle du `cloudflared` officiel (jamais lancée au `apply()` du plugin)
+- diagnostics de connexion (candidats assainis, pin/verify cloudflared, version de l’avertissement)
+- case d’avertissement Quick Tunnel (obligatoire avant Start)
 
 ## RPC mobile
 
 Méthodes en liste blanche (tout le reste est `forbidden`) :
 
-`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond`
+`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond` · `device.name`
 
 Les pushes incluent les événements de session plus `approval.requested` / `question.requested` (avec `rpcId` pour `respond`). Format filaire : [docs/03-protocol.md](docs/03-protocol.md).
 
 ## Tunnel public
 
-Par défaut **éteint**. Quand il est démarré depuis Réglages, le Quick Tunnel `cloudflared` pointe **uniquement** vers `127.0.0.1:<data-plane-port>`. `/m` devient joignable sur une URL `https://<random>.trycloudflare.com` ; l'appariement a toujours besoin du jeton de fragment (ou du PIN) et de l'E2EE. Le processus enfant est tué au unload / Stop du plugin.
+Par défaut **éteint**. Démarrez depuis Réglages seulement après avoir accepté l’avertissement (`disclaimerAccepted: true`). Le Quick Tunnel `cloudflared` pointe **uniquement** vers `127.0.0.1:<data-plane-port>`. `/m` devient joignable sur une URL `https://<random>.trycloudflare.com` ; l'appariement a toujours besoin du jeton de fragment (ou du PIN) et de l'E2EE. Le processus enfant est tué au unload / Stop du plugin.
 
 Ne tunnelez jamais le port `3080` / `dsh web`. Un Worker de rendez-vous auto-hébergé (bureau et téléphone tous deux outbound, trames métier toujours E2EE) est optionnel ; voir [docs/05-cloud-relay.md](docs/05-cloud-relay.md). Il faut un plan Cloudflare Workers Paid et ce n'est **pas** un relais public opéré par ce projet.
 

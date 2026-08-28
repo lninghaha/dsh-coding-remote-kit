@@ -164,18 +164,20 @@ Settings (loopback)          Phone browser
 - offer 생성 → QR + 8자리 PIN
 - 기기 목록과 철회
 - 선택적 공식 `cloudflared` 설치 (플러그인 `apply()` 시에는 절대 실행하지 않음)
+- 연결 진단 (마스킹된 후보, cloudflared 핀/검증, 면책 버전)
+- Quick Tunnel 면책 체크박스 (Start 전 필수)
 
 ## 모바일 RPC
 
 허용 목록 메서드(나머지는 모두 `forbidden`):
 
-`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond`
+`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond` · `device.name`
 
 푸시에는 세션 이벤트와 `respond`용 `rpcId`가 있는 `approval.requested` / `question.requested`가 포함됩니다. 와이어 형식: [docs/03-protocol.md](docs/03-protocol.md).
 
 ## 공용 터널
 
-기본값은 **꺼짐**. 설정에서 시작하면 `cloudflared` Quick Tunnel은 **`127.0.0.1:<data-plane-port>`만** 가리킵니다. `/m`은 `https://<random>.trycloudflare.com` URL에서 도달할 수 있습니다. 페어링에는 여전히 프래그먼트 토큰(또는 PIN)과 E2EE가 필요합니다. 자식 프로세스는 플러그인 unload / Stop 시 kill됩니다.
+기본값은 **꺼짐**. 설정에서 면책에 동의한 뒤 (`disclaimerAccepted: true`) Start. `cloudflared` Quick Tunnel은 **`127.0.0.1:<data-plane-port>`만** 가리킵니다. `/m`은 `https://<random>.trycloudflare.com` URL에서 도달할 수 있습니다. 페어링에는 여전히 프래그먼트 토큰(또는 PIN)과 E2EE가 필요합니다. 자식 프로세스는 플러그인 unload / Stop 시 kill됩니다.
 
 포트 `3080` / `dsh web`을 터널하지 마세요. 자체 호스팅 랑데부 Worker(데스크톱과 휴대폰 모두 아웃바운드, 업무 프레임은 E2EE)는 선택입니다. [docs/05-cloud-relay.md](docs/05-cloud-relay.md)를 보세요. Cloudflare Workers Paid 플랜이 필요하며, **이 프로젝트가 운영하는 공용 릴레이가 아닙니다**.
 
