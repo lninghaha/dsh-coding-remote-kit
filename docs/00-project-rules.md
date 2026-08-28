@@ -88,7 +88,7 @@ Every document belongs to one of two layers, and the two never mix:
 
 ## 3. Versioning & The Release Loop
 
-[Semantic Versioning (SemVer)](https://semver.org/): `MAJOR.MINOR.PATCH`. The project is currently `0.5.0`.
+[Semantic Versioning (SemVer)](https://semver.org/): `MAJOR.MINOR.PATCH`. The project is currently `0.5.1`.
 
 | Change | Version action |
 |---|---|

@@ -4,7 +4,7 @@
 
 npm 包名是 **`dsh-coding-remote-kit`**。GitHub：[`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit)。npm 上的 `dsh-mobile-remote` 是另一个微信插件，不要装那个。
 
-当前版本 **`0.5.0`**。
+当前版本 **`0.5.1`**。
 
 ## 前置条件
 
@@ -17,21 +17,21 @@ npm 包名是 **`dsh-coding-remote-kit`**。GitHub：[`lninghaha/dsh-coding-remo
 
 ```bash
 # 普通用户：当前 npm 发布版
-dsh plugin --profile web add dsh-coding-remote-kit@0.5.0
+dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
 
 # 开发者：先过 Docker 沙箱门禁（不碰本机 3080 / $DSH_HOME）
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.5.0.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.0.tgz"
+cp dsh-coding-remote-kit-0.5.1.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.1.tgz"
 ```
 
 ## 升级注意事项
 
 - 本版按已验证的 DSH BOM `@deepseek-ai/dsh@0.1.0-rc.6` 发布。`0.1.0-rc.7` 仍是候选版本，尚未纳入本版兼容声明。升级前先确认宿主版本，不要用 `*` 或未验证的宽泛范围替代精确版本。
 - 从 `0.4.x` 升级到 `0.5.0` 后再重启：本版新增连接诊断、公网隧道免责勾选与 cloudflared 钉死校验；不重置配对设备、存储或凭据。若仍在 `0.4.0`，请先经 `0.4.1`（或直接装 `0.5.0`）以避开严格 Cordis 注入检查下的启动失败。
-- 在现有 **web profile** 中安装 `dsh-coding-remote-kit@0.5.0`（或对应 tarball），不要把 git checkout 直接作为插件源；这样可以避免 `link:` 源码树和旧包并存。
+- 在现有 **web profile** 中安装 `dsh-coding-remote-kit@0.5.1`（或对应 tarball），不要把 git checkout 直接作为插件源；这样可以避免 `link:` 源码树和旧包并存。
 - 升级不会重置 `$DSH_HOME/storages/mobile-remote/`、已配对设备或凭据。安装完成后由操作者在维护窗口重启一次现有 DSH Web 进程，不要另起第二个实例。
 - 如果同时升级 Hub 与 Subscription，先确保 npm 上的 `dsh-coding-oauth-core@0.1.0` 已可解析，再依次安装 Hub `1.9.1` 与 Subscription `0.6.1`；三包都更新后只重启一次。Core 是共享的 npm 依赖，不是需要单独 `dsh plugin add` 的 DSH 插件。共装时 Hub 负责完整界面，Subscription 收敛为状态入口。
 - 回滚时只替换插件包版本，保留 profile、存储和凭据；先查看设置页兼容性诊断，只有诊断明确要求时才重新配对。不要为回滚删除 `storages/mobile-remote`。

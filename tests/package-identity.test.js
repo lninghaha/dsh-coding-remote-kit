@@ -13,7 +13,7 @@ test("bundled server entry imports under Node ESM (no dynamic-require crash)", a
 test("package identity matches the M1 contract", async () => {
 	const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 	assert.equal(pkg.name, "dsh-coding-remote-kit");
-	assert.equal(pkg.version, "0.5.0");
+	assert.equal(pkg.version, "0.5.1");
 	assert.equal(pkg.exports["."], "./lib/server/index.js");
 	assert.equal(pkg.exports["./client"], "./lib/client.js");
 	assert.equal(pkg.exports["./package.json"], "./package.json");
