@@ -164,18 +164,20 @@ Settings (loopback)          Phone browser
 - offer 作成 → QR + 8 桁 PIN
 - 端末一覧と取り消し
 - 任意の公式 `cloudflared` インストール（プラグイン `apply()` 時には決して実行しません）
+- 接続診断（マスク済み候補、cloudflared ピン／検証、免責バージョン）
+- Quick Tunnel 免責チェックボックス（Start 前に必須）
 
 ## モバイル RPC
 
 許可リストのメソッド（それ以外はすべて `forbidden`）:
 
-`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond`
+`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond` · `device.name`
 
 プッシュにはセッションイベントに加え、`respond` 用の `rpcId` 付き `approval.requested` / `question.requested` が含まれます。ワイヤ形式: [docs/03-protocol.md](docs/03-protocol.md)。
 
 ## 公開トンネル
 
-既定は **オフ**。設定ページから開始すると、`cloudflared` Quick Tunnel は **`127.0.0.1:<data-plane-port>` だけ** を指します。`/m` は `https://<random>.trycloudflare.com` URL で到達可能になります。ペアリングには引き続きフラグメントトークン（または PIN）と E2EE が必要です。子プロセスはプラグイン unload / Stop 時に kill されます。
+既定は **オフ**。設定ページで免責に同意（`disclaimerAccepted: true`）してから Start。`cloudflared` Quick Tunnel は **`127.0.0.1:<data-plane-port>` だけ** を指します。`/m` は `https://<random>.trycloudflare.com` URL で到達可能になります。ペアリングには引き続きフラグメントトークン（または PIN）と E2EE が必要です。子プロセスはプラグイン unload / Stop 時に kill されます。
 
 ポート `3080` / `dsh web` をトンネルしてはいけません。自前ランデブー Worker（デスクトップとスマホはどちらも出向き、業務フレームは E2EE のまま）は任意です。[docs/05-cloud-relay.md](docs/05-cloud-relay.md) を参照。Cloudflare Workers Paid プランが必要で、**本プロジェクトが運用する公開リレーではありません**。
 

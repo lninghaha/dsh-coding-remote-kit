@@ -164,18 +164,20 @@ Settings (loopback)          Phone browser
 - создать предложение → QR + 8-значный PIN
 - список устройств и отзыв
 - необязательная установка официального `cloudflared` (никогда не запускается при `apply()` плагина)
+- диагностика подключения (очищенные кандидаты, pin/verify cloudflared, версия отказа от ответственности)
+- флажок отказа для Quick Tunnel (обязателен перед Start)
 
 ## Мобильный RPC
 
 Методы allowlist (всё остальное — `forbidden`):
 
-`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond`
+`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond` · `device.name`
 
 Пуши включают события сессии плюс `approval.requested` / `question.requested` (с `rpcId` для `respond`). Формат провода: [docs/03-protocol.md](docs/03-protocol.md).
 
 ## Публичный туннель
 
-По умолчанию **выключен**. При запуске из настроек `cloudflared` Quick Tunnel указывает **только** на `127.0.0.1:<data-plane-port>`. `/m` становится доступен по URL `https://<random>.trycloudflare.com`; сопряжению по-прежнему нужны fragment-токен (или PIN) и E2EE. Дочерний процесс убивается при unload / Stop плагина.
+По умолчанию **выключен**. Запускайте из настроек только после принятия отказа (`disclaimerAccepted: true`). `cloudflared` Quick Tunnel указывает **только** на `127.0.0.1:<data-plane-port>`. `/m` становится доступен по URL `https://<random>.trycloudflare.com`; сопряжению по-прежнему нужны fragment-токен (или PIN) и E2EE. Дочерний процесс убивается при unload / Stop плагина.
 
 Никогда не туннелируйте порт `3080` / `dsh web`. Самостоятельно размещённый rendezvous Worker (стол и телефон оба исходящие, деловые кадры по-прежнему E2EE) необязателен; см. [docs/05-cloud-relay.md](docs/05-cloud-relay.md). Нужен план Cloudflare Workers Paid; это **не** публичное реле данного проекта.
 

@@ -164,18 +164,20 @@ pnpm test:sandbox                         # Dockerfile 的 check / isolated-inst
 - 生成 offer → 二维码 + 8 位 PIN
 - 设备列表与吊销
 - 可选安装官方 `cloudflared`（禁止在插件 `apply()` 时自动跑）
+- 连接诊断（脱敏网络候选、cloudflared 钉死校验、免责版本）
+- Quick Tunnel 免责勾选（Start 前必选）
 
 ## 手机 RPC
 
 白名单方法（其余一律 `forbidden`）：
 
-`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond`
+`status.get` · `session.list` · `session.history` · `session.subscribe` · `session.unsubscribe` · `host.subscribe` · `session.prompt` · `session.cancel` · `session.create` · `respond` · `device.name`
 
 推送包括会话事件以及带 `rpcId` 的 `approval.requested` / `question.requested`（供 `respond` 回显）。线格式见 [docs/03-protocol.md](docs/03-protocol.md)。
 
 ## 公网隧道
 
-默认**关闭**。在设置页启动时，`cloudflared` Quick Tunnel **只**指向 `127.0.0.1:<数据面端口>`。`/m` 会在 `https://<随机>.trycloudflare.com` 上可达；配对仍需要 fragment 令牌（或 PIN）和 E2EE。插件 unload / 点「停止」时杀掉子进程。
+默认**关闭**。设置页须先勾选免责声明（请求体 `disclaimerAccepted: true`）再 Start。`cloudflared` Quick Tunnel **只**指向 `127.0.0.1:<数据面端口>`。`/m` 会在 `https://<随机>.trycloudflare.com` 上可达；配对仍需要 fragment 令牌（或 PIN）和 E2EE。插件 unload / 点「停止」时杀掉子进程。
 
 禁止把 `3080` / `dsh web` 送进隧道。可选自建会合中继（桌面与手机都出站，业务仍 E2EE）：见 [docs/05-cloud-relay.md](docs/05-cloud-relay.md)。需要 Cloudflare Workers Paid，**不是**本项目运营的公共中继。
 

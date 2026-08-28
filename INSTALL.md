@@ -30,7 +30,8 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.1.tg
 ## 升级注意事项
 
 - 本版按已验证的 DSH BOM `@deepseek-ai/dsh@0.1.0-rc.6` 发布。`0.1.0-rc.7` 仍是候选版本，尚未纳入本版兼容声明。升级前先确认宿主版本，不要用 `*` 或未验证的宽泛范围替代精确版本。
-- 从 `0.4.x` 升级到 `0.5.0` 后再重启：本版新增连接诊断、公网隧道免责勾选与 cloudflared 钉死校验；不重置配对设备、存储或凭据。若仍在 `0.4.0`，请先经 `0.4.1`（或直接装 `0.5.0`）以避开严格 Cordis 注入检查下的启动失败。
+- 从 `0.5.0` 升级到 `0.5.1`：每次 Start 会重新解析 `cloudflared`，`binaryOk` 按实时钉死校验；Settings 安装二进制后无需重载即可 Start。不重置配对设备、存储或凭据。
+- 从 `0.4.x` 升到 `0.5.x`：`0.5.0` 新增连接诊断、公网隧道免责勾选与 cloudflared 钉死校验。当前请装 `0.5.1`（含上述能力）。不重置配对设备、存储或凭据。若仍在 `0.4.0`，请先经 `0.4.1`（或直接装 `0.5.1`）以避开严格 Cordis 注入检查下的启动失败。
 - 在现有 **web profile** 中安装 `dsh-coding-remote-kit@0.5.1`（或对应 tarball），不要把 git checkout 直接作为插件源；这样可以避免 `link:` 源码树和旧包并存。
 - 升级不会重置 `$DSH_HOME/storages/mobile-remote/`、已配对设备或凭据。安装完成后由操作者在维护窗口重启一次现有 DSH Web 进程，不要另起第二个实例。
 - 如果同时升级 Hub 与 Subscription，先确保 npm 上的 `dsh-coding-oauth-core@0.1.0` 已可解析，再依次安装 Hub `1.9.1` 与 Subscription `0.6.1`；三包都更新后只重启一次。Core 是共享的 npm 依赖，不是需要单独 `dsh plugin add` 的 DSH 插件。共装时 Hub 负责完整界面，Subscription 收敛为状态入口。
@@ -64,6 +65,7 @@ Offer 有 TTL（默认 10 分钟）。设备可在设置页吊销；吊销后该
 
 默认关闭。设置页启动 Cloudflare Quick Tunnel 时：
 
+- 必须先勾选免责声明；服务端要求请求体 `disclaimerAccepted: true`，否则拒绝启动
 - `cloudflared` 的 `--url` **只**指向 `127.0.0.1:<数据面端口>`
 - **禁止**把 `3080` / `dsh web` 送进隧道
 - `/m` 会在 `https://<随机>.trycloudflare.com` 公开可达；没有 fragment / PIN 与 E2EE 仍不能读会话

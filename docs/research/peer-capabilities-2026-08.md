@@ -7,7 +7,7 @@
 
 ## 1. 本仓库现状（对照锚点）
 
-`dsh-coding-remote-kit@0.5.0` 已走 **路线 B**：窄 RPC + 双平面 + E2EE pairing。
+`dsh-coding-remote-kit@0.5.1`（≥`0.5.0`）已走 **路线 B**：窄 RPC + 双平面 + E2EE pairing。
 
 | 已有 | 说明 |
 | --- | --- |
@@ -49,7 +49,7 @@
 | **过程可见性** | Phone Harness / `201222-L` | 活动条（思考中 / 正在调工具）、可折叠思考面板、工具卡状态。本仓 transcript 偏「消息气泡」。可：**订阅并渲染 turn / tool 状态推送**，仍禁止暴露完整危险 payload。 |
 | **Steer / 插队语义** | zzj PWA（`mode: steer`）、Phone Harness | 本仓 `session.prompt` 已有 `queue`/`steer`，但 UI 未必突出「打断当前任务」。可：输入区明确双模式。 |
 | **慢链路优化** | pocket（gzip/brotli）、zzj（gzip + 历史截断）、dsh-mobile（分页/压缩） | Tailscale 中继 / 4G 下大会话卡顿。可：history 分页默认、推送帧合并、静态壳缓存策略再压一档。 |
-| **连接诊断一键报告** | `saya-ch/dsh-mobile` | 防火墙 / IP 选错 / 版本不匹配是第一大支持成本。可：Settings + 手机页「诊断」：端口可达、配对态、协议版本、脱敏网卡列表。 |
+| **连接诊断一键报告** | `saya-ch/dsh-mobile` | 防火墙 / IP 选错 / 版本不匹配是第一大支持成本。**已落地**（Settings `connectionDiagnostics`：脱敏候选、cloudflared 钉死校验、隧道 `urlHost`、免责版本）。手机页诊断仍可加深。 |
 
 ### P1 — 安全与信任运营（路线 B 的护城河）
 
@@ -58,8 +58,8 @@
 | **链接 ≠ 权限** | `dsh-remote-web-gateway` | 我们已做到「配对后才进业务」。可再强化文案与设置页：**公网 URL / Tunnel 地址单独声明「不是凭证」**；配对码 TTL + 一次认领的 UX 对齐他们的威胁模型表述。 |
 | **逐台撤销 + 会话 TTL** | gateway、IceApriler、本仓部分已有 | 补齐：设备会话默认 TTL、最后活跃时间、丢失手机一键清全。 |
 | **登录限速 / 熔断** | pocket、IceApriler、xgone | PIN/握手失败按 IP + 全局阈值锁定；已有雏形则补齐文档与设置可见性。 |
-| **公网开启强制免责勾选** | pocket | Quick Tunnel 开启前 checkbox；服务端拒绝未确认请求。 |
-| **cloudflared 供应链校验** | gateway（固定版本 + SHA-256 + Authenticode） | 本仓已能装 tunnel；可对齐「固定版本 + 哈希复验」，避免 PATH 假二进制。 |
+| **公网开启强制免责勾选** | pocket | **已落地**：Quick Tunnel 开启前 checkbox；服务端要求 `disclaimerAccepted: true`。 |
+| **cloudflared 供应链校验** | gateway（固定版本 + SHA-256 + Authenticode） | **已落地**：固定版本 + sha256 复验；拒绝裸 PATH / 非绝对路径；`0.5.1` 起 Settings 安装后无需重载即可 Start。 |
 | **插件共存冲突检测** | IceApriler、`201222-L`（`/m` 冲突） | 设置页检测其他 remote/pocket 插件或 path 冲突，给一键诊断文案（我们已有 BOM 诊断，可扩到「远程类插件」）。 |
 
 ### P2 — 体验加深（仍保持窄 RPC，按需加方法）
