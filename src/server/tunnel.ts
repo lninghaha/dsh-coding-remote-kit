@@ -17,8 +17,8 @@
  *  - Never funnel `3080` / `dsh web`.
  *  - Stop the child on plugin unload / explicit stop.
  *  - `cloudflared` is resolved, never downloaded or installed here.
- *  - `start()` always re-verifies the binary against the pinned sha256 before spawn.
- *    `snapshot().binaryOk` stays resolve-based until a verify has run this process.
+ *  - `start()` always re-resolves (unless a test pins `binary`) and re-verifies
+ *    against the pinned sha256 before spawn. `snapshot().binaryOk` is a live pin check.
  */
 
 import { spawn as nodeSpawn } from "node:child_process";
@@ -155,18 +155,20 @@ function isPidAlive(pid: number): boolean {
  * keep it unit-testable without ever launching a real tunnel.
  */
 export class CloudflareQuickTunnel {
-	private readonly binary: string | null;
+	/**
+	 * When `undefined`, resolve live on each start / binaryOk (install can land after apply).
+	 * When set (including `null`), tests pin a fixed binary.
+	 */
+	private readonly binaryOverride: string | null | undefined;
 	private readonly spawnImpl: SpawnFn;
 	private readonly verifyImpl: VerifyBinaryFn;
 	private readonly persistFile: string | null;
 	private child: ChildLike | null = null;
 	private url: string | null = null;
-	/** null until start() verifies; then true only when verify ok. */
-	private lastVerifyOk: boolean | null = null;
 
 	constructor(
 		options: {
-			/** Binary/command to run. Defaults to `resolveCloudflaredBinary()`. */
+			/** Binary/command to run. Defaults to live `resolveCloudflaredBinary()`. */
 			binary?: string | null;
 			/** Spawn implementation. Defaults to `node:child_process.spawn`. */
 			spawn?: SpawnFn;
@@ -176,16 +178,26 @@ export class CloudflareQuickTunnel {
 			verifyBinary?: VerifyBinaryFn;
 		} = {},
 	) {
-		this.binary = options.binary === undefined ? resolveCloudflaredBinary() : options.binary;
+		this.binaryOverride = options.binary;
 		this.spawnImpl = options.spawn ?? ((command, args) => nodeSpawn(command, args) as unknown as ChildLike);
 		this.verifyImpl = options.verifyBinary ?? verifyCloudflaredBinary;
 		this.persistFile = options.persistFile ?? null;
 		if (this.persistFile !== null) this.#clearStalePersisted();
 	}
 
+	#resolvedBinary(): string | null {
+		return this.binaryOverride !== undefined ? this.binaryOverride : resolveCloudflaredBinary();
+	}
+
+	/**
+	 * Live pin check for Settings. Sync verify only; async injects fail closed until `start()`.
+	 */
 	get binaryOk(): boolean {
-		if (this.lastVerifyOk !== null) return this.lastVerifyOk;
-		return this.binary !== null;
+		const resolved = this.#resolvedBinary();
+		if (resolved === null) return false;
+		const probe = this.verifyImpl(resolved);
+		if (probe instanceof Promise) return false;
+		return probe.ok;
 	}
 
 	snapshot(): CloudflareQuickTunnelSnapshot {
@@ -200,14 +212,8 @@ export class CloudflareQuickTunnel {
 
 	/** Start the tunnel and resolve with the public URL when it appears. Always verifies first. */
 	async start(options: { port: number; timeoutMs?: number }): Promise<string> {
-		let trusted: string;
-		try {
-			trusted = await assertTrustedCloudflaredBinary(this.binary, this.verifyImpl);
-			this.lastVerifyOk = true;
-		} catch (error) {
-			this.lastVerifyOk = false;
-			throw error;
-		}
+		const resolved = this.#resolvedBinary();
+		const trusted = await assertTrustedCloudflaredBinary(resolved, this.verifyImpl);
 		if (this.child !== null) {
 			if (this.url !== null) return this.url;
 			throw new Error("tunnel is already starting");

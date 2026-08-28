@@ -143,6 +143,59 @@ test("start refuses unverified binary (binary-untrusted)", async () => {
 	assert.equal(tunnel.snapshot().binaryOk, false);
 });
 
+test("binaryOk recovers after verify flips from mismatch to ok (same path)", async () => {
+	const binary = tempBinaryPath();
+	let mismatch = true;
+	const tunnel = new CloudflareQuickTunnel({
+		binary,
+		verifyBinary: (path) =>
+			mismatch
+				? { ok: false, status: "hash-mismatch", path, message: "mismatch" }
+				: okVerify(path),
+		spawn() {
+			throw new Error("must not spawn");
+		},
+	});
+	assert.equal(tunnel.binaryOk, false);
+	await assert.rejects(tunnel.start({ port: 6879, timeoutMs: 100 }), BinaryUntrustedError);
+	mismatch = false;
+	assert.equal(tunnel.binaryOk, true);
+});
+
+test("start re-resolves live when construct-time binary was missing", async () => {
+	const child = fakeChild();
+	let spawnedResolve;
+	const spawned = new Promise((resolve) => {
+		spawnedResolve = resolve;
+	});
+	const prev = process.env.CLOUDFLARED;
+	process.env.CLOUDFLARED = "/nonexistent/dshmr-cloudflared";
+	const tunnel = new CloudflareQuickTunnel({
+		verifyBinary: okVerify,
+		spawn(_command, _args) {
+			spawnedResolve();
+			return child;
+		},
+	});
+	assert.equal(tunnel.binaryOk, false);
+	await assert.rejects(tunnel.start({ port: 6879, timeoutMs: 100 }), /not found|untrusted|could not be resolved/);
+	const binary = tempBinaryPath();
+	process.env.CLOUDFLARED = binary;
+	try {
+		assert.equal(tunnel.binaryOk, true);
+		const startPromise = tunnel.start({ port: 6879, timeoutMs: 2000 });
+		await spawned;
+		await new Promise((resolve) => setImmediate(resolve));
+		child.stderr.write("https://happy-photo-7qx.trycloudflare.com\n");
+		child.stderr.write("Registered tunnel connection connIndex=0\n");
+		const url = await startPromise;
+		assert.equal(url, "https://happy-photo-7qx.trycloudflare.com");
+	} finally {
+		if (prev === undefined) delete process.env.CLOUDFLARED;
+		else process.env.CLOUDFLARED = prev;
+	}
+});
+
 test("start rejects bare PATH binary names as untrusted", async () => {
 	const tunnel = new CloudflareQuickTunnel({
 		binary: "cloudflared",
