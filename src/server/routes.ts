@@ -17,6 +17,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
+import { isAbsolute } from "node:path";
 import { MOBILE_PROTOCOL_VERSION } from "../shared/constants.js";
 import { encodeOffer, offerQrText } from "../shared/offer.js";
 import type { AuditLogger, DeviceRecord, DeviceRegistry, OfferRegistry } from "./registry.js";
@@ -48,7 +49,7 @@ import {
 } from "./security.js";
 
 /** Logged in tunnel_start audit detail; not persisted. */
-export const DISCLAIMER_VERSION = "2025-08-quick-tunnel-v1" as const;
+export const DISCLAIMER_VERSION = "2026-08-quick-tunnel-v1" as const;
 
 function pluginVersionFromPackage(): string {
 	try {
@@ -187,7 +188,7 @@ export function buildConnectionDiagnostics(deps: ManagementDeps): ConnectionDiag
 	const env = process.env.CLOUDFLARED?.trim();
 	let verify: CloudflaredVerifyStatus = "missing";
 	let absolute: string | null = null;
-	if (typeof env === "string" && env.length > 0 && isBareCommandName(env)) {
+	if (typeof env === "string" && env.length > 0 && (!isAbsolute(env) || isBareCommandName(env))) {
 		verify = "not-pinned";
 	} else {
 		const resolved = resolveCloudflaredBinary();

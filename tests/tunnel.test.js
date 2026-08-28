@@ -150,7 +150,17 @@ test("start rejects bare PATH binary names as untrusted", async () => {
 			throw new Error("must not spawn");
 		},
 	});
-	await assert.rejects(tunnel.start({ port: 6879, timeoutMs: 100 }), /bare PATH/);
+	await assert.rejects(tunnel.start({ port: 6879, timeoutMs: 100 }), /non-absolute|bare PATH/);
+});
+
+test("start rejects relative binary paths as untrusted", async () => {
+	const tunnel = new CloudflareQuickTunnel({
+		binary: "./cloudflared",
+		spawn() {
+			throw new Error("must not spawn");
+		},
+	});
+	await assert.rejects(tunnel.start({ port: 6879, timeoutMs: 100 }), /non-absolute/);
 });
 
 test("URL without Registered tunnel connection does not resolve", async () => {

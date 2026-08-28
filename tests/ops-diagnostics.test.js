@@ -60,3 +60,16 @@ test("buildConnectionDiagnostics marks bare CLOUDFLARED env as not-pinned", () =
 		else process.env.CLOUDFLARED = prev;
 	}
 });
+
+test("buildConnectionDiagnostics marks relative CLOUDFLARED env as not-pinned", () => {
+	const prev = process.env.CLOUDFLARED;
+	process.env.CLOUDFLARED = "./cloudflared";
+	try {
+		const diag = buildConnectionDiagnostics(fakeDeps());
+		assert.equal(diag.cloudflared.verify, "not-pinned");
+		assert.equal(diag.cloudflared.resolvedPath, null);
+	} finally {
+		if (prev === undefined) delete process.env.CLOUDFLARED;
+		else process.env.CLOUDFLARED = prev;
+	}
+});

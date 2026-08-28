@@ -24,7 +24,7 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import {
 	isBareCommandName,
 	resolveExistingBinaryPath,
@@ -62,7 +62,8 @@ export function resolveCloudflaredBinary(): string | null {
 	const env = process.env.CLOUDFLARED;
 	if (typeof env === "string" && env.trim().length > 0) {
 		const trimmed = env.trim();
-		if (isBareCommandName(trimmed)) return null;
+		// Absolute paths only — relative / bare names are cwd- or PATH-dependent.
+		if (!isAbsolute(trimmed) || isBareCommandName(trimmed)) return null;
 		return existsSync(trimmed) ? trimmed : null;
 	}
 	if (existsSync(HINT_PATH)) return HINT_PATH;
@@ -113,16 +114,16 @@ export async function assertTrustedCloudflaredBinary(
 ): Promise<string> {
 	if (resolved === null) {
 		const env = process.env.CLOUDFLARED?.trim();
-		if (typeof env === "string" && isBareCommandName(env)) {
+		if (typeof env === "string" && env.length > 0 && (!isAbsolute(env) || isBareCommandName(env))) {
 			throw new BinaryUntrustedError(
-				"CLOUDFLARED bare PATH name is not pinned; set an absolute path to the official binary",
+				"CLOUDFLARED must be an absolute path to a pinned official binary",
 			);
 		}
 		throw new Error("cloudflared binary not found; install it to ~/.local/bin/cloudflared");
 	}
-	if (isBareCommandName(resolved)) {
+	if (!isAbsolute(resolved) || isBareCommandName(resolved)) {
 		throw new BinaryUntrustedError(
-			"refusing to spawn cloudflared via bare PATH name; use an absolute pinned binary",
+			"refusing to spawn cloudflared via non-absolute path; use an absolute pinned binary",
 		);
 	}
 	const filePath = filesystemPathForBinary(resolved);
