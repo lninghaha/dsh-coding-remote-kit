@@ -1,6 +1,6 @@
 # DSH 生态：远程 / 手机访问方案对比
 
-> 调研日期：2026-08-18  
+> 调研日期：2026-08-18（初版）· **2026-08-28 增补见 [`peer-capabilities-2026-08.md`](peer-capabilities-2026-08.md)**  
 > 范围：DeepSeek Harness（`@deepseek-ai/dsh`）官方能力与社区「手机远程」相关项目  
 > 目的：回答「DSH 有没有类似 Orca companion 的东西？」并给出选型对照。
 
@@ -30,10 +30,16 @@
 
 | 项目 | 形态 | 网络路径 | 体验模型 | 安全要点（公开描述） |
 | --- | --- | --- | --- | --- |
-| [dsh-pocket](https://github.com/shaobeichen/dsh-pocket) | DSH 插件 | LAN 扫码；可选 cloudflared 公网 | 透传 Web + 移动布局 | URL 即入口；公网 URL 可变 |
+| [dsh-pocket](https://github.com/shaobeichen/dsh-pocket) | DSH 插件 | LAN 扫码；可选 cloudflared 公网 | 透传 Web + 移动布局 | 8 位密码；公网免责勾选；限速 |
+| [dsh-remote-web-gateway](https://github.com/summer1238/dsh-remote-web-gateway) | DSH 插件 | CF Quick Tunnel | 透传 Web；手机适配 | **链接≠权限**；一次性配对；设备可撤销；可选 GitHub 身份 |
+| [dsh-mobile](https://github.com/saya-ch/dsh-mobile) | 插件 + Android 壳 | LAN HTTPS + Funnel/cpolar | 透传 + 触屏布局 | 证书固定；LAN/远程分通道 |
+| [201222-L/dsh-mobile-remote](https://github.com/201222-L/dsh-mobile-remote) | 插件 + Flutter | LAN / 蒲公英等 | **语义遥控**（审批/推送/会话/模型） | authToken；禁公网映射 3080 |
+| [dsh-notifier](https://github.com/THEWOLFWALKER/dsh-notifier) | 通知插件 | 既有 IM/推送通道 | 审批/提问/停任务走消息 | 身份配对；HMAC 一次性动作 |
 | [dsh-web-remote](https://github.com/godchen520/dsh-web-remote) | DSH 插件 | CF Quick Tunnel + LAN HTTP/HTTPS | 透传 Web；侧栏手机面板 | 随机 token / Cookie；局域网可配置免 token |
 | [DeepSeek Phone Harness](https://github.com/2903077918-lgtm/DeepSeek-phone-harness) | 独立 agent/relay | LAN / Tailscale；可选 Cloudflare Worker | **语义遥控**（聊天、审批卡、提问卡、终端、文件） | Bearer token；强调勿裸暴露端口 |
 | 其他 UI 合集（如含 remote mobile 条目的社区 UI 仓） | 插件/皮肤 | 视项目而定 | 多为 Web 侧适配 | 需个案审阅 |
+
+可借鉴能力的优先级与落地切片见 [`peer-capabilities-2026-08.md`](peer-capabilities-2026-08.md)。
 
 ### 3.1 dsh-pocket（最像「装插件就能用」）
 
