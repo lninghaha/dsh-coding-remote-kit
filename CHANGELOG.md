@@ -4,6 +4,10 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+### Documentation
+
+- Sync `INSTALL.md` and all README translations with 0.5.x ops: upgrade bullets for `0.5.1`, disclaimer gate, connection diagnostics, and `device.name` on the RPC allowlist. Mark landed P0 rows in `docs/research/peer-capabilities-2026-08.md`.
+
 ## v0.5.1 - 2026-08-28
 
 ### Fixed
