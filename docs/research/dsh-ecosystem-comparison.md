@@ -13,7 +13,7 @@
 | 与 Orca 最像的点 | 「桌面跑 Agent，手机观察/轻操控」 |
 | 与 Orca 最大差异 | 多数是 **透传 `dsh web`** 或薄 API 壳，而非原生 App + E2EE pairing |
 
-本仓库（`dsh-mobile-remote`）定位为：**独立预研与后续实现载体**，与用量中心插件 `dsh-hub-oauth-gateway` 解耦。
+本仓库（`dsh-coding-remote-kit`，Cordis id `mobile-remote`）定位为：**独立预研与后续实现载体**，与用量中心插件 `dsh-hub-oauth-gateway` 解耦。npm 名 `dsh-mobile-remote` 属于其他项目，勿混用。
 
 ## 2. 官方基线
 
