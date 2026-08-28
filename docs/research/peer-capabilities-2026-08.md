@@ -7,7 +7,7 @@
 
 ## 1. 本仓库现状（对照锚点）
 
-`dsh-coding-remote-kit@0.4.1` 已走 **路线 B**：窄 RPC + 双平面 + E2EE pairing。
+`dsh-coding-remote-kit@0.5.0` 已走 **路线 B**：窄 RPC + 双平面 + E2EE pairing。
 
 | 已有 | 说明 |
 | --- | --- |

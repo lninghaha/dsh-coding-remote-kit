@@ -4,6 +4,23 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+## v0.5.0 - 2026-08-28
+
+### Added
+
+- Connection diagnostics on GET status (`connectionDiagnostics`, schemaVersion 1): sanitized network candidates, cloudflared pin/verify status, tunnel `urlHost`, disclaimer version.
+- Quick Tunnel start requires per-request `disclaimerAccepted: true`; Settings checkbox gates start.
+- Pin cloudflared to release `2026.8.2` with sha256 re-verify before spawn (`binary-untrusted` on mismatch).
+
+### Security
+
+- Refuse bare PATH and non-absolute `CLOUDFLARED` / binary paths; diagnostics redact `$HOME` prefixes.
+- Pin runtime dependency `zod` to `4.4.3` so packed offline installs stay deterministic.
+
+### Documentation
+
+- Peer remote-plugin capability survey (`docs/research/peer-capabilities-2026-08.md`) and ecosystem comparison updates.
+
 ## v0.4.1 - 2026-08-22
 
 ### Fixed
