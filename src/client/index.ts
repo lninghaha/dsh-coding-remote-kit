@@ -43,6 +43,7 @@ interface StatusInfo {
 	activeDevices: number;
 	tunnel: TunnelSnapshot;
 	relay: RelaySnapshot;
+	connectionDiagnostics?: ConnectionDiagnostics;
 	compatibility?: {
 		apiProxy: { available: boolean; source: string };
 		webServer: { available: boolean; source: string };
@@ -58,6 +59,36 @@ interface StatusInfo {
 			diagnostics: readonly { id: string; level: "info" | "error"; message: string }[];
 		};
 	};
+}
+
+interface ConnectionDiagnostics {
+	schemaVersion: 1;
+	pluginVersion: string;
+	protocolVersion: number;
+	dataPlane: {
+		listening: boolean;
+		bind: string;
+		port: number;
+		networkReach: string;
+	};
+	pairing: {
+		offerActive: boolean;
+		pendingOfferCount: number;
+	};
+	devices: {
+		active: number;
+		revoked: number;
+		total: number;
+	};
+	networkCandidates: readonly { address: string; kind: string }[];
+	tunnel: { running: boolean; urlHost: string | null };
+	cloudflared: {
+		resolvedPath: string | null;
+		verify: string;
+		pinnedRelease: string;
+		expectedSha256Prefix: string | null;
+	};
+	disclaimer: { requiredVersion: string };
 }
 
 interface TunnelSnapshot {
@@ -171,6 +202,7 @@ export function MobileRemoteSettings() {
 	const [revokePendingId, setRevokePendingId] = useState<string | null>(null);
 	const [showAdvancedNetwork, setShowAdvancedNetwork] = useState(false);
 	const [channelChosen, setChannelChosen] = useState(false);
+	const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
 	const [locale, setLocaleState] = useState<Locale>(() => bootstrapLocale());
 
 	const switchLocale = (next: Locale) => {
@@ -308,19 +340,39 @@ export function MobileRemoteSettings() {
 
 	const tunnelAction = async (action: "start" | "stop"): Promise<boolean> => {
 		if (tunnelBusy) return false;
+		if (action === "start" && !disclaimerAccepted) {
+			setChannelError(t("settings.tunnel.disclaimerRequired"));
+			return false;
+		}
 		setChannelError(null);
 		setTunnelBusy(true);
 		try {
-			const { ok, status: httpStatus, payload } = await postJson("/api/mobile-remote/tunnel", {
+			const body: Record<string, unknown> = {
 				action,
 				kind: "cloudflare-quick",
-			});
+			};
+			if (action === "start") body.disclaimerAccepted = true;
+			const { ok, status: httpStatus, payload } = await postJson("/api/mobile-remote/tunnel", body);
 			if (!ok) {
+				const errorCode =
+					typeof payload.error === "object" &&
+					payload.error !== null &&
+					typeof (payload.error as { code?: unknown }).code === "string"
+						? (payload.error as { code: string }).code
+						: null;
+				const fallback =
+					errorCode === "disclaimer_required"
+						? t("settings.tunnel.disclaimerRequired")
+						: errorCode === "binary-untrusted"
+							? t("settings.tunnel.binaryUntrusted")
+							: action === "start"
+								? t("settings.tunnel.startFailed")
+								: t("settings.tunnel.stopFailed");
 				setChannelError(
 					formatApiError(
 						{ status: httpStatus } as Response,
 						payload as { error?: { message?: string } },
-						action === "start" ? t("settings.tunnel.startFailed") : t("settings.tunnel.stopFailed"),
+						fallback,
 					),
 				);
 				return false;
@@ -416,6 +468,10 @@ export function MobileRemoteSettings() {
 						return;
 					}
 					if (!(status?.tunnel.running ?? false)) {
+						if (!disclaimerAccepted) {
+							setOfferError(t("settings.tunnel.disclaimerRequired"));
+							return;
+						}
 						const started = await tunnelAction("start");
 						if (!started) return;
 					}
@@ -661,6 +717,70 @@ export function MobileRemoteSettings() {
 									}),
 								)
 							: null,
+						status.connectionDiagnostics !== undefined
+							? createElement(
+									"div",
+									{ style: { display: "grid", gap: "4px", fontSize: "12px" } },
+									createElement("strong", null, t("settings.diagnostics.title")),
+									createElement(
+										"p",
+										{ style: { ...muted, margin: 0 } },
+										t("settings.diagnostics.versions", {
+											plugin: status.connectionDiagnostics.pluginVersion,
+											protocol: String(status.connectionDiagnostics.protocolVersion),
+										}),
+									),
+									createElement(
+										"p",
+										{ style: { ...muted, margin: 0 } },
+										t("settings.diagnostics.dataPlane", {
+											listen: status.connectionDiagnostics.dataPlane.listening
+												? t("settings.status.listening")
+												: t("settings.status.notListening"),
+											bind: status.connectionDiagnostics.dataPlane.bind,
+											port: String(status.connectionDiagnostics.dataPlane.port),
+											reach: status.connectionDiagnostics.dataPlane.networkReach,
+										}),
+									),
+									createElement(
+										"p",
+										{ style: { ...muted, margin: 0 } },
+										status.connectionDiagnostics.pairing.offerActive
+											? t("settings.diagnostics.offerActive", {
+													n: String(status.connectionDiagnostics.pairing.pendingOfferCount),
+												})
+											: t("settings.diagnostics.offerNone"),
+									),
+									createElement(
+										"p",
+										{ style: { ...muted, margin: 0 } },
+										t("settings.diagnostics.devices", {
+											active: String(status.connectionDiagnostics.devices.active),
+											revoked: String(status.connectionDiagnostics.devices.revoked),
+											total: String(status.connectionDiagnostics.devices.total),
+										}),
+									),
+									createElement(
+										"p",
+										{ style: { ...muted, margin: 0 } },
+										t("settings.diagnostics.cloudflared", {
+											verify: status.connectionDiagnostics.cloudflared.verify,
+											release: status.connectionDiagnostics.cloudflared.pinnedRelease,
+										}),
+									),
+									createElement(
+										"p",
+										{ style: { ...muted, margin: 0 } },
+										status.connectionDiagnostics.networkCandidates.length === 0
+											? t("settings.diagnostics.candidatesNone")
+											: t("settings.diagnostics.candidates", {
+													list: status.connectionDiagnostics.networkCandidates
+														.map((candidate) => `${candidate.address} (${candidate.kind})`)
+														.join(", "),
+												}),
+									),
+								)
+							: null,
 					)
 				: null,
 		),
@@ -813,7 +933,32 @@ export function MobileRemoteSettings() {
 					)
 				: null,
 			publicMode && tunnelBinaryOk && !tunnelRunning
-				? createElement("p", { style: muted }, t("settings.channel.nextOffer"))
+				? createElement(
+						"div",
+						{ style: { display: "grid", gap: "8px" } },
+						createElement("p", { style: muted }, t("settings.channel.nextOffer")),
+						createElement(
+							"label",
+							{ style: { display: "flex", gap: "8px", alignItems: "flex-start", fontSize: "13px" } },
+							createElement("input", {
+								type: "checkbox",
+								checked: disclaimerAccepted,
+								onChange: (event: { target: { checked: boolean } }) =>
+									setDisclaimerAccepted(event.target.checked),
+							}),
+							t("settings.tunnel.disclaimer"),
+						),
+						createElement(
+							"button",
+							{
+								type: "button",
+								disabled: tunnelBusy || !disclaimerAccepted,
+								onClick: () => void tunnelAction("start"),
+								style: { justifySelf: "start" },
+							},
+							t("settings.tunnel.start"),
+						),
+					)
 				: null,
 			tunnelRunning
 				? createElement(
@@ -889,6 +1034,7 @@ export function MobileRemoteSettings() {
 						relayBusy ||
 						installBusy ||
 						(publicMode && !tunnelBinaryOk) ||
+						(publicMode && !tunnelRunning && !disclaimerAccepted) ||
 						(relayMode && !relayConnected && relayOrigin.trim().length === 0),
 					onClick: createOffer,
 					style: { justifySelf: "start" },

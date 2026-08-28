@@ -102,7 +102,7 @@
     "qrcode-generator": "^2.0.4",
     "tweetnacl": "^1.0.3",
     "ws": "^8.21.3",
-    "zod": "^4.4.3"
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",

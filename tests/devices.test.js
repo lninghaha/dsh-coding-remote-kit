@@ -57,7 +57,7 @@ test("GET /api/mobile-remote/devices omits tokenHash", async () => {
 		publicKeyB64: "pk",
 		offerTtlMs: 1000,
 		registry,
-		offers: { createOffer() { return { offerId: "o" }; } },
+		offers: { createOffer() { return { offerId: "o" }; }, count: () => 0 },
 		audit: { log() {} },
 		trustedHosts: [],
 		listening: () => true,

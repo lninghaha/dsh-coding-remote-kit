@@ -142,6 +142,46 @@ export const MESSAGES = {
 		"zh-CN": "下载官方 cloudflared 失败",
 		en: "Failed to download official cloudflared",
 	},
+	"settings.tunnel.disclaimer": {
+		"zh-CN": "我明白临时公网地址等于公开能力入口（仍需扫码配对），不会转发该链接。",
+		en: "I understand the temporary public URL is a public capability to /m (pairing still required) and I will not forward it.",
+	},
+	"settings.tunnel.disclaimerRequired": {
+		"zh-CN": "开启公网前请勾选确认。",
+		en: "Accept the disclaimer before starting the public tunnel.",
+	},
+	"settings.tunnel.binaryUntrusted": {
+		"zh-CN": "本机 cloudflared 与锁定版本校验不符，请重新下载官方组件。",
+		en: "Local cloudflared does not match the pinned release — reinstall the official binary.",
+	},
+	"settings.tunnel.start": { "zh-CN": "开启临时公网", en: "Start temporary public tunnel" },
+	"settings.diagnostics.title": { "zh-CN": "连接诊断", en: "Connection" },
+	"settings.diagnostics.offerActive": {
+		"zh-CN": "配对码有效（{n}）",
+		en: "Pairing offer active ({n})",
+	},
+	"settings.diagnostics.offerNone": { "zh-CN": "无待配对码", en: "No pending pairing offer" },
+	"settings.diagnostics.devices": {
+		"zh-CN": "设备 {active} 在线 / {revoked} 已吊销 / 共 {total}",
+		en: "Devices {active} active / {revoked} revoked / {total} total",
+	},
+	"settings.diagnostics.versions": {
+		"zh-CN": "插件 {plugin} · 协议 v{protocol}",
+		en: "Plugin {plugin} · protocol v{protocol}",
+	},
+	"settings.diagnostics.dataPlane": {
+		"zh-CN": "数据面 {listen} · {bind}:{port} · {reach}",
+		en: "Data plane {listen} · {bind}:{port} · {reach}",
+	},
+	"settings.diagnostics.cloudflared": {
+		"zh-CN": "cloudflared {verify}（{release}）",
+		en: "cloudflared {verify} ({release})",
+	},
+	"settings.diagnostics.candidates": {
+		"zh-CN": "候选地址：{list}",
+		en: "Candidates: {list}",
+	},
+	"settings.diagnostics.candidatesNone": { "zh-CN": "无候选地址", en: "No network candidates" },
 	"settings.relay.startFailed": {
 		"zh-CN": "会合中继连接失败",
 		en: "Failed to connect rendezvous relay",
