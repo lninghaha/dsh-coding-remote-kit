@@ -16,10 +16,26 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createRequire } from "node:module";
+import { MOBILE_PROTOCOL_VERSION } from "../shared/constants.js";
 import { encodeOffer, offerQrText } from "../shared/offer.js";
 import type { AuditLogger, DeviceRecord, DeviceRegistry, OfferRegistry } from "./registry.js";
 import type { HostCompatibilityDiagnostics } from "./context.js";
-import type { CloudflareQuickTunnelSnapshot } from "./tunnel.js";
+import {
+	CLOUDFLARED_RELEASE,
+	expectedSha256Prefix,
+	isBareCommandName,
+	redactHomePath,
+	resolveExistingBinaryPath,
+	verifyCloudflaredBinary,
+	type CloudflaredVerifyStatus,
+} from "./cloudflared-install.js";
+import { sanitizedNetworkCandidates, type SanitizedNetworkCandidate } from "./net.js";
+import {
+	BinaryUntrustedError,
+	resolveCloudflaredBinary,
+	type CloudflareQuickTunnelSnapshot,
+} from "./tunnel.js";
 import { validateRelayStartBody, type RendezvousSnapshot } from "./relay.js";
 import { ProtocolValidationError } from "../shared/validation.js";
 import {
@@ -30,6 +46,20 @@ import {
 	readJsonBody,
 	writeJson,
 } from "./security.js";
+
+/** Logged in tunnel_start audit detail; not persisted. */
+export const DISCLAIMER_VERSION = "2025-08-quick-tunnel-v1" as const;
+
+function pluginVersionFromPackage(): string {
+	try {
+		const require = createRequire(import.meta.url);
+		const pkg = require("../../package.json") as { version?: unknown };
+		if (typeof pkg.version === "string" && pkg.version.length > 0) return pkg.version;
+	} catch {
+		// fall through
+	}
+	return "unknown";
+}
 
 export interface ExactWebServer {
 	register(route: {
@@ -98,6 +128,110 @@ export function tunnelAdvertise(url: string): AdvertiseResult {
 		endpoint: `${origin.replace(/^https:/u, "wss:")}/m/ws`,
 		pageUrl: `${origin}/m/`,
 		candidates: [origin.replace(/^https:\/\//u, "")],
+	};
+}
+
+export interface ConnectionDiagnostics {
+	readonly schemaVersion: 1;
+	readonly pluginVersion: string;
+	readonly protocolVersion: number;
+	readonly dataPlane: {
+		readonly listening: boolean;
+		readonly bind: string;
+		readonly port: number;
+		readonly networkReach: string;
+	};
+	readonly pairing: {
+		readonly offerActive: boolean;
+		readonly pendingOfferCount: number;
+	};
+	readonly devices: {
+		readonly active: number;
+		readonly revoked: number;
+		readonly total: number;
+	};
+	readonly networkCandidates: readonly SanitizedNetworkCandidate[];
+	readonly tunnel: {
+		readonly running: boolean;
+		readonly urlHost: string | null;
+	};
+	readonly cloudflared: {
+		readonly resolvedPath: string | null;
+		readonly verify: CloudflaredVerifyStatus;
+		readonly pinnedRelease: string;
+		readonly expectedSha256Prefix: string | null;
+	};
+	readonly disclaimer: {
+		readonly requiredVersion: typeof DISCLAIMER_VERSION;
+	};
+}
+
+export function requireDisclaimerAccepted(record: Record<string, unknown> | null): boolean {
+	return record?.disclaimerAccepted === true;
+}
+
+export function buildConnectionDiagnostics(deps: ManagementDeps): ConnectionDiagnostics {
+	const devices = deps.registry.devices ?? [];
+	const revoked = devices.filter((device) => device.revokedAt !== undefined).length;
+	const active = deps.registry.activeDeviceCount();
+	const pendingOfferCount = typeof deps.offers.count === "function" ? deps.offers.count() : 0;
+	const tunnelSnap = deps.tunnel.snapshot();
+	let urlHost: string | null = null;
+	if (typeof tunnelSnap.url === "string" && tunnelSnap.url.length > 0) {
+		try {
+			urlHost = new URL(tunnelSnap.url).host;
+		} catch {
+			urlHost = null;
+		}
+	}
+	const env = process.env.CLOUDFLARED?.trim();
+	let verify: CloudflaredVerifyStatus = "missing";
+	let absolute: string | null = null;
+	if (typeof env === "string" && env.length > 0 && isBareCommandName(env)) {
+		verify = "not-pinned";
+	} else {
+		const resolved = resolveCloudflaredBinary();
+		absolute = resolved === null ? null : resolveExistingBinaryPath(resolved);
+		if (absolute === null) {
+			verify = resolved === null ? "missing" : "unreadable";
+		} else {
+			const result = verifyCloudflaredBinary(absolute);
+			verify = result.ok ? "ok" : result.status;
+		}
+	}
+	return {
+		schemaVersion: 1,
+		pluginVersion: pluginVersionFromPackage(),
+		protocolVersion: MOBILE_PROTOCOL_VERSION,
+		dataPlane: {
+			listening: deps.listening(),
+			bind: deps.currentBind(),
+			port: deps.port(),
+			networkReach: deps.registry.networkReach,
+		},
+		pairing: {
+			offerActive: pendingOfferCount > 0,
+			pendingOfferCount,
+		},
+		devices: {
+			active,
+			revoked,
+			total: devices.length,
+		},
+		networkCandidates: sanitizedNetworkCandidates(),
+		tunnel: {
+			running: tunnelSnap.running,
+			urlHost,
+		},
+		cloudflared: {
+			resolvedPath: redactHomePath(absolute),
+			verify,
+			pinnedRelease: CLOUDFLARED_RELEASE,
+			expectedSha256Prefix: expectedSha256Prefix(),
+		},
+		disclaimer: {
+			requiredVersion: DISCLAIMER_VERSION,
+		},
 	};
 }
 
@@ -296,6 +430,7 @@ export function registerManagementRoutes(
 				tunnel: deps.tunnel.snapshot(),
 				relay: deps.relay.snapshot(),
 				compatibility: typeof deps.compatibility === "function" ? deps.compatibility() : deps.compatibility,
+				connectionDiagnostics: buildConnectionDiagnostics(deps),
 			});
 		}),
 		() => register("/api/mobile-remote/tunnel", ["GET", "POST"], async (request, response) => {
@@ -313,6 +448,14 @@ export function registerManagementRoutes(
 				return;
 			}
 			if (action === "start") {
+				if (record === null || !requireDisclaimerAccepted(record)) {
+					deps.audit.log(
+						{ event: "tunnel_start_rejected", detail: { reason: "disclaimer_required" } },
+						deps.now(),
+					);
+					reject(response, 400, "disclaimer_required", "disclaimerAccepted must be true to start a Quick Tunnel");
+					return;
+				}
 				try {
 					await deps.relay.stop();
 					const url = await deps.tunnel.start({ port: deps.port() });
@@ -322,12 +465,29 @@ export function registerManagementRoutes(
 					} catch {
 						// keep placeholder
 					}
-					deps.audit.log({ event: "tunnel_start", detail: { kind: "cloudflare-quick", host } }, deps.now());
+					deps.audit.log(
+						{
+							event: "tunnel_start",
+							detail: {
+								kind: "cloudflare-quick",
+								host,
+								disclaimerAccepted: true,
+								disclaimerVersion: DISCLAIMER_VERSION,
+							},
+						},
+						deps.now(),
+					);
 					writeJson(response, 200, { ok: true, running: true, url });
 				} catch (error) {
 					const message = error instanceof Error ? error.message : "start failed";
+					const code =
+						error instanceof BinaryUntrustedError
+							? "binary-untrusted"
+							: error instanceof Error && (error as Error & { code?: string }).code === "binary-untrusted"
+								? "binary-untrusted"
+								: "tunnel-start-failed";
 					deps.logger.warn(`cloudflare quick tunnel start failed (${message})`);
-					writeJson(response, 500, { ok: false, error: { code: "tunnel-start-failed", message } });
+					writeJson(response, 500, { ok: false, error: { code, message } });
 				}
 				return;
 			}
