@@ -195,6 +195,27 @@
 		button.danger { background: #7f1d1d; color: #fecaca; }
 		button:disabled { opacity: 0.55; }
 		.inbox { display: flex; flex-direction: column; gap: 8px; padding: 0 16px; flex: 0 0 auto; }
+		.activity-strip {
+			display: flex; align-items: center; gap: 8px;
+			padding: 8px 16px; border-bottom: 1px solid var(--line);
+			font-size: 13px; color: var(--muted); flex: 0 0 auto;
+			background: var(--bg);
+		}
+		.activity-strip.active { color: #93c5fd; background: #152238; }
+		.activity-dot {
+			width: 8px; height: 8px; border-radius: 50%;
+			background: var(--accent); flex: 0 0 auto;
+			animation: pulse 1.2s ease-in-out infinite;
+		}
+		@keyframes pulse {
+			0%, 100% { opacity: 0.35; transform: scale(0.9); }
+			50% { opacity: 1; transform: scale(1); }
+		}
+		.load-older {
+			align-self: center; margin: 4px 0 8px;
+			background: var(--bg-elev); color: var(--muted);
+			border: 1px solid var(--line); font-size: 13px; min-height: 40px;
+		}
 		.card {
 			display: flex; flex-direction: column; gap: 8px; padding: 12px;
 			border: 1px solid #5b2b2b; border-radius: 12px; background: #2a1515;
