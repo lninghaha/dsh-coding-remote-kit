@@ -136,6 +136,36 @@ export const MESSAGES = {
 	"settings.devices.revoke": { "zh-CN": "解除配对", en: "Unpair" },
 	"settings.devices.revokeFailed": { "zh-CN": "吊销设备失败", en: "Failed to revoke device" },
 
+	"settings.push.title": { "zh-CN": "4. 离线推送（可选）", en: "4. Offline push (optional)" },
+	"settings.push.intro": {
+		"zh-CN": "默认关闭。开启后，待审批会向 ntfy / Bark 发送脱敏提醒（仅事件类型与会话短码），并可深链打开手机页。",
+		en: "Off by default. When enabled, pending approvals send a redacted ntfy/Bark alert (event type + short session id) with a deep link into the phone UI.",
+	},
+	"settings.push.enabled": { "zh-CN": "启用离线推送", en: "Enable offline push" },
+	"settings.push.provider": { "zh-CN": "通道", en: "Provider" },
+	"settings.push.provider.ntfy": { "zh-CN": "ntfy", en: "ntfy" },
+	"settings.push.provider.bark": { "zh-CN": "Bark", en: "Bark" },
+	"settings.push.endpoint": { "zh-CN": "Endpoint（HTTPS）", en: "Endpoint (HTTPS)" },
+	"settings.push.endpointHint": {
+		"zh-CN": "允许主机：ntfy.sh、*.ntfy.sh、ntfy.envs.net、api.day.app",
+		en: "Allowed hosts: ntfy.sh, *.ntfy.sh, ntfy.envs.net, api.day.app",
+	},
+	"settings.push.credential.ntfy": { "zh-CN": "Topic", en: "Topic" },
+	"settings.push.credential.bark": { "zh-CN": "Device key", en: "Device key" },
+	"settings.push.credentialSaved": {
+		"zh-CN": "已保存（留空则保持原值）",
+		en: "Saved (leave blank to keep)",
+	},
+	"settings.push.save": { "zh-CN": "保存推送设置", en: "Save push settings" },
+	"settings.push.saving": { "zh-CN": "保存中…", en: "Saving…" },
+	"settings.push.saved": { "zh-CN": "推送设置已保存", en: "Push settings saved" },
+	"settings.push.saveFailed": { "zh-CN": "保存推送设置失败", en: "Failed to save push settings" },
+	"settings.push.status.off": { "zh-CN": "当前：关闭", en: "Status: off" },
+	"settings.push.status.on": {
+		"zh-CN": "当前：已启用 · {provider} · {host}",
+		en: "Status: on · {provider} · {host}",
+	},
+
 	"settings.tunnel.startFailed": { "zh-CN": "开启公网失败", en: "Failed to start public tunnel" },
 	"settings.tunnel.stopFailed": { "zh-CN": "停止公网失败", en: "Failed to stop public tunnel" },
 	"settings.tunnel.installFailed": {
@@ -395,6 +425,17 @@ export const MESSAGES = {
 		en: "Send another instruction to the agent",
 	},
 	"app.send": { "zh-CN": "发送", en: "Send" },
+	"app.mode.label": { "zh-CN": "发送模式", en: "Send mode" },
+	"app.mode.queue": { "zh-CN": "排队", en: "Queue" },
+	"app.mode.steer": { "zh-CN": "插队", en: "Steer" },
+	"app.mode.queueHint": {
+		"zh-CN": "排队：等当前任务结束后再执行。",
+		en: "Queue: run after the current turn finishes.",
+	},
+	"app.mode.steerHint": {
+		"zh-CN": "插队：打断当前生成并立刻注入指令。",
+		en: "Steer: interrupt the current turn and inject now.",
+	},
 	"app.openTask": { "zh-CN": "打开任务", en: "Open task" },
 	"app.approval.title": { "zh-CN": "审批 · {tool}", en: "Approval · {tool}" },
 	"app.allowOnce": { "zh-CN": "允许一次", en: "Allow once" },

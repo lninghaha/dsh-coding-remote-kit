@@ -93,8 +93,8 @@
 ## 5. 建议落地顺序（技术切片，非日历）
 
 1. **诊断页 + 公网免责勾选 + tunnel 二进制校验** — **已落地**（`connectionDiagnostics`、启动前 `disclaimerAccepted`、cloudflared pin+re-verify）。  
-2. **推送桥（notifier 或 ntfy/Bark）+ 审批深链回手机页** — 补齐「人不在线」场景。  
-3. **UI：活动条 / 工具状态 / steer 开关 / 历史分页** — 仍用现有订阅，主要是渲染与 RPC 参数。  
+2. **推送桥（notifier 或 ntfy/Bark）+ 审批深链回手机页** — **最小切片已落地**（Settings 可配、默认 off；`approval.requested` 脱敏推送；`/m/?focus=approval…` 深链；HTTPS host allowlist + body cap；负向测试）。  
+3. **UI：活动条 / 工具状态 / steer 开关 / 历史分页** — **steer/queue 切换已落地**；活动条与 history cursor UI 仍待做。  
 4. **只读模型信息 + 受限 cwd 浏览** — 扩展 allowlist，逐方法加审计。  
 5. **M4：签名 HTTPS 或 Android 壳** — 关闭投递层缺口后再谈原生通知。
 

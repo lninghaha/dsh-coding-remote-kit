@@ -10,7 +10,7 @@ import { bootstrapLocale, getLocale, pairErrorMessage, setLocale, subscribeLocal
 import { decodeOffer, type PairingOffer, validateOffer } from "../shared/offer.js";
 import { formatPairCode, isCompletePairCode, normalizePairCode } from "../shared/pair-code.js";
 import { evaluateVersionGate } from "../shared/version.js";
-import { startConnectedApp } from "./app.js";
+import { type ApprovalFocusTarget, startConnectedApp } from "./app.js";
 import { generateClientKeyPair, MobileE2eeSession } from "./e2ee.js";
 import { clearPersistedOffer, migratePersistedOffer, persistOffer } from "./persist.js";
 import { type MobilePush, type MobilePushHandler, MobileRpcClient } from "./rpc.js";
@@ -434,12 +434,31 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 		const app = root();
 		app.textContent = "";
 		app.className = "shell";
-		disposeConnectedApp = startConnectedApp(app, client);
+		disposeConnectedApp = startConnectedApp(app, client, { focusApproval: readApprovalFocus() });
 		const deviceName = options.deviceName?.trim();
 		if (deviceName !== undefined && deviceName.length > 0) {
 			// 新桌面会保存名称，旧桌面拒绝该附加 RPC 也不影响冻结的 v1 握手或已连会话。
 			void client.request("device.name", { name: deviceName }).catch(() => undefined);
 		}
+	}
+}
+
+function readApprovalFocus(): ApprovalFocusTarget | null {
+	try {
+		const params = new URLSearchParams(location.search);
+		if (params.get("focus") !== "approval") return null;
+		const sessionId = params.get("sessionId") ?? "";
+		const approvalId = params.get("approvalId") ?? "";
+		if (sessionId.length === 0 || approvalId.length === 0) return null;
+		params.delete("focus");
+		params.delete("sessionId");
+		params.delete("approvalId");
+		const next = params.toString();
+		const url = `${location.pathname}${next.length > 0 ? `?${next}` : ""}${location.hash}`;
+		history.replaceState(null, "", url);
+		return { sessionId, approvalId };
+	} catch {
+		return null;
 	}
 }
 

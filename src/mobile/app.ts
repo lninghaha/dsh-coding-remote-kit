@@ -51,9 +51,20 @@ interface QuestionItem {
 
 type View = { name: "list" } | { name: "session"; sessionId: string };
 
+export type PromptMode = "queue" | "steer";
+
+export interface ApprovalFocusTarget {
+	readonly sessionId: string;
+	readonly approvalId: string;
+}
+
 const SEARCH_DEBOUNCE_MS = 200;
 
-export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): () => void {
+export function startConnectedApp(
+	root: HTMLElement,
+	rpc: MobileRpcClient,
+	options: { focusApproval?: ApprovalFocusTarget | null } = {},
+): () => void {
 	document.documentElement.classList.add("connected");
 	document.body.classList.add("connected");
 	const state = {
@@ -75,6 +86,8 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): () =
 		scrollSessionToEnd: false,
 		listState: "loading" as "loading" | "ready" | "empty" | "unavailable" | "permissionDenied" | "stale",
 		retry: null as (() => void) | null,
+		promptMode: "queue" as PromptMode,
+		focusApprovalId: options.focusApproval?.approvalId ?? null,
 	};
 
 	let disposed = false;
@@ -451,6 +464,35 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): () =
 			});
 			composer.appendChild(stop);
 		}
+		const modeRow = el("div", {
+			className: "mode-toggle",
+			role: "group",
+			"aria-label": t("app.mode.label"),
+		});
+		const queueBtn = el(
+			"button",
+			{ type: "button", className: state.promptMode === "queue" ? "mode active" : "mode" },
+			t("app.mode.queue"),
+		);
+		const steerBtn = el(
+			"button",
+			{ type: "button", className: state.promptMode === "steer" ? "mode active" : "mode" },
+			t("app.mode.steer"),
+		);
+		queueBtn.addEventListener("click", () => {
+			state.promptMode = "queue";
+			render();
+		});
+		steerBtn.addEventListener("click", () => {
+			state.promptMode = "steer";
+			render();
+		});
+		modeRow.appendChild(queueBtn);
+		modeRow.appendChild(steerBtn);
+		composer.appendChild(modeRow);
+		composer.appendChild(
+			el("p", { className: "mode-hint" }, state.promptMode === "steer" ? t("app.mode.steerHint") : t("app.mode.queueHint")),
+		);
 		const row = el("div", { className: "composer-row" });
 		const input = el("textarea") as HTMLTextAreaElement;
 		input.setAttribute("data-preserve-key", `composer:${sessionId}`);
@@ -465,10 +507,11 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): () =
 			event.preventDefault();
 			const text = input.value.trim();
 			if (text.length === 0) return;
+			const mode = state.promptMode;
 			input.value = "";
 			input.style.height = "";
 			void run(async () => {
-				await rpc.request("session.prompt", { sessionId, mode: "queue", text });
+				await rpc.request("session.prompt", { sessionId, mode, text });
 			});
 		});
 		row.appendChild(input);
@@ -493,7 +536,12 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): () =
 
 	const renderApproval = (approval: PendingApproval, showContext: boolean): HTMLElement => {
 		const pending = state.pendingActions.has(`approval:${approval.rpcId}`);
-		const card = el("div", { className: "card", "aria-busy": String(pending) });
+		const focused = state.focusApprovalId === approval.approvalId;
+		const card = el("div", {
+			className: focused ? "card focus-target" : "card",
+			"aria-busy": String(pending),
+			"data-approval-id": approval.approvalId,
+		});
 		card.appendChild(el("strong", {}, t("app.approval.title", { tool: approval.toolName })));
 		if (showContext) {
 			const ctx = sessionContext(approval.sessionId);
@@ -770,6 +818,22 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): () =
 	const disposeLocale = subscribeLocale(() => {
 		render();
 	});
+	const applyApprovalFocus = async (): Promise<void> => {
+		const target = options.focusApproval;
+		if (target === undefined || target === null) return;
+		state.focusApprovalId = target.approvalId;
+		await loadSession(target.sessionId);
+		queueMicrotask(() => {
+			const cards = root.querySelectorAll("[data-approval-id]");
+			for (const card of cards) {
+				if (!(card instanceof HTMLElement)) continue;
+				if (card.getAttribute("data-approval-id") !== target.approvalId) continue;
+				card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+				break;
+			}
+		});
+	};
+
 	void run(async () => {
 		await rpc.request("host.subscribe", {});
 		const listed = asRecord(await rpc.request("session.list", {}));
@@ -777,6 +841,7 @@ export function startConnectedApp(root: HTMLElement, rpc: MobileRpcClient): () =
 			? listed.items.map(parseSession).filter((row): row is SessionRow => row !== null && !row.blank)
 			: [];
 		state.listState = state.sessions.length === 0 ? "empty" : "ready";
+		await applyApprovalFocus();
 	}, () => void refreshList());
 	render();
 	return () => {

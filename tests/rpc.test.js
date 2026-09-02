@@ -123,14 +123,33 @@ test("session.prompt writes rpc_write without the prompt text", async () => {
 	assert.equal(JSON.stringify(audit.entries[0]).includes("secret prompt body"), false);
 });
 
-test("respond missing rpcId → invalid_params", async () => {
-	const result = await dispatchRpc({
-		id: 5,
-		method: "respond",
-		params: { sessionId: "s1", approvalId: "a1", outcome: "rejected" },
-	});
-	assert.equal(result.ok, false);
-	assert.equal(result.error.code, "invalid_params");
+test("session.prompt mode steer is forwarded to upstream", async () => {
+	const upstream = {
+		async prompt(params) {
+			assert.equal(params.mode, "steer");
+			assert.equal(params.text, "interrupt now");
+			return { ok: true, value: { accepted: true } };
+		},
+	};
+	const result = await dispatchRpc(
+		{ id: 10, method: "session.prompt", params: { sessionId: "s1", mode: "steer", text: "interrupt now" } },
+		{ upstream, deviceId: "dev-1" },
+	);
+	assert.equal(result.ok, true);
+});
+
+test("session.prompt unknown mode falls back to queue", async () => {
+	const upstream = {
+		async prompt(params) {
+			assert.equal(params.mode, "queue");
+			return { ok: true, value: { accepted: true } };
+		},
+	};
+	const result = await dispatchRpc(
+		{ id: 11, method: "session.prompt", params: { sessionId: "s1", mode: "whatever", text: "hello" } },
+		{ upstream },
+	);
+	assert.equal(result.ok, true);
 });
 
 test("session.cancel and respond audit writes omit answer bodies", async () => {

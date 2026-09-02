@@ -37,6 +37,8 @@
 
 mux 重连后手机需再 `session.subscribe` / `host.subscribe`。`session.queue` 的 items 只含 `id` / `placement` / 文本摘要。
 
+可选离线推送桥（管理面配置，默认关闭）：`approval.requested` 时可向 allowlist 内的 ntfy/Bark endpoint 发送脱敏提醒。深链格式：`/m/?focus=approval&sessionId=…&approvalId=…`（手机页打开后落到该会话审批卡）。
+
 ## respond 两种 payload
 
 审批：
