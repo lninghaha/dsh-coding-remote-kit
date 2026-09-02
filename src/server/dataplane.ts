@@ -21,6 +21,7 @@ import {
 	MAX_CONNECTIONS,
 	MAX_WS_PAYLOAD,
 } from "../shared/constants.js";
+import { MOBILE_SHELL_SECURITY_HEADERS } from "../shared/mobile-shell-headers.js";
 import { acceptMobileSocket, type ConnectionDeps } from "./connection.js";
 import { resolveDeviceToken } from "./e2ee.js";
 import type { AuditLogger, DeviceRegistry, OfferRegistry } from "./registry.js";
@@ -99,6 +100,12 @@ export class MobileDataPlane {
 		return this.#connections;
 	}
 
+	/** Port the listener is bound to (`null` before `listen`). */
+	get boundPort(): number | null {
+		const address = this.#server?.address();
+		return typeof address === "object" && address !== null ? address.port : null;
+	}
+
 	get serverKeyPair(): DataPlaneDeps["serverKeyPair"] {
 		return this.#deps.serverKeyPair;
 	}
@@ -131,7 +138,7 @@ export class MobileDataPlane {
 	#serveStatic(request: IncomingMessage, response: ServerResponse): void {
 		const url = new URL(request.url ?? "/", "http://localhost");
 		const pathname = url.pathname;
-		const headers = { "cache-control": "no-store", "x-content-type-options": "nosniff" };
+		const headers = { "cache-control": "no-store", ...MOBILE_SHELL_SECURITY_HEADERS };
 		if (request.method !== "GET" && request.method !== "HEAD") {
 			response.writeHead(405, headers);
 			response.end();

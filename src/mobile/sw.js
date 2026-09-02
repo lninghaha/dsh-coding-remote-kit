@@ -1,5 +1,6 @@
 /* DSH mobile remote: cache static shell only. Never touch fragments or WS. */
-const CACHE = "dshmr-shell-v1";
+/* `__DSHMR_SHELL_VERSION__` is replaced by build/build-mobile.mjs with the package version so every release invalidates the cached shell. */
+const CACHE = "dshmr-shell-__DSHMR_SHELL_VERSION__";
 const PRECACHE = ["/m/", "/m/app.js", "/m/manifest.webmanifest", "/m/icons/icon-192.png", "/m/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {

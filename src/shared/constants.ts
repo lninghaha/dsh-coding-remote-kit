@@ -73,9 +73,12 @@ export const MAX_OFFER_CODE_BYTES = 16 * 1024;
 /** Device metadata. */
 export const DEVICE_SCOPE = "mobile";
 
-/** Version stamps reported by `status.get`. */
+/**
+ * Version stamps reported by `status.get`. `DSH_VERSION` is the verified host
+ * pin and must match `compatibility/dsh-bom.json` (`tests/bom.test.js`).
+ */
 export const PLUGIN_VERSION = "0.5.1";
-export const DSH_VERSION = "0.1.0-rc.7";
+export const DSH_VERSION = "0.1.1-rc.2";
 
 /**
  * RPC methods the mobile data plane exposes. Anything outside this set is

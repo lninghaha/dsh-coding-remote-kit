@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.1** · DeepSeek Harness `0.1.0-rc.6` · GitHub `dsh-coding-remote-kit`
+**v0.5.1** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **面向 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) 的远程手机访问插件。** 把手机配对到已经在跑 `dsh web` 的桌面，观察会话并做一组窄写操作——不必把完整 Web API 暴露出去。
 
@@ -127,7 +127,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.1.tg
 
 ## 安装
 
-需要 DeepSeek Harness `0.1.0-rc.6`（钉死）与 Node.js 22.19+。完整步骤、配对与隧道说明见 [INSTALL.md](INSTALL.md)。
+需要 DeepSeek Harness `0.1.1-rc.2`（钉死）与 Node.js 22.19+。完整步骤、配对与隧道说明见 [INSTALL.md](INSTALL.md)。
 
 开发：
 
@@ -191,7 +191,7 @@ pnpm test:sandbox                         # Dockerfile 的 check / isolated-inst
 4. 管理面：回环 + Host + CSRF。
 5. 不削弱 `dsh web` `/api`，不抢 `api-proxy` provider。
 
-**v0 诚实边界：** 裸 LAN 上 `/m` 的首次 HTTP 下发可被 MITM。优先走 overlay VPN。
+**v0 诚实边界：** 裸 LAN 上 `/m` 的首次 HTTP 下发可被 MITM。优先走 overlay VPN。`/m` 响应带 Content-Security-Policy（`script-src 'self'`、`frame-ancestors 'none'`），用来收窄页面加载后的注入面，并不能关闭首次下发被替换的缺口。
 
 禁止事项：
 

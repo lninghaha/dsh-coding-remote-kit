@@ -21,3 +21,13 @@ test("package identity matches the M1 contract", async () => {
 	assert.equal(pkg.dsh.client.platform, "web");
 	assert.ok(!(pkg.files ?? []).some((entry) => String(entry).startsWith("relay")));
 });
+
+test("mobile service worker cache name is stamped with the package version", async () => {
+	const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+	const source = await readFile(new URL("../src/mobile/sw.js", import.meta.url), "utf8");
+	const built = await readFile(new URL("../lib/mobile/sw.js", import.meta.url), "utf8");
+	assert.match(source, /dshmr-shell-__DSHMR_SHELL_VERSION__/);
+	assert.doesNotMatch(source, new RegExp(`dshmr-shell-${pkg.version.replaceAll(".", "\\.")}`));
+	assert.match(built, new RegExp(`const CACHE = "dshmr-shell-${pkg.version.replaceAll(".", "\\.")}"`));
+	assert.doesNotMatch(built, /__DSHMR_SHELL_VERSION__/);
+});

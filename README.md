@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.1** · DeepSeek Harness `0.1.0-rc.6` · GitHub `dsh-coding-remote-kit`
+**v0.5.1** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **Remote phone access for [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Pair a phone to the desktop that already runs `dsh web`, then observe sessions and perform a narrow set of writes — without exposing the full Web API.
 
@@ -127,7 +127,7 @@ Do not `dsh plugin add ./` from this working tree. pnpm 11 treats some `file:` t
 
 ## Install
 
-Requires DeepSeek Harness `0.1.0-rc.6` (pinned) and Node.js 22.19+. Full steps, pairing, and tunnel notes: [INSTALL.md](INSTALL.md).
+Requires DeepSeek Harness `0.1.1-rc.2` (pinned) and Node.js 22.19+. Full steps, pairing, and tunnel notes: [INSTALL.md](INSTALL.md).
 
 Development:
 
@@ -191,7 +191,7 @@ Invariants (full model: [docs/04-threat-model.md](docs/04-threat-model.md)):
 4. Management plane is loopback + Host + CSRF.
 5. The plugin does not weaken `dsh web` `/api` and does not take over `api-proxy` providers.
 
-**Honest v0 boundary:** the first HTTP download of `/m` on a raw LAN can be MITM’d. Prefer an overlay VPN.
+**Honest v0 boundary:** the first HTTP download of `/m` on a raw LAN can be MITM’d. Prefer an overlay VPN. `/m` responses include a Content-Security-Policy (`script-src 'self'`, `frame-ancestors 'none'`) that bounds post-load injection; it does not close the first-download MITM gap.
 
 Prohibitions:
 

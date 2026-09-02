@@ -1,4 +1,4 @@
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,11 @@ import { build } from "esbuild";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outdir = resolve(root, "lib/mobile");
 const src = resolve(root, "src/mobile");
+const SHELL_VERSION_PLACEHOLDER = "__DSHMR_SHELL_VERSION__";
+const { version: packageVersion } = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
+if (typeof packageVersion !== "string" || packageVersion.length === 0) {
+	throw new Error("package.json version is required to stamp the mobile shell service worker cache");
+}
 
 await mkdir(resolve(outdir, "icons"), { recursive: true });
 
@@ -24,7 +29,11 @@ await build({
 
 await copyFile(resolve(src, "index.html"), resolve(outdir, "index.html"));
 await copyFile(resolve(src, "manifest.webmanifest"), resolve(outdir, "manifest.webmanifest"));
-await copyFile(resolve(src, "sw.js"), resolve(outdir, "sw.js"));
+const serviceWorker = await readFile(resolve(src, "sw.js"), "utf8");
+if (!serviceWorker.includes(SHELL_VERSION_PLACEHOLDER)) {
+	throw new Error(`src/mobile/sw.js must declare its cache name with ${SHELL_VERSION_PLACEHOLDER}`);
+}
+await writeFile(resolve(outdir, "sw.js"), serviceWorker.replaceAll(SHELL_VERSION_PLACEHOLDER, packageVersion));
 await writeFile(resolve(outdir, "icons/icon-192.png"), pngIcon(192));
 await writeFile(resolve(outdir, "icons/icon-512.png"), pngIcon(512));
 

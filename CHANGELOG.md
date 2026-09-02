@@ -4,9 +4,20 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+### Added
+
+- Serve `/m` (data plane and rendezvous Worker assets) with a Content-Security-Policy (`script-src 'self'`, `frame-ancestors 'none'`) plus `X-Frame-Options: DENY`. This bounds post-load injection; it does not close the first-download LAN MITM gap in `docs/04-threat-model.md`.
+
+### Changed
+
+- Verify DeepSeek Harness `0.1.1-rc.2` as the exact BOM (peers, `compatibility/dsh-bom.json`, `DSH_VERSION`). Record `0.1.2-alpha.4` as an unverified candidate. `status.get` now reports the same pin as the BOM (it previously claimed `0.1.0-rc.7` while the BOM said `0.1.0-rc.6`).
+- Stamp the mobile service worker cache name with the package version so each release invalidates a stale `/m/app.js` shell.
+- Add `.nvmrc` (`22.22.2`) to match the cloud environment and Hub.
+
 ### Documentation
 
 - Sync `INSTALL.md` and all README translations with 0.5.x ops: upgrade bullets for `0.5.1`, disclaimer gate, connection diagnostics, and `device.name` on the RPC allowlist. Mark landed P0 rows in `docs/research/peer-capabilities-2026-08.md`.
+- Align ADR `docs/01-mvp-scope.md` and architecture docs with the `0.1.1-rc.2` pin; document CSP as a post-load bound, not a MITM fix.
 
 ## v0.5.1 - 2026-08-28
 

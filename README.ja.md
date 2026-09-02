@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.1** · DeepSeek Harness `0.1.0-rc.6` · GitHub `dsh-coding-remote-kit`
+**v0.5.1** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **[DeepSeek Harness](https://github.com/deepseek-ai/dsh) 向けのリモートスマホアクセス。** すでに `dsh web` が動いているデスクトップにスマホをペアリングし、セッションを観察して限定された書き込みだけを行う——フル Web API は公開しません。
 
@@ -127,7 +127,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.1.tg
 
 ## インストール
 
-DeepSeek Harness `0.1.0-rc.6`（ピン留め）と Node.js 22.19+ が必要です。手順、ペアリング、トンネルの詳細は [INSTALL.md](INSTALL.md) を参照してください。
+DeepSeek Harness `0.1.1-rc.2`（ピン留め）と Node.js 22.19+ が必要です。手順、ペアリング、トンネルの詳細は [INSTALL.md](INSTALL.md) を参照してください。
 
 開発:
 

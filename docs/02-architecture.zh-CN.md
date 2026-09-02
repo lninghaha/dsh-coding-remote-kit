@@ -4,7 +4,7 @@
 
 本文描述 `dsh-coding-remote-kit` 的内部架构，是 `README.md` 技术说明的来源，面向贡献者与维护者。
 
-宿主钉死：`@deepseek-ai/dsh@0.1.0-rc.6`。升级需另开 ADR（`docs/01-mvp-scope.md`）。
+宿主钉死：`@deepseek-ai/dsh@0.1.1-rc.2`。升级需另开 ADR（`docs/01-mvp-scope.md`）。`0.1.2-alpha` 仍是未验证候选。
 
 ## 1. 双平面
 
@@ -15,7 +15,7 @@ Harness webServer（回环，通常 127.0.0.1:3080）
        OwnerRequestPolicy：loopback/SSH 或完整受信 HTTPS 反代证明
 
 独立数据面（默认 127.0.0.1:6879，配对时可 widen 到 0.0.0.0）
-  ├─ GET  /m, /m/*     手机静态页（cache-control: no-store）
+  ├─ GET  /m, /m/*     手机静态页（no-store；CSP + `frame-ancestors 'none'`）
   ├─ POST /m/claim     配对 PIN → offer（有速率限制）
   └─ WS   /m/ws        E2EE 握手 + 白名单 RPC
 ```

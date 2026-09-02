@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.1** · DeepSeek Harness `0.1.0-rc.6` · GitHub `dsh-coding-remote-kit`
+**v0.5.1** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **Acesso remoto pelo celular ao [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Emparelhe um celular ao desktop que já executa `dsh web`, observe sessões e faça um conjunto restrito de escritas — sem expor a API Web completa.
 
@@ -127,7 +127,7 @@ Não execute `dsh plugin add ./` nesta árvore de trabalho. O pnpm 11 trata algu
 
 ## Instalação
 
-Requer DeepSeek Harness `0.1.0-rc.6` (fixado) e Node.js 22.19+. Passos completos, emparelhamento e notas de túnel: [INSTALL.md](INSTALL.md).
+Requer DeepSeek Harness `0.1.1-rc.2` (fixado) e Node.js 22.19+. Passos completos, emparelhamento e notas de túnel: [INSTALL.md](INSTALL.md).
 
 Desenvolvimento:
 
