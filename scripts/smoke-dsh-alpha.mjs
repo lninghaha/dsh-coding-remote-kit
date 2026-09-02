@@ -4,7 +4,7 @@
  * Does not touch operator dsh-web / ports 3080|6879.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, cpSync, rmSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, cpSync, openSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,10 +60,10 @@ const env = { ...process.env, DSH_HOME, HOME: homedir() };
 run(dshBin, ["plugin", "--profile", "web", "add", destTgz], { env });
 
 const logFile = join(DSH_HOME, "smoke-web.log");
-const out = createWriteStream(logFile);
+const logFd = openSync(logFile, "w");
 const child = spawn(dshBin, ["web", "--port", String(WEB_PORT), "--no-open"], {
 	env,
-	stdio: ["ignore", out, out],
+	stdio: ["ignore", logFd, logFd],
 });
 
 let failed = false;
@@ -82,7 +82,7 @@ try {
 } finally {
 	child.kill("SIGTERM");
 	await new Promise((r) => child.on("exit", r));
-	out.close();
+	closeSync(logFd);
 }
 if (failed) process.exit(1);
 log(`OK — comment on GitHub #12 (log: ${logFile})`);
