@@ -16,11 +16,14 @@ import {
 	verifyCloudflaredBinary,
 } from "../lib/server/cloudflared-install.js";
 
-test("maps linux arches and rejects unknown platforms", () => {
+test("maps linux/darwin/win32 arches and rejects unknown platforms", () => {
 	assert.equal(cloudflaredAssetFor("linux", "x64"), "cloudflared-linux-amd64");
 	assert.equal(cloudflaredAssetFor("linux", "arm64"), "cloudflared-linux-arm64");
-	assert.equal(cloudflaredAssetFor("darwin", "arm64"), null);
-	assert.equal(cloudflaredAssetFor("win32", "x64"), null);
+	assert.equal(cloudflaredAssetFor("darwin", "arm64"), "cloudflared-darwin-arm64.tgz");
+	assert.equal(cloudflaredAssetFor("darwin", "x64"), "cloudflared-darwin-amd64.tgz");
+	assert.equal(cloudflaredAssetFor("win32", "x64"), "cloudflared-windows-amd64.exe");
+	assert.equal(cloudflaredAssetFor("win32", "ia32"), "cloudflared-windows-386.exe");
+	assert.equal(cloudflaredAssetFor("freebsd", "x64"), null);
 });
 
 test("download prefix pins a release tag (not latest)", () => {
@@ -123,4 +126,54 @@ test("installOfficialCloudflared rejects a checksum mismatch", async () => {
 		}),
 		/checksum mismatch/,
 	);
+});
+
+
+test("installOfficialCloudflared extracts darwin .tgz and verifies binary pin", async () => {
+	const { gzipSync } = await import("node:zlib");
+	const { createHash } = await import("node:crypto");
+	const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+	const { join } = await import("node:path");
+	const { tmpdir } = await import("node:os");
+	function tarHeader(name, size) {
+		const buf = Buffer.alloc(512);
+		buf.write(name);
+		buf.write("0000644\0", 100);
+		buf.write("0000000\0", 108);
+		buf.write("0000000\0", 116);
+		buf.write(`${size.toString(8).padStart(11, "0")}\0`, 124);
+		buf.write("00000000000\0", 136);
+		buf.write("        ", 148);
+		buf[156] = 48;
+		buf.write("ustar\0", 257);
+		buf.write("00", 263);
+		let sum = 0;
+		for (const b of buf) sum += b;
+		buf.write(`${sum.toString(8).padStart(6, "0")}\0 `, 148);
+		return buf;
+	}
+	const content = Buffer.from("fake-darwin-cloudflared-binary");
+	const pad = content.length % 512 === 0 ? 0 : 512 - (content.length % 512);
+	const tar = Buffer.concat([tarHeader("cloudflared", content.length), content, Buffer.alloc(pad), Buffer.alloc(1024)]);
+	const tgz = gzipSync(tar);
+	const downloadDigest = createHash("sha256").update(tgz).digest("hex");
+	const binaryDigest = createHash("sha256").update(content).digest("hex");
+	const destDir = mkdtempSync(join(tmpdir(), "dshmr-cf-darwin-"));
+	const fetchImpl = async (url) => {
+		assert.ok(String(url).startsWith(CLOUDFLARED_DOWNLOAD_PREFIX));
+		if (String(url).endsWith("SHA256SUMS")) {
+			return new Response(`${downloadDigest}  cloudflared-darwin-arm64.tgz\n`, { status: 200 });
+		}
+		return new Response(tgz, { status: 200 });
+	};
+	const result = await installOfficialCloudflared({
+		platform: "darwin",
+		arch: "arm64",
+		destDir,
+		fetchImpl,
+		pinnedSha256: downloadDigest,
+		pinnedBinarySha256: binaryDigest,
+	});
+	assert.equal(result.asset, "cloudflared-darwin-arm64.tgz");
+	assert.equal(readFileSync(result.path).equals(content), true);
 });
