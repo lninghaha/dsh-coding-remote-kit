@@ -4,6 +4,13 @@
 
 import { formatAgo, getLocale, setLocale, subscribeLocale, t } from "../shared/i18n/index.js";
 import { asRecord, extractText, type MobilePush, type MobileRpcClient } from "./rpc.js";
+import {
+	activeTools,
+	earliestSeq,
+	historyCursorFromResult,
+	historyPageSize,
+	mergeHistoryPage,
+} from "./session-ui.js";
 
 export interface SessionRow {
 	sessionId: string;
@@ -88,6 +95,8 @@ export function startConnectedApp(
 		retry: null as (() => void) | null,
 		promptMode: "queue" as PromptMode,
 		focusApprovalId: options.focusApproval?.approvalId ?? null,
+		historyHasMore: false,
+		historyLoadingOlder: false,
 	};
 
 	let disposed = false;
@@ -448,7 +457,24 @@ export function startConnectedApp(
 		const running = current?.running === true;
 		const wrap = el("div", { className: "col session" });
 		wrap.appendChild(renderInbox(sessionId));
+		wrap.appendChild(renderActivityStrip(running));
 		const scroller = el("div", { className: "transcript" });
+		if (state.historyHasMore) {
+			const older = el(
+				"button",
+				{
+					type: "button",
+					className: "load-older",
+					"aria-busy": String(state.historyLoadingOlder),
+				},
+				state.historyLoadingOlder ? t("app.history.loadingOlder") : t("app.history.loadOlder"),
+			);
+			older.disabled = state.historyLoadingOlder || state.busy;
+			older.addEventListener("click", () => {
+				void loadOlderHistory(sessionId);
+			});
+			scroller.appendChild(older);
+		}
 		for (const line of foldTranscript(state.events)) {
 			scroller.appendChild(renderBubbleRow(line, false));
 		}
@@ -519,6 +545,34 @@ export function startConnectedApp(
 		composer.appendChild(row);
 		wrap.appendChild(composer);
 		return wrap;
+	};
+
+	const renderActivityStrip = (running: boolean): HTMLElement => {
+		const tools = activeTools(state.events);
+		const strip = el("div", {
+			className: tools.length > 0 || running ? "activity-strip active" : "activity-strip",
+			role: "status",
+			"aria-live": "polite",
+		});
+		if (tools.length > 0) {
+			const names = tools.map((tool) => tool.name).join(", ");
+			strip.appendChild(el("span", { className: "activity-dot", "aria-hidden": "true" }, ""));
+			strip.appendChild(
+				el(
+					"span",
+					{},
+					tools.length === 1
+						? t("app.activity.tool", { tool: names })
+						: t("app.activity.tools", { tools: names, n: tools.length }),
+				),
+			);
+		} else if (running) {
+			strip.appendChild(el("span", { className: "activity-dot", "aria-hidden": "true" }, ""));
+			strip.appendChild(el("span", {}, t("app.activity.running")));
+		} else {
+			strip.appendChild(el("span", { className: "muted" }, t("app.activity.idle")));
+		}
+		return strip;
 	};
 
 	const renderInbox = (sessionId?: string): HTMLElement => {
@@ -682,11 +736,59 @@ export function startConnectedApp(
 		if (current.name === "session" && current.sessionId !== sessionId) {
 			await rpc.request("session.unsubscribe", { sessionId: current.sessionId }).catch(() => undefined);
 		}
-		const history = asRecord(await rpc.request("session.history", { sessionId }));
-		state.events = Array.isArray(history?.events) ? history.events : [];
+		const history = asRecord(
+			await rpc.request("session.history", {
+				sessionId,
+				maxMessages: historyPageSize(),
+			}),
+		);
+		const events = Array.isArray(history?.events) ? history.events : [];
+		state.events = events;
+		const cursor = historyCursorFromResult(events, history?.hasMore === true);
+		state.historyHasMore = cursor.hasMore;
+		state.historyLoadingOlder = false;
 		await rpc.request("session.subscribe", { sessionId });
 		state.view = { name: "session", sessionId };
 		state.scrollSessionToEnd = true;
+	};
+
+	const loadOlderHistory = async (sessionId: string): Promise<void> => {
+		if (disposed || state.historyLoadingOlder || !state.historyHasMore) return;
+		const beforeSeq = earliestSeq(state.events);
+		if (beforeSeq === null) {
+			state.historyHasMore = false;
+			render();
+			return;
+		}
+		const scroller = root.querySelector(".transcript");
+		const previousHeight = scroller instanceof HTMLElement ? scroller.scrollHeight : 0;
+		const previousTop = scroller instanceof HTMLElement ? scroller.scrollTop : 0;
+		state.historyLoadingOlder = true;
+		render();
+		try {
+			const history = asRecord(
+				await rpc.request("session.history", {
+					sessionId,
+					beforeSeq,
+					maxMessages: historyPageSize(),
+				}),
+			);
+			if (disposed) return;
+			const older = Array.isArray(history?.events) ? history.events : [];
+			state.events = mergeHistoryPage(state.events, older);
+			state.historyHasMore = history?.hasMore === true && older.length > 0;
+		} catch (error) {
+			if (disposed) return;
+			state.error = error instanceof Error ? error.message : t("app.requestFailed");
+		} finally {
+			if (disposed) return;
+			state.historyLoadingOlder = false;
+			render();
+			const next = root.querySelector(".transcript");
+			if (next instanceof HTMLElement && previousHeight > 0) {
+				next.scrollTop = previousTop + (next.scrollHeight - previousHeight);
+			}
+		}
 	};
 
 	const openSession = async (sessionId: string): Promise<void> => {
@@ -702,6 +804,8 @@ export function startConnectedApp(
 		}
 		state.view = { name: "list" };
 		state.events = [];
+		state.historyHasMore = false;
+		state.historyLoadingOlder = false;
 		render();
 	};
 

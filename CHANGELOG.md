@@ -7,11 +7,13 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 ### Added
 
 - Optional offline push bridge (ntfy / Bark): Settings configure endpoint (default **off**); on `approval.requested` send a redacted alert (event type + short session id) with a deep link into `/m/?focus=approval&sessionId=…&approvalId=…`. Outbound HTTPS host allowlist + 2 KiB body cap; missing config / no paired device → silent no-op (`#14`).
-- Mobile composer **Queue / Steer** mode toggle; `session.prompt` `mode` matches the selection (`#15` minimal slice — activity strip / history cursor still open).
+- Mobile composer **Queue / Steer** mode toggle; `session.prompt` `mode` matches the selection (`#15`).
+- Mobile session **activity/status strip** for in-flight tools (and running generation) with zh-CN + en copy (`#15`).
+- Mobile `session.history` **cursor paging** (`beforeSeq` / `maxMessages`): “Load earlier messages” prepends older events without clearing the composer draft (`#15`).
 
 ### Documentation
 
-- Note remaining `#15` work: activity/tool status strip and `session.history` cursor paging UI.
+- Mark `#15` activity strip + history cursor UI as landed in research peer-capabilities notes.
 
 ## v0.5.2 - 2026-09-02
 

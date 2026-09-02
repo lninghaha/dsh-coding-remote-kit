@@ -71,6 +71,23 @@ test("P0 tunnel / diagnostics message keys exist in zh-CN and en", () => {
 	}
 });
 
+test("#15 activity strip and history paging keys exist in zh-CN and en", () => {
+	for (const key of [
+		"app.mode.queue",
+		"app.mode.steer",
+		"app.activity.idle",
+		"app.activity.running",
+		"app.activity.tool",
+		"app.activity.tools",
+		"app.history.loadOlder",
+		"app.history.loadingOlder",
+	]) {
+		assert.equal(isMessageKey(key), true, key);
+		assert.ok(translate(key, "en").length > 0, key);
+		assert.ok(translate(key, "zh-CN").length > 0, key);
+	}
+});
+
 test("t uses active locale from setLocale", () => {
 	setLocale("en");
 	assert.equal(t("settings.nav"), "Mobile Remote");

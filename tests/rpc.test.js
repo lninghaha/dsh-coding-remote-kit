@@ -123,6 +123,28 @@ test("session.prompt writes rpc_write without the prompt text", async () => {
 	assert.equal(JSON.stringify(audit.entries[0]).includes("secret prompt body"), false);
 });
 
+test("session.history forwards beforeSeq and maxMessages to upstream", async () => {
+	const upstream = {
+		async history(params) {
+			assert.equal(params.sessionId, "s-hist");
+			assert.equal(params.beforeSeq, 42);
+			assert.equal(params.maxMessages, 20);
+			return { ok: true, value: { events: [{ seq: 41, event: { type: "user/message" } }], hasMore: true } };
+		},
+	};
+	const result = await dispatchRpc(
+		{
+			id: 12,
+			method: "session.history",
+			params: { sessionId: "s-hist", beforeSeq: 42, maxMessages: 20 },
+		},
+		{ upstream, deviceId: "dev-1" },
+	);
+	assert.equal(result.ok, true);
+	assert.equal(result.result.hasMore, true);
+	assert.equal(result.result.events.length, 1);
+});
+
 test("session.prompt mode steer is forwarded to upstream", async () => {
 	const upstream = {
 		async prompt(params) {
