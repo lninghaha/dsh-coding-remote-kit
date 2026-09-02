@@ -78,13 +78,17 @@ const child = spawn(dshBin, ["web", "--port", String(WEB_PORT), "--no-open"], {
 
 let failed = false;
 try {
-	const base = `http://127.0.0.1:${WEB_PORT}`;
-	await waitHttp(`${base}/`);
-	const mobile = await fetch(`${base}/m/`, { redirect: "manual" });
+	const webBase = `http://127.0.0.1:${WEB_PORT}`;
+	await waitHttp(`${webBase}/`);
+	log(`GET / => web up on ${WEB_PORT}`);
+	// Mobile shell + CSP live on the data-plane port, not dsh web.
+	const dataBase = `http://127.0.0.1:${DATA_PORT}`;
+	await waitHttp(`${dataBase}/m/`);
+	const mobile = await fetch(`${dataBase}/m/`, { redirect: "manual" });
 	const csp = mobile.headers.get("content-security-policy") || "";
-	log(`GET /m/ => ${mobile.status}; CSP=${csp.slice(0, 180)}`);
-	if (!/frame-ancestors/i.test(csp)) throw new Error("expected CSP frame-ancestors on /m/");
-	log("PASS: /m/ CSP present");
+	log(`GET data-plane /m/ => ${mobile.status}; CSP=${csp.slice(0, 180)}`);
+	if (!/frame-ancestors/i.test(csp)) throw new Error("expected CSP frame-ancestors on data-plane /m/");
+	log("PASS: data-plane /m/ CSP present");
 	log("NOTE: claim/WS limiter remain manual follow-ups when a live offer exists.");
 } catch (error) {
 	failed = true;
