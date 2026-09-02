@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.1** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.5.2** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **Fernzugriff per Smartphone für [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Koppeln Sie ein Telefon mit dem Desktop, auf dem bereits `dsh web` läuft, beobachten Sie Sitzungen und führen Sie eine enge Menge von Schreibvorgängen aus — ohne die vollständige Web-API offenzulegen.
 
@@ -31,7 +31,7 @@ Zuerst als GitHub `dsh-mobile-remote` entwickelt. Der npm-Name **`dsh-mobile-rem
 
 | | Das verwenden | Hinweise |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.5.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.1` |
+| npm | `dsh-coding-remote-kit@0.5.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | früherer Checkout-Name `dsh-mobile-remote` |
 | Cordis-Plugin-id | `mobile-remote` | unverändert |
 | HTTP der Einstellungsseite | `/api/mobile-remote/*` | unverändert |
@@ -88,7 +88,7 @@ Führen Sie **nicht** `dsh plugin add dsh-mobile-remote` aus — das installiert
 ## Schnellstart
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
 ```
 
 Danach startet der **Operator** den bestehenden `dsh-web`-Prozess in seinem eigenen Fenster neu. Öffnen Sie **Settings → 移動远程**, erstellen Sie ein Kopplungsangebot, scannen Sie den QR (oder tippen Sie die PIN) auf dem Telefon.
@@ -99,8 +99,8 @@ Aus einem Quell-Checkout (Entwicklung):
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.5.1.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.1.tgz"
+cp dsh-coding-remote-kit-0.5.2.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tgz"
 ```
 
 Führen Sie nicht `dsh plugin add ./` aus diesem Arbeitsbaum aus. pnpm 11 behandelt manche `file:`-Tarball-Pfade als `link:`-Quelle, und ein fehlgeschlagener Entry-Import legt die ganze GUI lahm.

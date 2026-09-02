@@ -6,13 +6,10 @@
  * module never talks to `cloudflared` and never funnels port 3080.
  */
 
-import { WebSocket } from "ws";
 import { unlinkSync } from "node:fs";
+import { WebSocket } from "ws";
 import { base64UrlEncode } from "../shared/base64.js";
 import {
-	RELAY_HELLO_TIMEOUT_MS,
-	RELAY_HOST_ID_BYTES,
-	RELAY_INVITE_BYTES,
 	assertHttpsRelayOrigin,
 	hostErrorCode,
 	isPing,
@@ -23,15 +20,18 @@ import {
 	parseJsonObject,
 	parsePhoneWaiting,
 	parseRelayOrigin,
+	RELAY_HELLO_TIMEOUT_MS,
+	RELAY_HOST_ID_BYTES,
+	RELAY_INVITE_BYTES,
+	type RelayAdvertiseResult,
 	relayAcceptUrl,
 	relayAdvertise,
 	relayHostUrl,
 	stripOrigin,
-	type RelayAdvertiseResult,
 } from "../shared/relay.js";
 import { ProtocolValidationError } from "../shared/validation.js";
-import { randomBytes } from "./crypto.js";
 import { acceptMobileSocket, type ConnectionDeps } from "./connection.js";
+import { randomBytes } from "./crypto.js";
 import type { OfferRegistry } from "./registry.js";
 import { readJsonFile, writeFileAtomic } from "./storage.js";
 
@@ -88,9 +88,15 @@ export class RendezvousClient {
 	#hostToken: string | null = null;
 	#control: WebSocket | null = null;
 	#accepts = new Set<WebSocket>();
-	#helloWait: { resolve: (value: void) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> } | null =
-		null;
-	#inviteWaits = new Map<string, { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+	#helloWait: {
+		resolve: (value: void) => void;
+		reject: (error: Error) => void;
+		timer: ReturnType<typeof setTimeout>;
+	} | null = null;
+	#inviteWaits = new Map<
+		string,
+		{ resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+	>();
 	#reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(options: RendezvousClientOptions) {
@@ -196,7 +202,8 @@ export class RendezvousClient {
 			}
 		}
 		if (typeof persisted.hostId === "string" && persisted.hostId.length > 0) this.#hostId = persisted.hostId;
-		if (typeof persisted.hostToken === "string" && persisted.hostToken.length > 0) this.#hostToken = persisted.hostToken;
+		if (typeof persisted.hostToken === "string" && persisted.hostToken.length > 0)
+			this.#hostToken = persisted.hostToken;
 	}
 
 	#persist(): void {
@@ -316,7 +323,7 @@ export class RendezvousClient {
 		} catch {
 			return;
 		}
-		const offer = this.#offers.findByPairCode(claim.code, this.#now());
+		const offer = this.#offers.claimByPairCode(claim.code, this.#now());
 		if (offer === null) {
 			this.#sendControl({
 				type: "claim_result",
@@ -406,7 +413,10 @@ export class RendezvousClient {
 	}
 }
 
-export function validateRelayStartBody(record: Record<string, unknown> | null): { origin?: string; hostToken?: string } {
+export function validateRelayStartBody(record: Record<string, unknown> | null): {
+	origin?: string;
+	hostToken?: string;
+} {
 	if (record === null) throw new ProtocolValidationError("body must be an object");
 	const result: { origin?: string; hostToken?: string } = {};
 	if (record.origin !== undefined) {

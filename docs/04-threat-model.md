@@ -61,6 +61,7 @@
 - 桌面被控（攻击者已在跑 `dsh web` 的机器上）
 - 浏览器扩展窃取设置页 / 配对码
 - 通用 XSS（宿主或其它插件的 DOM 注入）
+- 手机页把 X25519 私钥与 resume offer 放在 `sessionStorage`（非 `localStorage`）：关标签即失效，降低共享设备上的残留；仍无法抵御同页 XSS 读存储
 
 ## 禁止事项 / Prohibitions
 

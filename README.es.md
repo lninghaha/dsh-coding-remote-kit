@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.1** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.5.2** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **Acceso remoto por teléfono a [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Empareja un teléfono con el escritorio que ya ejecuta `dsh web`, observa sesiones y realiza un conjunto limitado de escrituras — sin exponer la API Web completa.
 
@@ -31,7 +31,7 @@ Se desarrolló primero como GitHub `dsh-mobile-remote`. El nombre npm **`dsh-mob
 
 | | Usa esto | Notas |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.5.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.1` |
+| npm | `dsh-coding-remote-kit@0.5.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | nombre anterior del checkout `dsh-mobile-remote` |
 | id del plugin Cordis | `mobile-remote` | sin cambios |
 | HTTP de la página de ajustes | `/api/mobile-remote/*` | sin cambios |
@@ -88,7 +88,7 @@ Se desarrolló primero como GitHub `dsh-mobile-remote`. El nombre npm **`dsh-mob
 ## Inicio rápido
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
 ```
 
 Después el **operador** reinicia el proceso `dsh web` existente en su propia ventana. Abre **Settings → 移動远程**, crea una oferta de emparejamiento, escanea el QR (o escribe el PIN) en el teléfono.
@@ -99,8 +99,8 @@ Desde un checkout de código (desarrollo):
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.5.1.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.1.tgz"
+cp dsh-coding-remote-kit-0.5.2.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tgz"
 ```
 
 No ejecutes `dsh plugin add ./` en este árbol de trabajo. pnpm 11 trata algunas rutas `file:` de tarball como fuente `link:`, y un import de entrada fallido tumba toda la GUI.

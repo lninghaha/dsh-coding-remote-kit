@@ -6,21 +6,14 @@ import nacl from "tweetnacl";
 import { base64Decode, base64Encode, utf8Decode, utf8Encode } from "../shared/base64.js";
 import { MOBILE_PROTOCOL_VERSION } from "../shared/constants.js";
 import { normalizeDeviceName } from "../shared/device-name.js";
-import {
-	bootstrapLocale,
-	getLocale,
-	pairErrorMessage,
-	setLocale,
-	subscribeLocale,
-	t,
-} from "../shared/i18n/index.js";
-import { decodeOffer, validateOffer, type PairingOffer } from "../shared/offer.js";
+import { bootstrapLocale, getLocale, pairErrorMessage, setLocale, subscribeLocale, t } from "../shared/i18n/index.js";
+import { decodeOffer, type PairingOffer, validateOffer } from "../shared/offer.js";
 import { formatPairCode, isCompletePairCode, normalizePairCode } from "../shared/pair-code.js";
 import { evaluateVersionGate } from "../shared/version.js";
 import { startConnectedApp } from "./app.js";
 import { generateClientKeyPair, MobileE2eeSession } from "./e2ee.js";
-import { clearPersistedOffer, loadPersistedOffer, persistOffer } from "./persist.js";
-import { MobileRpcClient, type MobilePush, type MobilePushHandler } from "./rpc.js";
+import { clearPersistedOffer, migratePersistedOffer, persistOffer } from "./persist.js";
+import { type MobilePush, type MobilePushHandler, MobileRpcClient } from "./rpc.js";
 
 const KEY_KEY = "dshmr.key";
 const DEVICE_NAME_KEY = "dshmr.deviceName";
@@ -152,9 +145,31 @@ function registerShellWorker(): void {
 	void navigator.serviceWorker.register("/m/sw.js", { scope: "/m/" });
 }
 
+function readSecretStore(): StorageLike {
+	// Prefer tab-scoped storage for the X25519 secret and resume offer.
+	return typeof sessionStorage !== "undefined" ? sessionStorage : localStorage;
+}
+
 function loadOrCreateKey(): { secretKey: Uint8Array; publicKey: Uint8Array } {
+	const store = readSecretStore();
 	try {
-		const stored = localStorage.getItem(KEY_KEY);
+		let stored = store.getItem(KEY_KEY);
+		if (stored === null && store !== localStorage) {
+			// One-time migrate away from the older durable localStorage copy.
+			stored = localStorage.getItem(KEY_KEY);
+			if (stored !== null) {
+				try {
+					localStorage.removeItem(KEY_KEY);
+				} catch {
+					// ignore
+				}
+				try {
+					store.setItem(KEY_KEY, stored);
+				} catch {
+					// ignore
+				}
+			}
+		}
 		if (stored !== null) {
 			const secretKey = base64Decode(stored);
 			if (secretKey.length === 32) {
@@ -162,11 +177,11 @@ function loadOrCreateKey(): { secretKey: Uint8Array; publicKey: Uint8Array } {
 			}
 		}
 	} catch {
-		// localStorage unavailable; fall through to a fresh ephemeral key
+		// storage unavailable; fall through to a fresh ephemeral key
 	}
 	const keyPair = generateClientKeyPair();
 	try {
-		localStorage.setItem(KEY_KEY, base64Encode(keyPair.secretKey));
+		store.setItem(KEY_KEY, base64Encode(keyPair.secretKey));
 	} catch {
 		// non-persistent storage is acceptable for a single pairing session
 	}
@@ -188,7 +203,11 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 		pinnedPublicKeyB64: offer.publicKeyB64,
 	});
 	let closeNoticeShown = false;
-	const failNotice = (titleKey: Parameters<typeof t>[0], messageKey: Parameters<typeof t>[0], vars?: Record<string, string | number>): void => {
+	const failNotice = (
+		titleKey: Parameters<typeof t>[0],
+		messageKey: Parameters<typeof t>[0],
+		vars?: Record<string, string | number>,
+	): void => {
 		if (generation !== connectionGeneration) return;
 		closeNoticeShown = true;
 		renderNoticeCard(() => ({
@@ -201,7 +220,7 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 				{
 					label: t("pair.clearLocal"),
 					onClick: () => {
-						clearPersistedOffer(localStorage);
+						clearPersistedOffer(readSecretStore());
 						bootPairForm();
 					},
 					danger: true,
@@ -363,7 +382,7 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 					{
 						label: t("pair.clearLocal"),
 						onClick: () => {
-							clearPersistedOffer(localStorage);
+							clearPersistedOffer(readSecretStore());
 							bootPairForm();
 						},
 						danger: true,
@@ -476,7 +495,9 @@ function bootE2eList(): void {
 	const dispose = startConnectedApp(app, client);
 	Object.assign(globalThis, {
 		__dshmrE2e: {
-			push(push: MobilePush) { pushHandler?.(push); },
+			push(push: MobilePush) {
+				pushHandler?.(push);
+			},
 			pushHostUpdate() {
 				pushHandler?.({
 					push: "host.event",
@@ -484,7 +505,9 @@ function bootE2eList(): void {
 				});
 			},
 			dispose,
-			metrics() { return { promptRequests, pushDisposals, subscribed: pushHandler !== null }; },
+			metrics() {
+				return { promptRequests, pushDisposals, subscribed: pushHandler !== null };
+			},
 		},
 	});
 }
@@ -593,7 +616,7 @@ function bootPairForm(): void {
 				}
 				const offer = validateOffer(payload.offer);
 				try {
-					persistOffer(localStorage, offer);
+					persistOffer(readSecretStore(), offer);
 				} catch {
 					// ignore
 				}
@@ -624,7 +647,7 @@ function bootPairForm(): void {
 	clearBtn.className = "ghost";
 	clearBtn.textContent = t("pair.clearSaved");
 	clearBtn.addEventListener("click", () => {
-		clearPersistedOffer(localStorage);
+		clearPersistedOffer(readSecretStore());
 		err.textContent = t("pair.cleared");
 	});
 
@@ -647,7 +670,7 @@ function boot(): void {
 	if (hash.length <= 1) {
 		let persisted: PairingOffer | null = null;
 		try {
-			persisted = loadPersistedOffer(localStorage);
+			persisted = migratePersistedOffer(readSecretStore(), localStorage);
 		} catch {
 			persisted = null;
 		}
@@ -675,7 +698,7 @@ function boot(): void {
 		return;
 	}
 	try {
-		persistOffer(localStorage, offer);
+		persistOffer(readSecretStore(), offer);
 	} catch {
 		// non-persistent storage is acceptable
 	}

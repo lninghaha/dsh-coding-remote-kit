@@ -77,8 +77,15 @@ export const DEVICE_SCOPE = "mobile";
  * Version stamps reported by `status.get`. `DSH_VERSION` is the verified host
  * pin and must match `compatibility/dsh-bom.json` (`tests/bom.test.js`).
  */
-export const PLUGIN_VERSION = "0.5.1";
+export const PLUGIN_VERSION = "0.5.2";
 export const DSH_VERSION = "0.1.1-rc.2";
+
+/** Idle devices older than this are treated as expired (auto-revoked on auth/touch). */
+export const DEVICE_IDLE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Per-IP window for WebSocket authentication failures before temporary reject. */
+export const WS_AUTH_FAILURE_WINDOW_MS = 60_000;
+export const WS_AUTH_FAILURE_LIMIT = 8;
 
 /**
  * RPC methods the mobile data plane exposes. Anything outside this set is

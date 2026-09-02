@@ -10,10 +10,10 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { base64UrlEncode } from "../shared/base64.js";
-import { DEVICE_SCOPE, MAX_PENDING_OFFERS } from "../shared/constants.js";
-import { formatPairCode, normalizePairCode, pairCodeFromBytes } from "../shared/pair-code.js";
-import type { PairingOffer } from "../shared/offer.js";
+import { DEVICE_IDLE_TTL_MS, DEVICE_SCOPE, MAX_PENDING_OFFERS } from "../shared/constants.js";
 import { normalizeDeviceName } from "../shared/device-name.js";
+import type { PairingOffer } from "../shared/offer.js";
+import { formatPairCode, normalizePairCode, pairCodeFromBytes } from "../shared/pair-code.js";
 import { constantTimeEqualHex, randomBytes } from "./crypto.js";
 import { appendJsonLine, readJsonFile, writeFileAtomic } from "./storage.js";
 
@@ -96,19 +96,30 @@ export class DeviceRegistry {
 		return device.revokedAt !== undefined;
 	}
 
+	/** True when an active device has been idle longer than `DEVICE_IDLE_TTL_MS`. */
+	isIdleExpired(device: DeviceRecord, now: number): boolean {
+		if (device.revokedAt !== undefined) return false;
+		return now - device.lastSeenAt > DEVICE_IDLE_TTL_MS;
+	}
+
 	/**
 	 * On a successful authentication: create a device for a new token, or
 	 * refresh `lastSeenAt` / `phonePublicKeyB64` for an existing one.
+	 * Idle-expired devices are auto-revoked and treated as a fresh upsert.
 	 */
 	upsertDevice(input: { tokenHash: string; phonePublicKeyB64?: string }, now: number): DeviceRecord {
 		const existing = this.findByTokenHash(input.tokenHash);
-		if (existing !== null && existing.revokedAt === undefined) {
+		if (existing !== null && existing.revokedAt === undefined && this.isIdleExpired(existing, now)) {
+			this.revoke(existing.deviceId, now);
+		}
+		const live = this.findByTokenHash(input.tokenHash);
+		if (live !== null && live.revokedAt === undefined) {
 			const updated: DeviceRecord = {
-				...existing,
+				...live,
 				lastSeenAt: now,
 				...(input.phonePublicKeyB64 === undefined ? {} : { phonePublicKeyB64: input.phonePublicKeyB64 }),
 			};
-			const index = this.#devices.indexOf(existing);
+			const index = this.#devices.indexOf(live);
 			this.#devices[index] = updated;
 			this.save();
 			return updated;
@@ -221,11 +232,26 @@ export class OfferRegistry {
 		return offer;
 	}
 
-	/** Find a live offer by the short typed pairing PIN. */
+	/** Find a live offer by the short typed pairing PIN (does not consume). */
 	findByPairCode(pairCode: string, now: number = Date.now()): PairingOffer | null {
 		const token = this.#codes.get(normalizePairCode(pairCode));
 		if (token === undefined) return null;
 		return this.findByToken(token, now);
+	}
+
+	/**
+	 * One-shot PIN claim: returns the live offer and drops the PIN mapping so a
+	 * second claim fails, while the offer token remains until `consumeByToken`
+	 * during E2EE auth.
+	 */
+	claimByPairCode(pairCode: string, now: number = Date.now()): PairingOffer | null {
+		const normalized = normalizePairCode(pairCode);
+		const token = this.#codes.get(normalized);
+		if (token === undefined) return null;
+		const offer = this.findByToken(token, now);
+		if (offer === null) return null;
+		this.#codes.delete(normalized);
+		return offer;
 	}
 
 	/** Consume (remove) a pending offer, returning it only if live. */

@@ -104,10 +104,12 @@ declare const WebSocket: {
 
 declare const document: Document;
 declare const localStorage: StorageLike;
+declare const sessionStorage: StorageLike;
 declare const location: LocationLike;
 declare const window: {
 	readonly location: LocationLike;
 	readonly localStorage: StorageLike;
+	readonly sessionStorage: StorageLike;
 	setInterval(callback: () => void, ms: number): number;
 	clearInterval(id: number): void;
 };

@@ -3,7 +3,7 @@
  * can resume over the rendezvous Worker without scanning again.
  */
 
-import { validateOffer, type PairingOffer } from "../shared/offer.js";
+import { type PairingOffer, validateOffer } from "../shared/offer.js";
 
 export const HOST_STORAGE_KEY = "dshmr.host";
 export const OFFER_STORAGE_KEY = "dshmr.offer";
@@ -41,4 +41,15 @@ export function clearPersistedOffer(storage: StorageLike): void {
 	} catch {
 		// ignore
 	}
+}
+
+/** Copy a durable localStorage offer into sessionStorage once, then drop the durable copy. */
+export function migratePersistedOffer(session: StorageLike, durable: StorageLike): PairingOffer | null {
+	const fromSession = loadPersistedOffer(session);
+	if (fromSession !== null) return fromSession;
+	const fromDurable = loadPersistedOffer(durable);
+	if (fromDurable === null) return null;
+	persistOffer(session, fromDurable);
+	clearPersistedOffer(durable);
+	return fromDurable;
 }
