@@ -99,7 +99,8 @@
     "test:e2e": "bash scripts/e2e-mobile-scroll.sh",
     "test:sandbox": "node scripts/sandbox-check.mjs",
     "release:inspect": "pnpm run assert:node && node scripts/release.mjs --dry-run",
-    "release:pack": "pnpm run assert:node && node scripts/release.mjs --pack"
+    "release:pack": "pnpm run assert:node && node scripts/release.mjs --pack",
+    "smoke:dsh-alpha": "node scripts/smoke-dsh-alpha.mjs"
   },
   "dependencies": {
     "js-sha256": "^1.0.0",

@@ -33,6 +33,15 @@ interface ClientApplyContext {
 	effect?(factory: () => void | (() => void)): unknown;
 }
 
+interface PushBridgeStatus {
+	enabled: boolean;
+	provider: "ntfy" | "bark";
+	endpoint: string;
+	endpointHost: string | null;
+	hasCredential: boolean;
+	configured: boolean;
+}
+
 interface StatusInfo {
 	enabled: boolean;
 	accessMode?: "loopback" | "ssh-tunnel" | "trusted-https-proxy";
@@ -43,6 +52,7 @@ interface StatusInfo {
 	activeDevices: number;
 	tunnel: TunnelSnapshot;
 	relay: RelaySnapshot;
+	pushBridge?: PushBridgeStatus;
 	connectionDiagnostics?: ConnectionDiagnostics;
 	compatibility?: {
 		apiProxy: { available: boolean; source: string };
@@ -204,6 +214,14 @@ export function MobileRemoteSettings() {
 	const [channelChosen, setChannelChosen] = useState(false);
 	const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
 	const [locale, setLocaleState] = useState<Locale>(() => bootstrapLocale());
+	const [pushEnabled, setPushEnabled] = useState(false);
+	const [pushProvider, setPushProvider] = useState<"ntfy" | "bark">("ntfy");
+	const [pushEndpoint, setPushEndpoint] = useState("https://ntfy.sh");
+	const [pushCredential, setPushCredential] = useState("");
+	const [pushHasCredential, setPushHasCredential] = useState(false);
+	const [pushBusy, setPushBusy] = useState(false);
+	const [pushError, setPushError] = useState<string | null>(null);
+	const [pushSaved, setPushSaved] = useState(false);
 
 	const switchLocale = (next: Locale) => {
 		setLocale(next, typeof localStorage !== "undefined" ? localStorage : null);
@@ -245,6 +263,14 @@ export function MobileRemoteSettings() {
 				setStatusState("ready");
 				if (typeof payload.relay?.url === "string" && payload.relay.url.length > 0) {
 					setRelayOrigin(payload.relay.url);
+				}
+				if (payload.pushBridge !== undefined) {
+					setPushEnabled(payload.pushBridge.enabled === true);
+					setPushProvider(payload.pushBridge.provider === "bark" ? "bark" : "ntfy");
+					if (typeof payload.pushBridge.endpoint === "string" && payload.pushBridge.endpoint.length > 0) {
+						setPushEndpoint(payload.pushBridge.endpoint);
+					}
+					setPushHasCredential(payload.pushBridge.hasCredential === true);
 				}
 			} catch {
 				setStatusError(t("settings.status.readFailed"));
@@ -312,6 +338,49 @@ export function MobileRemoteSettings() {
 				refreshStatus();
 			} catch {
 				setOfferError(t("settings.devices.revokeFailed"));
+			}
+		})();
+	};
+
+	const savePushBridge = () => {
+		setPushError(null);
+		setPushSaved(false);
+		setPushBusy(true);
+		void (async () => {
+			try {
+				const response = await fetch("/api/mobile-remote/push-bridge", {
+					method: "POST",
+					headers: {
+						"content-type": "application/json",
+						"x-dsh-mobile-remote": "1",
+					},
+					body: JSON.stringify({
+						enabled: pushEnabled,
+						provider: pushProvider,
+						endpoint: pushEndpoint,
+						credential: pushCredential,
+					}),
+				});
+				const payload = (await response.json()) as {
+					ok?: boolean;
+					pushBridge?: PushBridgeStatus;
+					error?: { message?: string };
+				};
+				if (!response.ok || payload.ok !== true || payload.pushBridge === undefined) {
+					setPushError(formatApiError(response, payload, t("settings.push.saveFailed")));
+					return;
+				}
+				setPushEnabled(payload.pushBridge.enabled);
+				setPushProvider(payload.pushBridge.provider);
+				if (payload.pushBridge.endpoint.length > 0) setPushEndpoint(payload.pushBridge.endpoint);
+				setPushHasCredential(payload.pushBridge.hasCredential);
+				setPushCredential("");
+				setPushSaved(true);
+				refreshStatus();
+			} catch {
+				setPushError(t("settings.push.saveFailed"));
+			} finally {
+				setPushBusy(false);
 			}
 		})();
 	};
@@ -1301,6 +1370,97 @@ export function MobileRemoteSettings() {
 						devicesError === null ? null : createElement("p", { style: warnStyle }, devicesError),
 					)
 				: null,
+		),
+		createElement(
+			"div",
+			{ style: box },
+			createElement("strong", { style: { fontSize: "14px" } }, t("settings.push.title")),
+			createElement("p", { style: muted }, t("settings.push.intro")),
+			createElement(
+				"p",
+				{ style: muted, role: "status" },
+				pushEnabled
+					? t("settings.push.status.on", {
+							provider: pushProvider,
+							host: status?.pushBridge?.endpointHost ?? "—",
+						})
+					: t("settings.push.status.off"),
+			),
+			createElement(
+				"label",
+				{ style: { display: "flex", gap: "8px", alignItems: "center", fontSize: "13px" } },
+				createElement("input", {
+					type: "checkbox",
+					checked: pushEnabled,
+					onChange: (event: { target: { checked: boolean } }) => {
+						setPushEnabled(event.target.checked);
+						setPushSaved(false);
+					},
+				}),
+				t("settings.push.enabled"),
+			),
+			createElement(
+				"label",
+				{ style: { display: "grid", gap: "4px", fontSize: "13px" } },
+				t("settings.push.provider"),
+				createElement(
+					"select",
+					{
+						value: pushProvider,
+						onChange: (event: { target: { value: string } }) => {
+							setPushProvider(event.target.value === "bark" ? "bark" : "ntfy");
+							setPushSaved(false);
+						},
+						style: { minHeight: "36px" },
+					},
+					createElement("option", { value: "ntfy" }, t("settings.push.provider.ntfy")),
+					createElement("option", { value: "bark" }, t("settings.push.provider.bark")),
+				),
+			),
+			createElement(
+				"label",
+				{ style: { display: "grid", gap: "4px", fontSize: "13px" } },
+				t("settings.push.endpoint"),
+				createElement("input", {
+					type: "url",
+					value: pushEndpoint,
+					placeholder: pushProvider === "bark" ? "https://api.day.app" : "https://ntfy.sh",
+					onChange: (event: { target: { value: string } }) => {
+						setPushEndpoint(event.target.value);
+						setPushSaved(false);
+					},
+					style: { minHeight: "36px", padding: "6px 8px" },
+				}),
+				createElement("span", { style: muted }, t("settings.push.endpointHint")),
+			),
+			createElement(
+				"label",
+				{ style: { display: "grid", gap: "4px", fontSize: "13px" } },
+				pushProvider === "bark" ? t("settings.push.credential.bark") : t("settings.push.credential.ntfy"),
+				createElement("input", {
+					type: "password",
+					value: pushCredential,
+					autoComplete: "off",
+					placeholder: pushHasCredential ? t("settings.push.credentialSaved") : "",
+					onChange: (event: { target: { value: string } }) => {
+						setPushCredential(event.target.value);
+						setPushSaved(false);
+					},
+					style: { minHeight: "36px", padding: "6px 8px" },
+				}),
+			),
+			createElement(
+				"button",
+				{
+					type: "button",
+					disabled: pushBusy,
+					onClick: savePushBridge,
+					style: { justifySelf: "start" },
+				},
+				pushBusy ? t("settings.push.saving") : t("settings.push.save"),
+			),
+			pushError === null ? null : createElement("p", { style: errStyle, role: "alert" }, pushError),
+			pushSaved ? createElement("p", { style: { ...muted, color: "var(--dshmr-ok)" }, role: "status" }, t("settings.push.saved")) : null,
 		),
 	);
 }

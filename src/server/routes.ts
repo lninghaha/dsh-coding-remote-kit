@@ -39,6 +39,7 @@ import {
 } from "./tunnel.js";
 import { validateRelayStartBody, type RendezvousSnapshot } from "./relay.js";
 import { ProtocolValidationError } from "../shared/validation.js";
+import type { PublicPushBridgeStatus, PushBridge } from "./push-bridge.js";
 import {
 	LOOPBACK_OWNER_REQUEST_POLICY,
 	type OwnerAccessMode,
@@ -105,6 +106,8 @@ export interface ManagementDeps {
 	/** Opt-in official binary install. Must not run at apply() time. */
 	installCloudflared(): Promise<{ asset: string; path: string }>;
 	readonly compatibility?: HostCompatibilityDiagnostics | (() => HostCompatibilityDiagnostics);
+	/** Optional offline push bridge (ntfy/Bark). Absent → route returns disabled defaults. */
+	readonly pushBridge?: Pick<PushBridge, "status" | "update">;
 }
 
 export interface TunnelDeps {
@@ -259,6 +262,17 @@ export function serializeDevice(device: DeviceRecord): PublicDevice {
 
 export function devicesResponseBody(registry: DeviceRegistry): { devices: PublicDevice[] } {
 	return { devices: registry.devices.map(serializeDevice) };
+}
+
+export function disabledPushBridgeStatus(): PublicPushBridgeStatus {
+	return {
+		enabled: false,
+		provider: "ntfy",
+		endpoint: "",
+		endpointHost: null,
+		hasCredential: false,
+		configured: false,
+	};
 }
 
 function reject(
@@ -432,6 +446,7 @@ export function registerManagementRoutes(
 				relay: deps.relay.snapshot(),
 				compatibility: typeof deps.compatibility === "function" ? deps.compatibility() : deps.compatibility,
 				connectionDiagnostics: buildConnectionDiagnostics(deps),
+				pushBridge: deps.pushBridge?.status() ?? disabledPushBridgeStatus(),
 			});
 		}),
 		() => register("/api/mobile-remote/tunnel", ["GET", "POST"], async (request, response) => {
@@ -543,6 +558,44 @@ export function registerManagementRoutes(
 		}),
 		() => register("/api/mobile-remote/devices", ["GET"], async (_request, response) => {
 			writeJson(response, 200, devicesResponseBody(deps.registry));
+		}),
+		() => register("/api/mobile-remote/push-bridge", ["GET", "POST"], async (request, response) => {
+			if ((request.method ?? "GET") === "GET") {
+				writeJson(response, 200, deps.pushBridge?.status() ?? disabledPushBridgeStatus());
+				return;
+			}
+			if (deps.pushBridge === undefined) {
+				reject(response, 503, "unavailable", "push bridge is not available");
+				return;
+			}
+			const body = await readJsonBody(request, response);
+			if (body === undefined) return;
+			const record =
+				typeof body === "object" && body !== null && !Array.isArray(body)
+					? (body as Record<string, unknown>)
+					: null;
+			if (record === null) {
+				reject(response, 400, "invalid_params", "JSON object body is required");
+				return;
+			}
+			const updated = deps.pushBridge.update(record);
+			if (!updated.ok) {
+				reject(response, 400, "invalid_params", updated.reason);
+				return;
+			}
+			deps.audit.log(
+				{
+					event: "push_bridge_updated",
+					detail: {
+						enabled: updated.status.enabled,
+						provider: updated.status.provider,
+						endpointHost: updated.status.endpointHost,
+						hasCredential: updated.status.hasCredential,
+					},
+				},
+				deps.now(),
+			);
+			writeJson(response, 200, { ok: true, pushBridge: updated.status });
 		}),
 		() => register("/api/mobile-remote/cloudflared", ["POST"], async (request, response) => {
 			const body = await readJsonBody(request, response);

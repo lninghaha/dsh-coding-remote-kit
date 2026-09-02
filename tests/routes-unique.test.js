@@ -50,12 +50,14 @@ test("management exact paths are unique (DSH webServer keys by path, not method)
 	assert.ok(paths.includes("/api/mobile-remote/tunnel"));
 	assert.ok(paths.includes("/api/mobile-remote/cloudflared"));
 	assert.ok(paths.includes("/api/mobile-remote/relay"));
+	assert.ok(paths.includes("/api/mobile-remote/push-bridge"));
 	assert.equal(paths.filter((path) => path === "/api/mobile-remote/tunnel").length, 1);
 	assert.equal(paths.filter((path) => path === "/api/mobile-remote/cloudflared").length, 1);
 	assert.equal(paths.filter((path) => path === "/api/mobile-remote/relay").length, 1);
+	assert.equal(paths.filter((path) => path === "/api/mobile-remote/push-bridge").length, 1);
 });
 
-for (const failingRegistration of [2, 7]) {
+for (const failingRegistration of [2, 8]) {
 	test(`management route registration rolls back all prior routes when registration ${failingRegistration} fails`, () => {
 		const active = [];
 		const released = [];
@@ -78,6 +80,7 @@ for (const failingRegistration of [2, 7]) {
 			? ["/api/mobile-remote/offers"]
 			: [
 				"/api/mobile-remote/cloudflared",
+				"/api/mobile-remote/push-bridge",
 				"/api/mobile-remote/devices",
 				"/api/mobile-remote/relay",
 				"/api/mobile-remote/tunnel",

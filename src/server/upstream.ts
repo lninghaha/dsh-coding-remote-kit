@@ -109,9 +109,15 @@ const INITIAL_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 15_000;
 const HUGE_STRING = 4_096;
 
+export interface UpstreamHubOptions {
+	/** Optional side-effect hook (e.g. offline push). Must not throw into mux. */
+	readonly onApprovalRequested?: (push: PushEnvelope) => void;
+}
+
 export function createUpstreamHub(
 	apiProxySource: HostApiProxy | undefined | (() => HostApiProxy | undefined),
 	logger: MobileRemoteLogger,
+	options: UpstreamHubOptions = {},
 ): UpstreamHub {
 	const subscribers = new Set<Subscriber>();
 	const controller = new AbortController();
@@ -146,6 +152,13 @@ export function createUpstreamHub(
 				if (mapped === null) continue;
 				const sessionId = sessionIdOf(mapped.data);
 				if (sessionId === null) continue;
+				if (mapped.push === "approval.requested" && options.onApprovalRequested !== undefined) {
+					try {
+						options.onApprovalRequested(mapped);
+					} catch {
+						logger.warn("approval push hook failed (details redacted)");
+					}
+				}
 				for (const subscriber of subscribers) {
 					if (subscriber.sessionIds.has(sessionId)) subscriber.send(mapped);
 				}

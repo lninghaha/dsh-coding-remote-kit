@@ -7,6 +7,7 @@ import { type MobileRemoteHostContext, resolveHostCompatibility } from "./contex
 import { MobileDataPlane } from "./dataplane.js";
 import { loadOrCreateServerKey } from "./keys.js";
 import { networkCandidates } from "./net.js";
+import { PushBridge } from "./push-bridge.js";
 import { AuditLogger, DeviceRegistry, OfferRegistry } from "./registry.js";
 import { RendezvousClient } from "./relay.js";
 import { registerManagementRoutes } from "./routes.js";
@@ -140,10 +141,40 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 	if (activeApiProxy === undefined) {
 		logger.warn("mobile-remote: apiProxy service unavailable; session RPC will return upstream_error");
 	}
-	const upstream = createUpstreamHub(resolveApiProxy, logger);
-	cleanupSteps.push(() => upstream.stop());
 
 	const mobileDir = fileURLToPath(new URL("../mobile/", import.meta.url));
+	// Data plane + rendezvous constructed after advertise helpers; push bridge
+	// needs pageUrl resolution that prefers active public faces.
+	let dataPlaneRef: MobileDataPlane | null = null;
+	let rendezvousRef: RendezvousClient | null = null;
+
+	const resolveAdvertisePageUrl = (): string | null => {
+		const relaySnap = rendezvousRef?.snapshot();
+		if (relaySnap?.running === true && typeof relaySnap.url === "string" && relaySnap.url.length > 0) {
+			return `${relaySnap.url.replace(/\/+$/u, "")}/m/`;
+		}
+		const tunnelSnap = tunnel.snapshot();
+		if (tunnelSnap.running && typeof tunnelSnap.url === "string" && tunnelSnap.url.length > 0) {
+			return `${tunnelSnap.url.replace(/\/+$/u, "")}/m/`;
+		}
+		if (dataPlaneRef === null || !dataPlaneRef.listening) return null;
+		const candidates = dataPlaneRef.host === ALL_INTERFACES ? networkCandidates() : [LOOPBACK];
+		const ip = candidates[0] ?? LOOPBACK;
+		return `http://${ip}:${String(config.port)}/m/`;
+	};
+
+	const pushBridge = new PushBridge({
+		storageDirectory,
+		logger,
+		resolvePageUrl: resolveAdvertisePageUrl,
+		hasActiveDevice: () => registry.hasActiveDevice(),
+	});
+
+	const upstream = createUpstreamHub(resolveApiProxy, logger, {
+		onApprovalRequested: (push) => pushBridge.notifyApprovalRequested(push),
+	});
+	cleanupSteps.push(() => upstream.stop());
+
 	const dataPlane = new MobileDataPlane({
 		serverKeyPair,
 		registry,
@@ -154,6 +185,7 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 		port: config.port,
 		upstream,
 	});
+	dataPlaneRef = dataPlane;
 	cleanupSteps.push(() => dataPlane.close());
 
 	const rendezvous = new RendezvousClient({
@@ -162,6 +194,7 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 		offers,
 		connectionDeps: () => dataPlane.connectionDeps("relay"),
 	});
+	rendezvousRef = rendezvous;
 	cleanupSteps.push(() => rendezvous.stop());
 
 	// Startup bind: keep LAN reachability across restarts for active devices.
@@ -226,6 +259,7 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 					putInvite: (input) => rendezvous.putInvite(input),
 				},
 				installCloudflared: () => installOfficialCloudflared(),
+				pushBridge,
 				compatibility: () => {
 					resolveApiProxy();
 					return {

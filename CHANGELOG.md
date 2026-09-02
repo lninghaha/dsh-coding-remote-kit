@@ -4,6 +4,15 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+### Added
+
+- Optional offline push bridge (ntfy / Bark): Settings configure endpoint (default **off**); on `approval.requested` send a redacted alert (event type + short session id) with a deep link into `/m/?focus=approval&sessionId=…&approvalId=…`. Outbound HTTPS host allowlist + 2 KiB body cap; missing config / no paired device → silent no-op (`#14`).
+- Mobile composer **Queue / Steer** mode toggle; `session.prompt` `mode` matches the selection (`#15` minimal slice — activity strip / history cursor still open).
+
+### Documentation
+
+- Note remaining `#15` work: activity/tool status strip and `session.history` cursor paging UI.
+
 ## v0.5.2 - 2026-09-02
 
 ### Added
