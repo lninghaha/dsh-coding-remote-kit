@@ -144,6 +144,8 @@ RPC methods and push envelopes: `docs/03-protocol.md`.
 4. Four-step handshake (`dshmr-e2ee/v1`) pins the desktop public key, derives session keys via HKDF, then `e2ee_auth` with the device token.
 5. Further frames are tweetnacl secretbox. Five consecutive decrypt failures close the socket.
 
+Crypto library replacement is **deferred** (stay on tweetnacl until an E2EE version bump); see [`docs/research/adr-tweetnacl-vs-libsodium-webcrypto.md`](research/adr-tweetnacl-vs-libsodium-webcrypto.md). Device-token rotation beyond settings revoke / idle expiry is **not** in this release; see [`docs/research/adr-device-key-rotation.md`](research/adr-device-key-rotation.md).
+
 Honest v0 boundary: the **first HTTP download of `/m`** on a raw LAN is MITM-able. E2EE does not protect a replaced page. Prefer Tailscale / WireGuard; optional Cloudflare Quick Tunnel terminates TLS at the edge and must never include port 3080. Optional self-hosted rendezvous Worker (M5) serves `/m` over HTTPS and splices outbound WebSockets; it must never see port 3080. Details: `docs/04-threat-model.md`, `docs/05-cloud-relay.md`.
 
 ## 7. Build outputs

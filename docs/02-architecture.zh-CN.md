@@ -144,6 +144,8 @@ RPC 方法与推送信封见 `docs/03-protocol.md`。
 4. 四步握手（`dshmr-e2ee/v1`）钉死桌面公钥，经 HKDF 派生会话密钥，再用 device token 做 `e2ee_auth`。
 5. 之后的帧走 tweetnacl secretbox。连续 5 次解密失败关闭连接。
 
+密码学库替换**延期**（本里程碑继续用 tweetnacl，直至 E2EE 版本升级）：见 [`docs/research/adr-tweetnacl-vs-libsodium-webcrypto.md`](research/adr-tweetnacl-vs-libsodium-webcrypto.md)。除设置页吊销 / 空闲自动吊销外的 deviceToken 轮换**本版不做**：见 [`docs/research/adr-device-key-rotation.md`](research/adr-device-key-rotation.md)。
+
 v0 诚实边界：裸 LAN 上 **`/m` 的首次 HTTP 下发**可被 MITM。页面被替换后，E2EE 只保护「恶意脚本与服务器之间」的信道。推荐 Tailscale / WireGuard；可选 Cloudflare Quick Tunnel 在边缘终结 TLS，且**不得**把 3080 送进隧道。可选自建会合中继（M5）用 HTTPS 提供 `/m` 并拼接出站 WebSocket，也**不得**看见 3080。细节见 `docs/04-threat-model.md`、`docs/05-cloud-relay.md`。
 
 ## 7. 构建产物
