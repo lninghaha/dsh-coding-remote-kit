@@ -1,0 +1,43 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+	"files": {
+		"includes": [
+			"src/server/auth-failure-limiter.ts",
+			"src/server/dataplane.ts",
+			"src/server/connection.ts",
+			"src/server/registry.ts",
+			"src/server/e2ee.ts",
+			"src/server/index.ts",
+			"src/shared/constants.ts",
+			"src/mobile/persist.ts",
+			"src/mobile/main.ts",
+			"scripts/assert-node.mjs",
+			"scripts/release.mjs"
+		],
+		"ignoreUnknown": true
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"lineWidth": 120
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"style": {
+				"noNonNullAssertion": "off"
+			},
+			"suspicious": {
+				"noExplicitAny": "off",
+				"noImplicitAnyLet": "off"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double",
+			"semicolons": "always"
+		}
+	}
+}

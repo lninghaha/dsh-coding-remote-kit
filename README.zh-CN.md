@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.1** · DeepSeek Harness `0.1.0-rc.6` · GitHub `dsh-coding-remote-kit`
+**v0.5.2** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **面向 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) 的远程手机访问插件。** 把手机配对到已经在跑 `dsh web` 的桌面，观察会话并做一组窄写操作——不必把完整 Web API 暴露出去。
 
@@ -17,7 +17,7 @@
 
 ---
 
-> **升级：** 按 [`INSTALL.md`](INSTALL.md) 的版本化步骤操作。`0.5.1` 修复 Settings 安装 cloudflared 后无需重载即可 Start；`0.5.0` 增加连接诊断、Quick Tunnel 免责勾选与 cloudflared 钉死校验；保留 profile、存储与配对文件，所有选定插件更新后再重启一次现有 DSH Web 进程。`dsh-coding-oauth-core@0.1.0` 仍是 Hub/Subscription 的共享 npm 依赖，不是需要单独安装的 DSH 插件。
+> **升级：** 按 [`INSTALL.md`](INSTALL.md) 的版本化步骤操作。`0.5.2` 增加 CSP/配对加固与 sessionStorage 密钥；`0.5.1` 修复 Settings 安装 cloudflared 后无需重载即可 Start；`0.5.0` 增加连接诊断、Quick Tunnel 免责勾选与 cloudflared 钉死校验；保留 profile、存储与配对文件，所有选定插件更新后再重启一次现有 DSH Web 进程。`dsh-coding-oauth-core@0.1.0` 仍是 Hub/Subscription 的共享 npm 依赖，不是需要单独安装的 DSH 插件。
 
 ---
 
@@ -31,7 +31,7 @@
 
 | | 请用这个 | 说明 |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.5.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.1` |
+| npm | `dsh-coding-remote-kit@0.5.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | 旧 checkout 名 `dsh-mobile-remote` |
 | Cordis 插件 id | `mobile-remote` | 不变 |
 | 设置页 HTTP | `/api/mobile-remote/*` | 不变 |
@@ -88,7 +88,7 @@
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
 ```
 
 然后由**操作者**在自己的时间窗重启现有 DSH Web 进程。打开 **设置 → 移动远程**，生成配对 offer，手机扫码（或手输 PIN）。
@@ -99,8 +99,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.5.1.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.1.tgz"
+cp dsh-coding-remote-kit-0.5.2.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tgz"
 ```
 
 不要对本工作树执行 `dsh plugin add ./`。pnpm 11 会把某些 `file:` tarball 解析成 `link:` 源码树，入口 import 失败会拖死整个 GUI。
@@ -127,7 +127,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.1.tg
 
 ## 安装
 
-需要 DeepSeek Harness `0.1.0-rc.6`（钉死）与 Node.js 22.19+。完整步骤、配对与隧道说明见 [INSTALL.md](INSTALL.md)。
+需要 DeepSeek Harness `0.1.1-rc.2`（钉死）与 Node.js 22.19+。完整步骤、配对与隧道说明见 [INSTALL.md](INSTALL.md)。
 
 开发：
 
@@ -191,7 +191,7 @@ pnpm test:sandbox                         # Dockerfile 的 check / isolated-inst
 4. 管理面：回环 + Host + CSRF。
 5. 不削弱 `dsh web` `/api`，不抢 `api-proxy` provider。
 
-**v0 诚实边界：** 裸 LAN 上 `/m` 的首次 HTTP 下发可被 MITM。优先走 overlay VPN。
+**v0 诚实边界：** 裸 LAN 上 `/m` 的首次 HTTP 下发可被 MITM。优先走 overlay VPN。`/m` 响应带 Content-Security-Policy（`script-src 'self'`、`frame-ancestors 'none'`），用来收窄页面加载后的注入面，并不能关闭首次下发被替换的缺口。
 
 禁止事项：
 

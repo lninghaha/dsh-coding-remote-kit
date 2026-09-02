@@ -5,8 +5,8 @@
  * both transports share the same E2EE + RPC state machine.
  */
 
-import { WebSocket, type RawData } from "ws";
-import { FrameQueue } from "./backpressure.js";
+import { type RawData, WebSocket } from "ws";
+import { base64Decode, base64Encode, utf8Decode, utf8Encode } from "../shared/base64.js";
 import {
 	CLOSE_AUTH_FAILED,
 	CLOSE_DECRYPT_FAILURES,
@@ -14,17 +14,17 @@ import {
 	CLOSE_OVERLOAD,
 	DIRECTION_MOBILE_TO_SERVER,
 	DIRECTION_SERVER_TO_MOBILE,
-	HEARTBEAT_INTERVAL_MS,
 	HANDSHAKE_TIMEOUT_MS,
+	HEARTBEAT_INTERVAL_MS,
 	MAX_DECRYPT_FAILURES,
 	PAYLOAD_KIND_TEXT,
 } from "../shared/constants.js";
-import { base64Decode, base64Encode, utf8Decode, utf8Encode } from "../shared/base64.js";
-import { buildE2eeError, validateAuth } from "../shared/handshake.js";
 import { open, seal } from "../shared/frame.js";
-import { dispatchRpc } from "./rpc.js";
-import { ServerHandshake, type ResolveToken, type ServerSessionKeys } from "./e2ee.js";
+import { buildE2eeError, validateAuth } from "../shared/handshake.js";
+import { FrameQueue } from "./backpressure.js";
+import { type ResolveToken, ServerHandshake, type ServerSessionKeys } from "./e2ee.js";
 import type { AuditLogger } from "./registry.js";
+import { dispatchRpc } from "./rpc.js";
 import type { Subscriber, UpstreamHub } from "./upstream.js";
 
 export interface ConnectionLogger {
@@ -45,6 +45,8 @@ export interface ConnectionDeps {
 	admit(): boolean;
 	release(): void;
 	readonly now?: () => number;
+	/** Fired when the handshake/auth path rejects the peer (rate-limit accounting). */
+	onAuthFailure?(): void;
 }
 
 export interface MobileConnectionHandle {
@@ -163,7 +165,14 @@ class MobileConnection implements MobileConnectionHandle {
 		if (this.#keys === null) throw new Error("session keys are not ready");
 		const counter = this.#sendCounter[PAYLOAD_KIND_TEXT] ?? 0;
 		this.#sendCounter[PAYLOAD_KIND_TEXT] = counter + 1;
-		return seal(this.#keys.serverToMobileKey, this.#keys.sessionId, DIRECTION_SERVER_TO_MOBILE, PAYLOAD_KIND_TEXT, counter, payload);
+		return seal(
+			this.#keys.serverToMobileKey,
+			this.#keys.sessionId,
+			DIRECTION_SERVER_TO_MOBILE,
+			PAYLOAD_KIND_TEXT,
+			counter,
+			payload,
+		);
 	}
 
 	#sendEncrypted(value: unknown): void {
@@ -250,6 +259,7 @@ class MobileConnection implements MobileConnectionHandle {
 		if (this.#state === "awaiting-auth") {
 			this.#sendEncrypted(buildE2eeError("bad_auth"));
 		}
+		this.#deps.onAuthFailure?.();
 		this.#ws.close(CLOSE_AUTH_FAILED, "bad auth");
 	}
 
@@ -257,6 +267,7 @@ class MobileConnection implements MobileConnectionHandle {
 		const result = this.#handshake.start(message);
 		if (!result.ok) {
 			this.#sendPlain(buildE2eeError("bad_auth"));
+			this.#deps.onAuthFailure?.();
 			this.#ws.close(CLOSE_AUTH_FAILED, "bad auth");
 			return;
 		}
@@ -275,6 +286,7 @@ class MobileConnection implements MobileConnectionHandle {
 		const result = this.#handshake.finish(message);
 		if (!result.ok) {
 			this.#sendEncrypted(buildE2eeError(result.code === "unauthorized" ? "unauthorized" : "bad_auth"));
+			this.#deps.onAuthFailure?.();
 			this.#ws.close(CLOSE_AUTH_FAILED, result.code ?? "bad auth");
 			return;
 		}

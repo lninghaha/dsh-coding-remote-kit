@@ -13,18 +13,16 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join, normalize, sep } from "node:path";
-import { WebSocket, WebSocketServer } from "ws";
-import {
-	CLOSE_OVERLOAD,
-	MAX_CONNECTIONS,
-	MAX_WS_PAYLOAD,
-} from "../shared/constants.js";
+import { type WebSocket, WebSocketServer } from "ws";
+import { CLOSE_OVERLOAD, MAX_CONNECTIONS, MAX_WS_PAYLOAD } from "../shared/constants.js";
+import { MOBILE_SHELL_SECURITY_HEADERS } from "../shared/mobile-shell-headers.js";
+import { isCompletePairCode, normalizePairCode } from "../shared/pair-code.js";
+import { AuthFailureLimiter } from "./auth-failure-limiter.js";
 import { acceptMobileSocket, type ConnectionDeps } from "./connection.js";
 import { resolveDeviceToken } from "./e2ee.js";
 import type { AuditLogger, DeviceRegistry, OfferRegistry } from "./registry.js";
-import { isCompletePairCode, normalizePairCode } from "../shared/pair-code.js";
 import { readJsonBody, writeJson } from "./security.js";
 import type { UpstreamHub } from "./upstream.js";
 
@@ -77,6 +75,7 @@ export function cacheControlForMobile(relative: string): string {
 
 export class MobileDataPlane {
 	readonly #deps: DataPlaneDeps;
+	readonly #authFailures = new AuthFailureLimiter();
 	#server: Server | null = null;
 	#wss: WebSocketServer | null = null;
 	#host: string;
@@ -97,6 +96,12 @@ export class MobileDataPlane {
 
 	get connectionCount(): number {
 		return this.#connections;
+	}
+
+	/** Port the listener is bound to (`null` before `listen`). */
+	get boundPort(): number | null {
+		const address = this.#server?.address();
+		return typeof address === "object" && address !== null ? address.port : null;
 	}
 
 	get serverKeyPair(): DataPlaneDeps["serverKeyPair"] {
@@ -131,7 +136,7 @@ export class MobileDataPlane {
 	#serveStatic(request: IncomingMessage, response: ServerResponse): void {
 		const url = new URL(request.url ?? "/", "http://localhost");
 		const pathname = url.pathname;
-		const headers = { "cache-control": "no-store", "x-content-type-options": "nosniff" };
+		const headers = { "cache-control": "no-store", ...MOBILE_SHELL_SECURITY_HEADERS };
 		if (request.method !== "GET" && request.method !== "HEAD") {
 			response.writeHead(405, headers);
 			response.end();
@@ -197,11 +202,15 @@ export class MobileDataPlane {
 		}
 		const body = await readJsonBody(request, response);
 		if (body === undefined) return;
-		const record = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+		const record =
+			typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
 		const raw = typeof record?.code === "string" ? record.code : "";
 		const code = normalizePairCode(raw);
 		if (!isCompletePairCode(code)) {
-			writeJson(response, 400, { ok: false, error: { code: "invalid_params", message: "invalid pairing code format" } });
+			writeJson(response, 400, {
+				ok: false,
+				error: { code: "invalid_params", message: "invalid pairing code format" },
+			});
 			return;
 		}
 		const ip = request.socket.remoteAddress ?? "unknown";
@@ -209,14 +218,14 @@ export class MobileDataPlane {
 			writeJson(response, 429, { ok: false, error: { code: "rate_limited", message: "too many attempts" } });
 			return;
 		}
-		const offer = this.#deps.offers.findByPairCode(code, this.#now());
+		const offer = this.#deps.offers.claimByPairCode(code, this.#now());
 		if (offer === null) {
 			this.#claimFail(ip);
 			this.#deps.audit.log({ event: "pair_code_miss" }, this.#now());
 			writeJson(response, 404, { ok: false, error: { code: "not-found", message: "pairing code invalid or expired" } });
 			return;
 		}
-		this.#deps.audit.log({ event: "pair_code_hit", detail: { offerId: offer.offerId } }, this.#now());
+		this.#deps.audit.log({ event: "pair_code_claimed", detail: { offerId: offer.offerId } }, this.#now());
 		writeJson(response, 200, { ok: true, offer });
 	};
 
@@ -245,7 +254,7 @@ export class MobileDataPlane {
 		this.#deps.audit.log({ event: "connection_close" }, this.#now());
 	}
 
-	connectionDeps(): ConnectionDeps {
+	connectionDeps(remoteAddress = "unknown"): ConnectionDeps {
 		return {
 			serverKeyPair: this.serverKeyPair,
 			resolveToken: (token) => this.resolveToken(token),
@@ -256,15 +265,23 @@ export class MobileDataPlane {
 			admit: () => this.admit(),
 			release: () => this.release(),
 			now: () => this.#now(),
+			onAuthFailure: () => {
+				this.#authFailures.recordFailure(remoteAddress, this.#now());
+			},
 		};
 	}
 
-	#onConnection = (ws: WebSocket): void => {
+	#onConnection = (ws: WebSocket, request: IncomingMessage): void => {
+		const remoteAddress = request.socket.remoteAddress ?? "unknown";
+		if (this.#authFailures.blocked(remoteAddress, this.#now())) {
+			ws.close(CLOSE_OVERLOAD, "auth rate limited");
+			return;
+		}
 		if (this.#connections >= MAX_CONNECTIONS) {
 			ws.close(CLOSE_OVERLOAD, "connection limit");
 			return;
 		}
-		acceptMobileSocket(ws, this.connectionDeps()).start();
+		acceptMobileSocket(ws, this.connectionDeps(remoteAddress)).start();
 	};
 
 	/** Listen on `host` (closing any existing listener first). */

@@ -4,7 +4,7 @@
 
 This document describes the internal architecture of `dsh-coding-remote-kit`. It is the source for the technical notes in `README.md` and is intended for contributors and maintainers.
 
-Host pin: `@deepseek-ai/dsh@0.1.0-rc.6`. Changing the pin requires a new ADR (`docs/01-mvp-scope.md`).
+Host pin: `@deepseek-ai/dsh@0.1.1-rc.2`. Changing the pin requires a new ADR (`docs/01-mvp-scope.md`). `0.1.2-alpha` remains an unverified candidate.
 
 ## 1. Dual plane
 
@@ -15,7 +15,7 @@ Harness webServer (loopback, typically 127.0.0.1:3080)
        OwnerRequestPolicy: loopback/SSH or complete trusted-HTTPS proxy proof
 
 Dedicated data plane (default 127.0.0.1:6879, may widen to 0.0.0.0)
-  ├─ GET  /m, /m/*     static mobile page (cache-control: no-store)
+  ├─ GET  /m, /m/*     static mobile page (no-store; CSP + `frame-ancestors 'none'`)
   ├─ POST /m/claim     pairing PIN → offer (rate-limited)
   └─ WS   /m/ws        E2EE handshake + allowlisted RPC
 ```

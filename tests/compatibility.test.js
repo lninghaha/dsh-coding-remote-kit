@@ -34,7 +34,7 @@ test("host compatibility adapter accepts injected DSH services and reports their
 		webServer: resolved.diagnostics.webServer,
 	});
 	assert.equal(resolved.diagnostics.coreAbi, "dsh-mobile-remote/v1");
-	assert.equal(resolved.diagnostics.verifiedBom.id, "dsh-0.1.0-rc.6");
+	assert.equal(resolved.diagnostics.verifiedBom.id, "dsh-0.1.1-rc.2");
 	assert.equal(resolved.diagnostics.capabilities.webServer.state, "available");
 	assert.equal(resolved.diagnostics.status, "healthy");
 });
@@ -104,11 +104,13 @@ test("only webServer is hard-injected and entry failures do not escape", async (
 });
 
 test("status compatibility BOM remains explicit and finite", () => {
-	assert.deepEqual(Object.keys(statusGetResult()).sort(), [
+	const status = statusGetResult();
+	assert.deepEqual(Object.keys(status).sort(), [
 		"deviceScope",
 		"dshVersion",
 		"minCompatibleMobileVersion",
 		"pluginVersion",
 		"protocolVersion",
 	]);
+	assert.equal(status.dshVersion, "0.1.1-rc.2");
 });

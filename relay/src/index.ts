@@ -1,11 +1,19 @@
 import { RELAY_PROTOCOL } from "../../src/shared/relay.ts";
 import { PLUGIN_VERSION } from "../../src/shared/constants.ts";
+import { MOBILE_SHELL_SECURITY_HEADERS } from "../../src/shared/mobile-shell-headers.ts";
 import { json, RendezvousRoom, type RelayEnv } from "./rendezvous.ts";
 
 export { RendezvousRoom };
 
 function room(env: RelayEnv) {
 	return env.RENDEZVOUS.get(env.RENDEZVOUS.idFromName("singleton"));
+}
+
+/** Mirror the data plane's shell headers on Worker-served `/m` assets. */
+function withMobileShellHeaders(asset: Response): Response {
+	const headers = new Headers(asset.headers);
+	for (const [name, value] of Object.entries(MOBILE_SHELL_SECURITY_HEADERS)) headers.set(name, value);
+	return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers });
 }
 
 export default {
@@ -41,7 +49,7 @@ export default {
 					headers: { "cache-control": "no-store" },
 				});
 			}
-			return env.ASSETS.fetch(request);
+			return withMobileShellHeaders(await env.ASSETS.fetch(request));
 		}
 		return json({ ok: false, error: { code: "not-found", message: "not found" } }, 404);
 	},

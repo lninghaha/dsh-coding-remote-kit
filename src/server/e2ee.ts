@@ -6,26 +6,22 @@
  * callback, keeping the crypto independent of the device/offer registries.
  */
 
-import {
-	HANDSHAKE_CONTEXT,
-	MIN_COMPATIBLE_MOBILE_VERSION,
-	MOBILE_PROTOCOL_VERSION,
-} from "../shared/constants.js";
 import { utf8Encode } from "../shared/base64.js";
+import { HANDSHAKE_CONTEXT, MIN_COMPATIBLE_MOBILE_VERSION, MOBILE_PROTOCOL_VERSION } from "../shared/constants.js";
 import {
+	type AuthenticatedMessage,
 	buildAuthenticated,
 	buildReady,
 	computeSharedSecret,
 	computeTranscriptHash,
-	validateAuth,
-	validateHello,
-	type AuthenticatedMessage,
 	type HelloMessage,
 	type ReadyMessage,
+	validateAuth,
+	validateHello,
 } from "../shared/handshake.js";
 import { constantTimeEqual } from "../shared/validation.js";
 import { deriveSessionKeysNode, randomBytes, sha256Hex } from "./crypto.js";
-import type { DeviceRecord, OfferRegistry, DeviceRegistry, AuditLogger } from "./registry.js";
+import type { AuditLogger, DeviceRecord, DeviceRegistry, OfferRegistry } from "./registry.js";
 
 export type TokenResolution =
 	| { readonly kind: "ok"; readonly device: DeviceRecord }
@@ -55,6 +51,11 @@ export function resolveDeviceToken(
 	if (existing !== null) {
 		if (existing.revokedAt !== undefined) {
 			deps.audit.log({ event: "auth_failed", detail: { reason: "revoked" } }, now);
+			return { kind: "unauthorized" };
+		}
+		if (deps.registry.isIdleExpired(existing, now)) {
+			deps.registry.revoke(existing.deviceId, now);
+			deps.audit.log({ event: "auth_failed", detail: { reason: "idle_expired" } }, now);
 			return { kind: "unauthorized" };
 		}
 		return { kind: "ok", device: existing };
@@ -106,7 +107,9 @@ export class ServerHandshake {
 	}
 
 	/** Handle a plaintext e2ee_hello; return the ready message or a bad_auth. */
-	start(hello: unknown): { readonly ok: true; readonly ready: ReadyMessage } | { readonly ok: false; readonly code: "bad_auth" } {
+	start(
+		hello: unknown,
+	): { readonly ok: true; readonly ready: ReadyMessage } | { readonly ok: false; readonly code: "bad_auth" } {
 		try {
 			const parsed = validateHello(hello);
 			this.#hello = parsed.message;

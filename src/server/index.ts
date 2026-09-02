@@ -1,18 +1,18 @@
-import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { base64Encode } from "../shared/base64.js";
+import { installOfficialCloudflared } from "./cloudflared-install.js";
 import { type RuntimeConfig, RuntimeConfigSchema } from "./config.js";
-import { createOwnerRequestPolicy, safeguardOwnerRequestPolicy, type OwnerRequestDiagnostic } from "./security.js";
-import { resolveHostCompatibility, type MobileRemoteHostContext } from "./context.js";
+import { type MobileRemoteHostContext, resolveHostCompatibility } from "./context.js";
 import { MobileDataPlane } from "./dataplane.js";
 import { loadOrCreateServerKey } from "./keys.js";
 import { networkCandidates } from "./net.js";
 import { AuditLogger, DeviceRegistry, OfferRegistry } from "./registry.js";
-import { ensureStorageDir } from "./storage.js";
-import { registerManagementRoutes } from "./routes.js";
-import { installOfficialCloudflared } from "./cloudflared-install.js";
-import { CloudflareQuickTunnel } from "./tunnel.js";
 import { RendezvousClient } from "./relay.js";
+import { registerManagementRoutes } from "./routes.js";
+import { createOwnerRequestPolicy, type OwnerRequestDiagnostic, safeguardOwnerRequestPolicy } from "./security.js";
+import { ensureStorageDir } from "./storage.js";
+import { CloudflareQuickTunnel } from "./tunnel.js";
 import { createUpstreamHub } from "./upstream.js";
 
 export const name = "mobile-remote";
@@ -42,7 +42,9 @@ export async function apply(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 	} catch (error) {
 		const kind = error instanceof Error ? error.name : "error";
 		try {
-			ctx.logger.error(`mobile-remote failed to load safely (${kind}); no compatibility exception escaped the plugin entry`);
+			ctx.logger.error(
+				`mobile-remote failed to load safely (${kind}); no compatibility exception escaped the plugin entry`,
+			);
 		} catch {
 			// Logging is host-controlled; it must not turn a recovered load failure into a fatal one.
 		}
@@ -158,13 +160,12 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 		persistFile: join(storageDirectory, "relay.json"),
 		logger,
 		offers,
-		connectionDeps: () => dataPlane.connectionDeps(),
+		connectionDeps: () => dataPlane.connectionDeps("relay"),
 	});
 	cleanupSteps.push(() => rendezvous.stop());
 
 	// Startup bind: keep LAN reachability across restarts for active devices.
-	const startBind =
-		registry.hasActiveDevice() && registry.networkReach === "lan" ? ALL_INTERFACES : config.bind;
+	const startBind = registry.hasActiveDevice() && registry.networkReach === "lan" ? ALL_INTERFACES : config.bind;
 	try {
 		await dataPlane.listen(startBind);
 		logger.info(`mobile-remote data plane listening on ${dataPlane.host}:${String(config.port)}`);
