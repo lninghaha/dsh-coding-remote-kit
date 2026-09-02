@@ -4,7 +4,7 @@
  * Does not touch operator dsh-web / ports 3080|6879.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, cpSync, rmSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, cpSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ALPHA = process.env.DSH_ALPHA_VERSION || "0.1.2-alpha.5";
 const WEB_PORT = Number(process.env.WEB_PORT || 18382);
+const DATA_PORT = Number(process.env.DATA_PORT || 16879);
 const CLI_PREFIX = process.env.DSH_CLI_PREFIX || `/tmp/dsh-cli-${ALPHA}`;
 const DSH_HOME = process.env.DSH_HOME || `/tmp/dsh-verify-remote-kit-${ALPHA}`;
 const PKG = "@deepseek-ai/dsh";
@@ -37,7 +38,8 @@ async function waitHttp(url, timeoutMs = 90_000) {
 log(`== smoke ${PKG}@${ALPHA} remote-kit ==`);
 log(`DSH_HOME=${DSH_HOME}`);
 log(`WEB_PORT=${WEB_PORT}`);
-if (WEB_PORT === 3080 || WEB_PORT === 6879) throw new Error("refusing operator ports 3080/6879");
+if (WEB_PORT === 3080 || WEB_PORT === 6879 || DATA_PORT === 6879) throw new Error("refusing operator ports 3080/6879");
+log(`DATA_PORT=${DATA_PORT}`);
 
 mkdirSync(CLI_PREFIX, { recursive: true });
 log("installing prefix CLI…");
@@ -59,22 +61,34 @@ cpSync(tgz, destTgz);
 const env = { ...process.env, DSH_HOME, HOME: homedir() };
 run(dshBin, ["plugin", "--profile", "web", "add", destTgz], { env });
 
+// Avoid colliding with operator/other smokes on the default data-plane 6879.
+const patchPath = join(DSH_HOME, "profiles", "web", "node_modules", "dsh-coding-remote-kit", "cordis.patch.yml");
+if (!existsSync(patchPath)) throw new Error(`missing ${patchPath}`);
+const patched = readFileSync(patchPath, "utf8").replace(/port:\s*6879/, `port: ${DATA_PORT}`);
+if (!patched.includes(`port: ${DATA_PORT}`)) throw new Error("failed to retarget data-plane port");
+writeFileSync(patchPath, patched);
+log(`retargeted mobile-remote data plane -> ${DATA_PORT}`);
+
 const logFile = join(DSH_HOME, "smoke-web.log");
-const out = createWriteStream(logFile);
+const logFd = openSync(logFile, "w");
 const child = spawn(dshBin, ["web", "--port", String(WEB_PORT), "--no-open"], {
 	env,
-	stdio: ["ignore", out, out],
+	stdio: ["ignore", logFd, logFd],
 });
 
 let failed = false;
 try {
-	const base = `http://127.0.0.1:${WEB_PORT}`;
-	await waitHttp(`${base}/`);
-	const mobile = await fetch(`${base}/m/`, { redirect: "manual" });
+	const webBase = `http://127.0.0.1:${WEB_PORT}`;
+	await waitHttp(`${webBase}/`);
+	log(`GET / => web up on ${WEB_PORT}`);
+	// Mobile shell + CSP live on the data-plane port, not dsh web.
+	const dataBase = `http://127.0.0.1:${DATA_PORT}`;
+	await waitHttp(`${dataBase}/m/`);
+	const mobile = await fetch(`${dataBase}/m/`, { redirect: "manual" });
 	const csp = mobile.headers.get("content-security-policy") || "";
-	log(`GET /m/ => ${mobile.status}; CSP=${csp.slice(0, 180)}`);
-	if (!/frame-ancestors/i.test(csp)) throw new Error("expected CSP frame-ancestors on /m/");
-	log("PASS: /m/ CSP present");
+	log(`GET data-plane /m/ => ${mobile.status}; CSP=${csp.slice(0, 180)}`);
+	if (!/frame-ancestors/i.test(csp)) throw new Error("expected CSP frame-ancestors on data-plane /m/");
+	log("PASS: data-plane /m/ CSP present");
 	log("NOTE: claim/WS limiter remain manual follow-ups when a live offer exists.");
 } catch (error) {
 	failed = true;
@@ -82,7 +96,7 @@ try {
 } finally {
 	child.kill("SIGTERM");
 	await new Promise((r) => child.on("exit", r));
-	out.close();
+	closeSync(logFd);
 }
 if (failed) process.exit(1);
 log(`OK — comment on GitHub #12 (log: ${logFile})`);
