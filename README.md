@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.2** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.6.0 candidate** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **Remote phone access for [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Pair a phone to the desktop that already runs `dsh web`, then observe sessions and perform a narrow set of writes — without exposing the full Web API.
 
@@ -17,7 +17,7 @@
 
 ---
 
-> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). `0.5.2` adds CSP/pairing hardening and sessionStorage secrets; `0.5.1` fixes install→start without reloading `dsh-web` after Settings installs cloudflared; `0.5.0` added connection diagnostics, Quick Tunnel disclaimer gating, and pinned cloudflared verify; keep profile/storage/pairing files and restart one existing DSH Web process only after all selected plugins are updated. `dsh-coding-oauth-core@0.1.0` remains the Hub/Subscription shared npm dependency, not a separate DSH plugin.
+> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). `0.6.0` candidate closes only the revoked device's live connection, restores unresolved inbox items after mux recovery, and keeps drafts tab-scoped by host/device/session. E2EE v1 fields, tokens, and storage paths remain unchanged.
 
 ---
 
@@ -25,13 +25,17 @@ Community plugin. **Not affiliated with, and not endorsed by, DeepSeek.** Produc
 
 Read [`AGENTS.md`](AGENTS.md) before changing this repo: **do not restart the production DSH Web process or its local service wrapper yourself.** Prepare the tarball; the operator restarts it through the machine's own process manager.
 
+## 0.6.0 candidate: recovery and approvals
+
+This checkout builds a **0.6.0 candidate tarball**, not an npm release. Use the tarball instructions in [INSTALL.md](INSTALL.md); the npm examples retain the baseline version. Revocation closes that device’s LAN, tunnel and relay sessions; authenticated activity refreshes the existing idle clock. Drafts, the current session and reading position stay in sessionStorage, scoped by host/device/session. Network recovery or returning to the foreground can re-handshake; an uncertain send is preserved for checking and is never automatically resent. A new tab still requires pairing. Opt-in notifications observe pending requests without a connected phone, preserve original RPC identities and suppress successful duplicate deliveries on mux replay. A missing notification target is explained without claiming it is resolved; late replay can still locate it.
+
 ## Names
 
 Developed first as GitHub `dsh-mobile-remote`. The npm name **`dsh-mobile-remote` is a different project** (a WeChat remote-control plugin). This plugin publishes as `dsh-coding-remote-kit`.
 
 | | Use this | Notes |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.5.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.2` |
+| npm | `dsh-coding-remote-kit@0.5.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.1` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | previous checkout name `dsh-mobile-remote` |
 | Cordis plugin id | `mobile-remote` | unchanged |
 | Settings HTTP | `/api/mobile-remote/*` | unchanged |
@@ -88,7 +92,7 @@ Do **not** `dsh plugin add dsh-mobile-remote` — that installs the unrelated We
 ## Quick start
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
+dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
 ```
 
 Then the **operator** restarts the existing `dsh web` process in their own window. Open **Settings → Mobile Remote**, create a pairing offer, scan the QR (or type the PIN) on the phone.
@@ -99,8 +103,8 @@ From a source checkout (development):
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.5.2.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tgz"
+cp dsh-coding-remote-kit-0.6.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.6.0.tgz"
 ```
 
 Do not `dsh plugin add ./` from this working tree. pnpm 11 treats some `file:` tarball paths as `link:` source, and a bad entry import takes down the whole GUI.

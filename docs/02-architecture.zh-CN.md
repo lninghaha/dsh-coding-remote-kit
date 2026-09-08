@@ -42,7 +42,7 @@ MVP 路线：**B — 语义窄 RPC + 双平面**（`docs/01-mvp-scope.md`）。�
        └─ 手机侧 X25519 密钥
             └─ WebSocket /m/ws
                  e2ee_hello → transcript → session keys（secretbox）
-                      └─ status.get → session.list / subscribe / respond / prompt
+                      └─ authenticated version gate → session.list / subscribe / respond / prompt
 
 src/server
   ├─ DeviceRegistry     devices.json（只存 token 的 SHA-256）
@@ -165,3 +165,13 @@ v0 诚实边界：裸 LAN 上 **`/m` 的首次 HTTP 下发**可被 MITM。页面
 - 配置默认：`enabled: true`，`bind: "127.0.0.1"`，`port: 6879`。
 - 配对广告 LAN 候选且没有公网隧道 / 会合中继时，数据面会 widen 到 `0.0.0.0`。
 - 线协议版本：`MOBILE_PROTOCOL_VERSION = 1`（`src/shared/constants.ts`）。
+
+## 可靠性与待办恢复（0.6.0 候选）
+
+数据面统一按 deviceId 管理 LAN、隧道和 relay 的连接句柄。撤销同步移除订阅并关闭对应连接；RPC 准入以及推送、异步回复发送前复查授权。已认证心跳和业务请求刷新原闲置时钟，不复活撤销或过期记录。
+
+手机输入框由带修订标识的标签页状态管理，不再用旧 DOM 覆盖已确认的草稿。发送仅清除对应确认版本。重新握手后恢复当前会话、原先加载的历史范围和滚动位置；视图代次隔离旧历史响应的成功、失败和滚动更新；宿主 seq 合并排序并去重。未知发送结果不自动重发。使用已认证版本元数据在业务 RPC 前校验；授权、公钥和版本失败停止自动恢复。
+
+启用通知时在数据面就绪后启动共享监听，无需手机先连接。共享 mux 按 DSH 0.1.1-rc.2 的回放重建进程内审批/提问快照，保留原 rpcId；主机订阅接收待办增量，会话正文仍按会话订阅。事件流重建发送 inbox.reset；客户端兼容缺少可选快照的旧服务端，并丢弃被重置或 resolved 增量取代的旧快照。
+
+通知同时去重发送中与已成功投递的身份；ntfy JSON 向服务根路径发送，topic/click 在请求体。通知目标跨配对与恢复保留。由于 mux 没有回放结束帧，暂时缺失不能判断已解决；明确解决时显示说明，迟到待办仍可定位可操作卡片。

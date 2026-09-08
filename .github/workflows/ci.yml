@@ -32,3 +32,7 @@ jobs:
             --build-arg NODE_VERSION=${{ matrix.node }} \
             --tag test-dsh-mobile-remote:install-${{ matrix.node }} \
             .
+      - name: Browser mobile recovery verification
+        run: |
+          E2E_IMAGE=test-dsh-mobile-remote:verify-${{ matrix.node }} \
+            bash scripts/e2e-mobile-scroll.sh

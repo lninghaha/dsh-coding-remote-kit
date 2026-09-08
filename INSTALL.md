@@ -4,7 +4,7 @@
 
 npm 包名是 **`dsh-coding-remote-kit`**。GitHub：[`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit)。npm 上的 `dsh-mobile-remote` 是另一个微信插件，不要装那个。
 
-当前版本 **`0.5.2`**。
+当前版本 **`0.6.0`**（候选，尚未 npm 发布）。本轮升级使用仓库外的 `dsh-coding-remote-kit-0.6.0.tgz`；下方 npm 示例保留基线版本。
 
 ## 前置条件
 
@@ -17,24 +17,24 @@ npm 包名是 **`dsh-coding-remote-kit`**。GitHub：[`lninghaha/dsh-coding-remo
 
 ```bash
 # 普通用户：当前 npm 发布版
-dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
+dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
 
 # 开发者：先过 Docker 沙箱门禁（不碰本机 3080 / $DSH_HOME）
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.5.2.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tgz"
+cp dsh-coding-remote-kit-0.6.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.6.0.tgz"
 ```
 
 ## 升级注意事项
 
 - 本版按已验证的 DSH BOM `@deepseek-ai/dsh@0.1.1-rc.2` 发布。`0.1.2-alpha` 仍是候选版本，尚未纳入本版兼容声明。升级前先确认宿主版本，不要用 `*` 或未验证的宽泛范围替代精确版本。
 - 从钉在 `0.1.0-rc.6` 的旧包升级：先把宿主升到 `0.1.1-rc.2`，再安装本插件；`status.get` 的 `dshVersion` 现在与 BOM 一致。不重置配对设备、存储或凭据。
-- 从 `0.5.1` 升级到 `0.5.2`：DSH pin 对齐 `0.1.1-rc.2`；`/m` 增加 CSP；配对 PIN 一次性 claim；WS 认证失败按 IP 熔断；空闲设备 30 天过期；手机密钥/offer 改 sessionStorage。不重置已配对设备（需在同一标签页内恢复会话）。
+- 从 `0.5.x` 升级到 `0.6.0`：撤销会立即关闭该设备的 LAN/direct/tunnel/relay 连接；待办审批/提问会在 mux 重建后重放；草稿、会话和滚动仅保存在本标签页，按 host 公钥、deviceId、sessionId 隔离。ntfy JSON 推送改为根路径 POST，topic 在请求体。E2EE 四字段握手、令牌和存储路径不变。
 - 从 `0.5.0` 升级到 `0.5.1`：每次 Start 会重新解析 `cloudflared`，`binaryOk` 按实时钉死校验；Settings 安装二进制后无需重载即可 Start。不重置配对设备、存储或凭据。
 - 从 `0.4.x` 升到 `0.5.x`：`0.5.0` 新增连接诊断、公网隧道免责勾选与 cloudflared 钉死校验。当前请装 `0.5.1`（含上述能力）。不重置配对设备、存储或凭据。若仍在 `0.4.0`，请先经 `0.4.1`（或直接装 `0.5.1`）以避开严格 Cordis 注入检查下的启动失败。
-- 在现有 **web profile** 中安装 `dsh-coding-remote-kit@0.5.2`（或对应 tarball），不要把 git checkout 直接作为插件源；这样可以避免 `link:` 源码树和旧包并存。
+- 在现有 **web profile** 中安装 `dsh-coding-remote-kit@0.5.1`（或对应 tarball），不要把 git checkout 直接作为插件源；这样可以避免 `link:` 源码树和旧包并存。
 - 升级不会重置 `$DSH_HOME/storages/mobile-remote/`、已配对设备或凭据。安装完成后由操作者在维护窗口重启一次现有 DSH Web 进程，不要另起第二个实例。
 - 如果同时升级 Hub 与 Subscription，先确保 npm 上的 `dsh-coding-oauth-core@0.1.1` 已可解析，再依次安装 Hub `1.11.2` 与 Subscription `0.6.5`；三包都更新后只重启一次。Core 是共享的 npm 依赖，不是需要单独 `dsh plugin add` 的 DSH 插件。共装时 Hub 负责完整界面，Subscription 收敛为状态入口。
 - 回滚时只替换插件包版本，保留 profile、存储和凭据；先查看设置页兼容性诊断，只有诊断明确要求时才重新配对。不要为回滚删除 `storages/mobile-remote`。
@@ -162,3 +162,12 @@ curl -sS -m 6 -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3080/
 ```
 
 不要为了「让插件生效」去杀 3080 上的进程。
+
+## 0.6.0 候选验收与升级边界
+
+- 使用同步后的锁文件，在 Docker 中运行 `pnpm test:sandbox`；浏览器另运行 `bash scripts/e2e-mobile-scroll.sh`。脚本仅编排 Docker，不在宿主安装依赖或执行测试。可用 `E2E_IMAGE` 复用已验证镜像，`E2E_ARTIFACT_DIR` 导出截图与 JSON。
+- 候选仍使用 DSH `0.1.1-rc.2` BOM、原 E2EE v1/令牌和存储路径；`0.1.2-alpha` 的 smoke 是隔离兼容探测，不代表升级该 BOM。
+- 草稿、当前会话和阅读位置仅保留在本标签页。关闭标签页或清除浏览器会话存储后需要重新配对；发送结果未知时先核对会话，不自动补发。
+- 通知默认关闭。启用后监听不依赖手机连接；进程内重连对已成功投递的审批去重，失败投递可在后续回放时重试。外部服务网络结果不明时不能承诺 exactly-once。
+- 上游 mux 没有“回放完成”帧。暂未找到通知目标时页面会提示核对宿主，并继续接收迟到回放；只有明确的 resolved 事件才表示已处理。
+- 完成 Docker 验收后再由操作者安排安装与重启窗口。候选不自动安装、不重启生产，也不自动创建发布标签或 npm 发布。回退使用原先保留的已验证包，并由操作者重启；无需重置设备存储。

@@ -42,7 +42,7 @@ Phone browser /m (src/mobile)
        └─ X25519 device key (generated on phone)
             └─ WebSocket /m/ws
                  e2ee_hello → transcript → session keys (secretbox)
-                      └─ status.get → session.list / subscribe / respond / prompt
+                      └─ authenticated version gate → session.list / subscribe / respond / prompt
 
 src/server
   ├─ DeviceRegistry     devices.json (token SHA-256 only)
@@ -165,3 +165,13 @@ Honest v0 boundary: the **first HTTP download of `/m`** on a raw LAN is MITM-abl
 - Config defaults: `enabled: true`, `bind: "127.0.0.1"`, `port: 6879`.
 - Pairing widens the data plane to `0.0.0.0` when advertising LAN candidates and no public tunnel / rendezvous is running.
 - Wire protocol version: `MOBILE_PROTOCOL_VERSION = 1` (`src/shared/constants.ts`).
+
+## Reliability and inbox recovery (0.6.0 candidate)
+
+The data plane owns device-indexed connection handles shared by LAN, tunnel and relay transports. Revocation synchronously disposes subscriptions and closes those handles. RPC admission and outgoing pushes/replies recheck live authorization; authenticated heartbeats and requests refresh the existing idle clock without reviving expired or revoked records.
+
+The mobile composer owns revisioned, tab-scoped state instead of copying stale DOM values. A send only clears its acknowledged revision. Current session and loaded-history range/scroll position are restored after re-handshake. View generations discard obsolete history success, failure and scroll updates; host sequences order and deduplicate history/live events. An uncertain send is never automatically repeated. Authenticated version metadata gates entry before business RPCs; authorization, pinned-key and version failures suppress automatic resume.
+
+When notifications are enabled, observation starts after the data plane is ready, without a mobile subscriber. One shared mux rebuilds an in-memory approval/question snapshot from DSH 0.1.1-rc.2 replay, keeping original rpcId values. Host subscribers receive inbox increments; transcript events remain session-scoped. inbox.reset invalidates stale pending state on stream rebuild. The mobile client tolerates an absent optional snapshot and rejects snapshots superseded by resets or resolved increments.
+
+Notifications reserve in-flight identities and remember successful delivery across mux replay. ntfy JSON targets the service root with topic and click in the body. Notification focus survives pairing and restoration; a missing target is not proof of resolution because the mux has no replay-complete marker. Explicit resolution is shown, and late pending replay can still focus the actionable card.

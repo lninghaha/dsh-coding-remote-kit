@@ -25,7 +25,7 @@ FROM dependencies AS source
 COPY --chown=node:node . .
 
 FROM source AS check
-RUN --network=none pnpm build && pnpm test
+RUN --network=none pnpm lint && pnpm typecheck && pnpm build && pnpm test
 
 FROM check AS isolated-install
 RUN --network=none pnpm pack \

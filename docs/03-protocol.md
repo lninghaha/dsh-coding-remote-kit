@@ -31,13 +31,13 @@
 { push, data, rpcId? }
 ```
 
-`push`：`session.event` | `session.subscribed` | `approval.requested` | `approval.resolved` | `question.requested` | `question.resolved` | `session.queue` | `host.event`。
+`push`：`session.event` | `session.subscribed` | `approval.requested` | `approval.resolved` | `question.requested` | `question.resolved` | `session.queue` | `host.event` | `inbox.reset`。
 
 仅 `approval.requested` / `question.requested` 必带 `rpcId`（mux 帧外层原样保留），供 `respond` 回显。
 
-mux 重连后手机需再 `session.subscribe` / `host.subscribe`。`session.queue` 的 items 只含 `id` / `placement` / 文本摘要。
+mux 重连后 host 会先发送 `inbox.reset`，再按原始稳定 `rpcId` 重放仍待处理的 approval/question；`host.subscribe` 可返回 `{ accepted: true, pending?: MobilePush[] }` 供新客户端恢复全局待办。正文事件仍只发送给 session 订阅者。`session.queue` 的 items 只含 `id` / `placement` / 文本摘要。
 
-可选离线推送桥（管理面配置，默认关闭）：`approval.requested` 时可向 allowlist 内的 ntfy/Bark endpoint 发送脱敏提醒。深链格式：`/m/?focus=approval&sessionId=…&approvalId=…`（手机页打开后落到该会话审批卡）。
+可选离线推送桥（管理面配置，默认关闭）：`approval.requested` 时可向 allowlist 内的 ntfy/Bark endpoint 发送脱敏提醒。ntfy 使用 JSON POST 到 endpoint 根路径，`topic` 位于请求体。深链格式：`/m/?focus=approval&sessionId=…&approvalId=…`（手机页打开后保留定位参数，直到待办恢复或明确不可恢复）。
 
 ## respond 两种 payload
 
@@ -103,3 +103,11 @@ mux 重连后手机需再 `session.subscribe` / `host.subscribe`。`session.queu
 - 重连 `wss://<origin>/v1/phone/<hostId>?resume=1`
 
 桌面再出站 `wss://<origin>/v1/accept/<ticket>`，之后与 `/m/ws` 同一套 E2EE + RPC。规格见 [`05-cloud-relay.md`](05-cloud-relay.md)。
+
+## 0.6.0 可选恢复能力
+
+`host.subscribe` 成功结果为 `{ accepted: true, pending?: PushEnvelope[] }`。`pending` 仅含现有 `approval.requested` / `question.requested` 推送形状与原始 `rpcId`；旧服务端省略该字段仍可连接。主机订阅接收待办增量，普通 `session.event` 仍要求对应会话订阅。
+
+`{ push: "inbox.reset", data: {} }` 表示共享 mux 正在重建，客户端清空旧待办。DSH `0.1.1-rc.2` 重开 mux 时先发 attached session 的 subscribed，再回放仍待处理的请求，沿用原 `rpcId`；`since` 在该版本不提供历史续传，正文通过 history 重新获取。该合同没有回放完成帧，不能把暂时空的 pending 当作已解决。
+
+客户端按视图代次隔离异步分页，并按宿主 seq 排序去重；没有 seq 的兼容事件保留来源顺序，不按相同文本删除事件。通知链接保留目标至定位、明确解决或用户关闭提示；恢复失败/暂无目标会显示核对说明。E2EE 握手、令牌格式、RPC 白名单与持久设备存储不变。

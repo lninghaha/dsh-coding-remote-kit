@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.2** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.6.0 candidate** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **Fernzugriff per Smartphone für [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Koppeln Sie ein Telefon mit dem Desktop, auf dem bereits `dsh web` läuft, beobachten Sie Sitzungen und führen Sie eine enge Menge von Schreibvorgängen aus — ohne die vollständige Web-API offenzulegen.
 
@@ -17,7 +17,7 @@
 
 ---
 
-> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.0` is their shared npm dependency, not a separate DSH plugin.
+> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.1` is their shared npm dependency, not a separate DSH plugin.
 
 ---
 
@@ -25,13 +25,17 @@ Community-Plugin. **Nicht mit DeepSeek verbunden und nicht von DeepSeek unterst�
 
 Lesen Sie [`AGENTS.md`](AGENTS.md), bevor Sie dieses Repository ändern: **starten Sie das Produktions-`dsh-web` nicht selbst neu.** Bereiten Sie das Tarball vor; der Operator startet neu.
 
+## 0.6.0-Kandidat: Wiederherstellung und Freigaben
+
+Dieser Checkout erstellt einen **0.6.0-Kandidaten als Tarball**, keine npm-Veröffentlichung. Nutzen Sie die Tarball-Anleitung in [INSTALL.md](INSTALL.md); npm-Beispiele behalten die Basisversion. Ein Widerruf schließt LAN-, Tunnel- und Relay-Verbindungen dieses Geräts; authentifizierte Aktivität aktualisiert die bestehende Inaktivitätsfrist. Entwürfe, aktuelle Sitzung und Leseposition bleiben nach Host/Gerät/Sitzung getrennt im sessionStorage. Nach Netzrückkehr oder Rückkehr in den Vordergrund kann die Anmeldung erneuert werden; ein unklarer Sendevorgang bleibt zur Prüfung erhalten und wird nie automatisch wiederholt. Neue Tabs erfordern erneut eine Kopplung. Standardmäßig deaktivierte Benachrichtigungen beobachten offene Anfragen auch ohne verbundenes Telefon, behalten die ursprüngliche RPC-ID und vermeiden erneut zugestellte erfolgreiche Meldungen beim Mux-Replay. Ein fehlendes Ziel wird erklärt, ohne es als erledigt auszugeben; ein späteres Replay kann die Karte weiterhin finden.
+
 ## Namen
 
 Zuerst als GitHub `dsh-mobile-remote` entwickelt. Der npm-Name **`dsh-mobile-remote` ist ein anderes Projekt** (WeChat-Fernsteuerungs-Plugin). Dieses Plugin erscheint als `dsh-coding-remote-kit`.
 
 | | Das verwenden | Hinweise |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.5.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.2` |
+| npm | `dsh-coding-remote-kit@0.5.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.1` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | früherer Checkout-Name `dsh-mobile-remote` |
 | Cordis-Plugin-id | `mobile-remote` | unverändert |
 | HTTP der Einstellungsseite | `/api/mobile-remote/*` | unverändert |
@@ -88,7 +92,7 @@ Führen Sie **nicht** `dsh plugin add dsh-mobile-remote` aus — das installiert
 ## Schnellstart
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
+dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
 ```
 
 Danach startet der **Operator** den bestehenden `dsh-web`-Prozess in seinem eigenen Fenster neu. Öffnen Sie **Settings → 移動远程**, erstellen Sie ein Kopplungsangebot, scannen Sie den QR (oder tippen Sie die PIN) auf dem Telefon.
@@ -99,8 +103,8 @@ Aus einem Quell-Checkout (Entwicklung):
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.5.2.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tgz"
+cp dsh-coding-remote-kit-0.6.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.6.0.tgz"
 ```
 
 Führen Sie nicht `dsh plugin add ./` aus diesem Arbeitsbaum aus. pnpm 11 behandelt manche `file:`-Tarball-Pfade als `link:`-Quelle, und ein fehlgeschlagener Entry-Import legt die ganze GUI lahm.

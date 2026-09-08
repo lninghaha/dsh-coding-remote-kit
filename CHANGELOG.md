@@ -4,6 +4,13 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+## v0.6.0 - 2026-09-08 (candidate)
+
+- Remote reliability: revoking one device immediately closes only that device's active LAN, direct, tunnel, or relay E2EE connections; successful auth, pong, and authenticated RPC traffic refresh the existing idle clock without reviving revoked or expired devices.
+- Mobile recovery: tab-scoped drafts use host public key + deviceId + sessionId; subscribe precedes history, sequence merge de-duplicates replay, and stale history responses cannot overwrite a newer session view.
+- Shared upstream mux starts independently of phone connectivity, retains unresolved approval/question records by stable rpcId, resets and replays them after mux reconstruction, and exposes an optional `pending` snapshot in `host.subscribe`.
+- Push: ntfy JSON POST now targets the configured server root with `topic` in the JSON body. Default remains off and payloads remain redacted.
+
 ### Added
 
 - Optional offline push bridge (ntfy / Bark): Settings configure endpoint (default **off**); on `approval.requested` send a redacted alert (event type + short session id) with a deep link into `/m/?focus=approval&sessionId=…&approvalId=…`. Outbound HTTPS host allowlist + 2 KiB body cap; missing config / no paired device → silent no-op (`#14`).

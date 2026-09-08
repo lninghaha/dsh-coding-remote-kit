@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.2** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.6.0 candidate** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **[DeepSeek Harness](https://github.com/deepseek-ai/dsh)용 원격 휴대폰 접근.** 이미 `dsh web`을 실행 중인 데스크톱에 휴대폰을 페어링한 뒤, 세션을 관찰하고 좁은 범위의 쓰기만 수행합니다. 전체 Web API는 노출하지 않습니다.
 
@@ -17,7 +17,7 @@
 
 ---
 
-> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.0` is their shared npm dependency, not a separate DSH plugin.
+> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.1` is their shared npm dependency, not a separate DSH plugin.
 
 ---
 
@@ -25,13 +25,17 @@
 
 이 저장소를 변경하기 전에 [`AGENTS.md`](AGENTS.md)를 읽으세요: **프로덕션 `dsh-web`을 직접 재시작하지 마세요.** tarball만 준비하고, 재시작은 운영자가 합니다.
 
+## 0.6.0 후보: 복구와 승인
+
+이 체크아웃은 npm 배포판이 아닌 **0.6.0 후보 tarball**을 만듭니다. [INSTALL.md](INSTALL.md)의 tarball 절차를 사용하세요. npm 예시는 기준 버전을 유지합니다. 기기 권한을 취소하면 해당 기기의 LAN, 터널, relay 연결이 닫히며 인증된 활동은 기존 유휴 유효 기간을 갱신합니다. 초안, 현재 세션, 읽기 위치는 호스트·기기·세션별 sessionStorage에 보관됩니다. 네트워크 복구나 전면 복귀 시 다시 인증하며 결과가 불명확한 전송은 자동 재전송하지 않고 확인을 위해 보관합니다. 새 탭은 다시 페어링해야 합니다. 알림은 기본적으로 꺼져 있으며 활성화하면 휴대전화가 연결되지 않아도 대기 요청을 관찰하고 원래 RPC ID를 유지하며 mux 재생의 성공한 중복 알림을 방지합니다. 대상을 찾지 못하면 해결됐다고 단정하지 않고 안내하며 늦은 재생도 해당 카드로 이동할 수 있습니다.
+
 ## 이름
 
 처음 GitHub 저장소 이름은 `dsh-mobile-remote`였습니다. npm의 **`dsh-mobile-remote`는 다른 프로젝트**입니다(WeChat 원격 제어 플러그인). 이 플러그인의 공개 이름은 `dsh-coding-remote-kit`입니다.
 
 | | 이것을 사용 | 설명 |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.5.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.2` |
+| npm | `dsh-coding-remote-kit@0.5.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.1` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | 이전 checkout 이름 `dsh-mobile-remote` |
 | Cordis 플러그인 id | `mobile-remote` | 변경 없음 |
 | 설정 페이지 HTTP | `/api/mobile-remote/*` | 변경 없음 |
@@ -88,7 +92,7 @@
 ## 빠른 시작
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
+dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
 ```
 
 그다음 **운영자**가 자신의 시간창에서 기존 `dsh web`을 재시작합니다. **Settings → 移動远程**를 열고 페어링 offer를 만든 뒤, 휴대폰에서 QR을 스캔(또는 PIN 입력)합니다.
@@ -99,8 +103,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.5.2.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tgz"
+cp dsh-coding-remote-kit-0.6.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.6.0.tgz"
 ```
 
 이 작업 트리에서 `dsh plugin add ./`를 실행하지 마세요. pnpm 11은 일부 `file:` tarball 경로를 `link:` 소스로 취급하며, 진입 import가 실패하면 GUI 전체가 내려갑니다.

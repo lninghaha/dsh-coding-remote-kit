@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.2** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.6.0 candidate** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **Удалённый доступ с телефона к [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Сопрягите телефон с компьютером, где уже работает `dsh web`, наблюдайте сессии и выполняйте узкий набор записей — не открывая полный Web API.
 
@@ -17,7 +17,7 @@
 
 ---
 
-> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.0` is their shared npm dependency, not a separate DSH plugin.
+> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.1` is their shared npm dependency, not a separate DSH plugin.
 
 ---
 
@@ -25,13 +25,17 @@
 
 Перед правками в этом репозитории прочитайте [`AGENTS.md`](AGENTS.md): **не перезапускайте производственный `dsh-web` самостоятельно.** Подготовьте tarball; перезапуск делает оператор.
 
+## Кандидат 0.6.0: восстановление и подтверждения
+
+Эта рабочая копия собирает **tarball-кандидат 0.6.0**, а не опубликованную версию npm. Используйте инструкции tarball в [INSTALL.md](INSTALL.md); примеры npm сохраняют базовую версию. Отзыв устройства закрывает его LAN-, tunnel- и relay-соединения; авторизованная активность обновляет существующий срок простоя. Черновики, текущая сессия и позиция чтения хранятся в sessionStorage отдельно для хоста, устройства и сессии. Возврат сети или приложения на передний план позволяет повторить рукопожатие; отправка с неизвестным результатом сохраняется для проверки и не повторяется автоматически. В новой вкладке требуется сопряжение. Уведомления по умолчанию выключены; при включении они отслеживают ожидающие запросы без подключённого телефона, сохраняют исходный RPC ID и не повторяют успешную доставку при replay mux. Отсутствующая цель сопровождается пояснением, а не утверждением о завершении; поздний replay по-прежнему может открыть карточку.
+
 ## Имена
 
 Сначала разрабатывался как GitHub `dsh-mobile-remote`. npm-имя **`dsh-mobile-remote` — другой проект** (плагин удалённого управления WeChat). Этот плагин публикуется как `dsh-coding-remote-kit`.
 
 | | Используйте это | Примечания |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.5.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.2` |
+| npm | `dsh-coding-remote-kit@0.5.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.1` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | прежнее имя checkout `dsh-mobile-remote` |
 | id плагина Cordis | `mobile-remote` | без изменений |
 | HTTP страницы настроек | `/api/mobile-remote/*` | без изменений |
@@ -88,7 +92,7 @@
 ## Быстрый старт
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
+dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
 ```
 
 Затем **оператор** перезапускает существующий процесс `dsh web` в своём окне. Откройте **Settings → 移動远程**, создайте предложение сопряжения, отсканируйте QR (или введите PIN) на телефоне.
@@ -99,8 +103,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.5.2.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tgz"
+cp dsh-coding-remote-kit-0.6.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.6.0.tgz"
 ```
 
 Не выполняйте `dsh plugin add ./` из этого рабочего дерева. pnpm 11 воспринимает некоторые пути `file:` tarball как источник `link:`, и сбой входного import валит весь GUI.

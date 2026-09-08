@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.2** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.6.0 candidate** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **Accès distant par téléphone pour [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Appariez un téléphone au bureau qui exécute déjà `dsh web`, observez les sessions et effectuez un ensemble restreint d'écritures — sans exposer l'API Web complète.
 
@@ -17,7 +17,7 @@
 
 ---
 
-> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.0` is their shared npm dependency, not a separate DSH plugin.
+> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.1` is their shared npm dependency, not a separate DSH plugin.
 
 ---
 
@@ -25,13 +25,17 @@ Plugin communautaire. **Non affilié à DeepSeek, et non approuvé par DeepSeek.
 
 Lisez [`AGENTS.md`](AGENTS.md) avant de modifier ce dépôt : **ne redémarrez pas vous-même le `dsh-web` de production.** Préparez le tarball ; l'opérateur redémarre.
 
+## Candidat 0.6.0 : reprise et approbations
+
+Ce checkout produit un **tarball candidat 0.6.0**, pas une publication npm. Suivez les instructions tarball dans [INSTALL.md](INSTALL.md) ; les exemples npm gardent la version de référence. La révocation ferme les connexions LAN, tunnel et relay de cet appareil ; son activité authentifiée actualise le délai d’inactivité existant. Brouillons, session courante et position de lecture restent dans sessionStorage, séparés par hôte/appareil/session. Le retour du réseau ou au premier plan permet une nouvelle authentification ; un envoi incertain est conservé pour vérification, jamais renvoyé automatiquement. Un nouvel onglet exige un nouvel appairage. Les notifications, désactivées par défaut, observent les demandes en attente sans téléphone connecté, conservent le RPC ID original et évitent les livraisons déjà réussies lors du replay du mux. Une cible absente est expliquée sans la déclarer résolue ; un replay tardif peut encore retrouver sa carte.
+
 ## Noms
 
 Développé d'abord sous le nom GitHub `dsh-mobile-remote`. Le nom npm **`dsh-mobile-remote` est un autre projet** (plugin de télécommande WeChat). Ce plugin est publié sous `dsh-coding-remote-kit`.
 
 | | Utilisez ceci | Notes |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.5.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.2` |
+| npm | `dsh-coding-remote-kit@0.5.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.1` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | ancien nom de checkout `dsh-mobile-remote` |
 | id du plugin Cordis | `mobile-remote` | inchangé |
 | HTTP de la page Réglages | `/api/mobile-remote/*` | inchangé |
@@ -88,7 +92,7 @@ Ne faites **pas** `dsh plugin add dsh-mobile-remote` — cela installe le plugin
 ## Démarrage rapide
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
+dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
 ```
 
 Ensuite l'**opérateur** redémarre le processus `dsh web` existant dans sa propre fenêtre. Ouvrez **Settings → 移動远程**, créez une offre d'appariement, scannez le QR (ou saisissez le PIN) sur le téléphone.
@@ -99,8 +103,8 @@ Depuis un checkout source (développement) :
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.5.2.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tgz"
+cp dsh-coding-remote-kit-0.6.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.6.0.tgz"
 ```
 
 Ne faites pas `dsh plugin add ./` depuis cet arbre de travail. pnpm 11 traite certains chemins `file:` de tarball comme source `link:`, et un import d'entrée raté fait tomber toute la GUI.

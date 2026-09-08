@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.2** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.6.0 candidate** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **面向 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) 的远程手机访问插件。** 把手机配对到已经在跑 `dsh web` 的桌面，观察会话并做一组窄写操作——不必把完整 Web API 暴露出去。
 
@@ -17,7 +17,7 @@
 
 ---
 
-> **升级：** 按 [`INSTALL.md`](INSTALL.md) 的版本化步骤操作。`0.5.2` 增加 CSP/配对加固与 sessionStorage 密钥；`0.5.1` 修复 Settings 安装 cloudflared 后无需重载即可 Start；`0.5.0` 增加连接诊断、Quick Tunnel 免责勾选与 cloudflared 钉死校验；保留 profile、存储与配对文件，所有选定插件更新后再重启一次现有 DSH Web 进程。`dsh-coding-oauth-core@0.1.0` 仍是 Hub/Subscription 的共享 npm 依赖，不是需要单独安装的 DSH 插件。
+> **升级：** 按 [`INSTALL.md`](INSTALL.md) 的版本化步骤操作。`0.6.0` 候选会即时撤销单台设备的活动连接，mux 恢复后重放未完成待办，并按 host/device/session 将草稿留在标签页。E2EE v1 四字段、令牌和存储路径保持不变。
 
 ---
 
@@ -25,13 +25,17 @@
 
 改这个仓库之前先读 [`AGENTS.md`](AGENTS.md)：**禁止自行重启生产 DSH Web 进程或其本机服务包装。** 只准备 tarball，由操作者通过测试机自己的进程管理器重启。
 
+## 0.6.0 候选：恢复与审批
+
+本工作树构建 **0.6.0 候选 tarball**，不代表 npm 已发布。按 [INSTALL.md](INSTALL.md) 使用候选包，npm 示例保留基线版本。撤销会关闭该设备的 LAN、隧道和 relay 会话；已认证活动沿用原闲置有效期刷新活跃时间。草稿、当前会话和阅读位置仅存 sessionStorage，按宿主、设备、会话隔离。网络恢复或返回前台会重新握手；发送结果未知时保留草稿供核对，不自动重发。新标签页仍需配对。默认关闭的通知可在手机离线时监听待办，保留原 RPC 身份，并对 mux 回放中已成功投递的审批去重。通知目标暂不可恢复时会明确提示，不把缺失当作已解决，迟到回放仍可定位。
+
 ## 名称
 
 最初 GitHub 仓库名是 `dsh-mobile-remote`。npm 上的 **`dsh-mobile-remote` 是另一个项目**（微信遥控插件）。本插件发布名为 `dsh-coding-remote-kit`。
 
 | | 请用这个 | 说明 |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.5.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.2` |
+| npm | `dsh-coding-remote-kit@0.5.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.1` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | 旧 checkout 名 `dsh-mobile-remote` |
 | Cordis 插件 id | `mobile-remote` | 不变 |
 | 设置页 HTTP | `/api/mobile-remote/*` | 不变 |
@@ -88,7 +92,7 @@
 ## 快速开始
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
+dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
 ```
 
 然后由**操作者**在自己的时间窗重启现有 DSH Web 进程。打开 **设置 → 移动远程**，生成配对 offer，手机扫码（或手输 PIN）。
@@ -99,8 +103,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.5.2.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tgz"
+cp dsh-coding-remote-kit-0.6.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.6.0.tgz"
 ```
 
 不要对本工作树执行 `dsh plugin add ./`。pnpm 11 会把某些 `file:` tarball 解析成 `link:` 源码树，入口 import 失败会拖死整个 GUI。

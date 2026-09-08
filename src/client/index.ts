@@ -30,7 +30,7 @@ interface ClientApplyContext {
 	readonly slots?: SlotsApi;
 	get?(name: string): unknown;
 	inject?(names: readonly string[], factory: (context: ClientApplyContext) => unknown): unknown;
-	effect?(factory: () => void | (() => void)): unknown;
+	effect?(factory: () => undefined | (() => void)): unknown;
 }
 
 interface PushBridgeStatus {
@@ -154,7 +154,10 @@ function renderQr(qrText: string): void {
 	if (context === null) return;
 	context.fillStyle = "#ffffff";
 	context.fillRect(0, 0, canvas.width, canvas.height);
-	qr.renderTo2dContext(context, QR_CELL, QR_QUIET, QR_QUIET);
+	context.save();
+	context.translate(QR_QUIET, QR_QUIET);
+	qr.renderTo2dContext(context, QR_CELL);
+	context.restore();
 }
 
 function formatRemaining(ms: number): string {
@@ -303,10 +306,11 @@ export function MobileRemoteSettings() {
 		})();
 	};
 
-	useEffect(() => {
-		refreshStatus();
-		refreshDevices();
-	}, []);
+ // Keep initial loading a mount action, not a loop driven by changing render callbacks.
+ const [initialRefresh] = useState(() => ({ status: refreshStatus, devices: refreshDevices }));
+ useEffect(() => {
+  initialRefresh.status(); initialRefresh.devices();
+ }, [initialRefresh]);
 
 	useEffect(() => {
 		if (offerInfo === null) return;

@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.5.2** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.6.0 candidate** · DeepSeek Harness `0.1.1-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **[DeepSeek Harness](https://github.com/deepseek-ai/dsh) 向けのリモートスマホアクセス。** すでに `dsh web` が動いているデスクトップにスマホをペアリングし、セッションを観察して限定された書き込みだけを行う——フル Web API は公開しません。
 
@@ -17,7 +17,7 @@
 
 ---
 
-> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.0` is their shared npm dependency, not a separate DSH plugin.
+> **Upgrade / 升级：** Follow the versioned steps in [`INSTALL.md`](INSTALL.md). Install into the existing `web` profile, keep profile/config/credential files, and restart one existing DSH Web process after all packages are updated. When Hub and Subscription are both used, `dsh-coding-oauth-core@0.1.1` is their shared npm dependency, not a separate DSH plugin.
 
 ---
 
@@ -25,13 +25,17 @@
 
 このリポジトリを変更する前に [`AGENTS.md`](AGENTS.md) を読んでください：**本番の `dsh-web` を自分で再起動しないでください。** tarball を用意し、再起動はオペレーターが行います。
 
+## 0.6.0 候補版：復旧と承認
+
+このチェックアウトは **0.6.0 候補版 tarball** を生成します。npm 公開版ではありません。[INSTALL.md](INSTALL.md) の tarball 手順を使用してください。npm の例は基準版のままです。端末の取り消しは、その端末の LAN・トンネル・relay 接続を閉じ、認証済みの活動は既存のアイドル有効期間を更新します。下書き、現在のセッション、閲覧位置はホスト・端末・セッション別の sessionStorage に保存されます。ネットワーク復旧や前面復帰で再認証し、送信結果が不明な下書きは自動再送せず確認用に保持します。新しいタブでは再ペアリングが必要です。通知は既定で無効で、有効時は電話が未接続でも保留中の要求を監視し、元の RPC ID を保持して mux 再生による成功済み通知の重複を防ぎます。対象が見つからない場合は解決済みと断定せず案内し、遅れて再生された要求にも移動できます。
+
 ## 名称
 
 当初の GitHub リポジトリ名は `dsh-mobile-remote` でした。npm 上の **`dsh-mobile-remote` は別プロジェクト**（WeChat リモコンプラグイン）です。本プラグインの公開名は `dsh-coding-remote-kit` です。
 
 | | これを使う | 説明 |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.5.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.2` |
+| npm | `dsh-coding-remote-kit@0.5.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.5.1` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | 旧 checkout 名 `dsh-mobile-remote` |
 | Cordis プラグイン id | `mobile-remote` | 変更なし |
 | 設定ページ HTTP | `/api/mobile-remote/*` | 変更なし |
@@ -88,7 +92,7 @@
 ## クイックスタート
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
+dsh plugin --profile web add dsh-coding-remote-kit@0.5.1
 ```
 
 その後、**オペレーター** が自分の時間枠で既存の `dsh web` を再起動します。**Settings → 移動远程** を開き、ペアリング offer を作成し、スマホで QR をスキャン（または PIN を入力）します。
@@ -99,8 +103,8 @@ dsh plugin --profile web add dsh-coding-remote-kit@0.5.2
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.5.2.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tgz"
+cp dsh-coding-remote-kit-0.6.0.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.6.0.tgz"
 ```
 
 この作業ツリーに対して `dsh plugin add ./` を実行しないでください。pnpm 11 は一部の `file:` tarball パスを `link:` ソースとして扱い、入口 import が失敗すると GUI 全体が落ちます。

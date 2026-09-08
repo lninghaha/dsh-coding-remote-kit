@@ -68,7 +68,7 @@ export type Vars = Record<string, string | number>;
 
 export function translate(key: MessageKey, locale: Locale, vars?: Vars): string {
 	const entry = MESSAGES[key];
-	let text = entry[locale] ?? entry.en ?? String(key);
+	let text: string = entry[locale] ?? entry.en ?? String(key);
 	if (vars !== undefined) {
 		for (const [name, value] of Object.entries(vars)) {
 			text = text.split(`{${name}}`).join(String(value));
