@@ -8,8 +8,8 @@
  * `details` or prompt text.
  *
  * Iterator death is logged (no tokens / keys / payloads) and retried with
- * backoff. After a reconnect the phone should subscribe again; frames that
- * arrived while the stream was down are not replayed by this plugin.
+ * backoff. Transcript recovery uses history; pending approvals/questions are
+ * rebuilt from mux replay and exposed as the host subscription snapshot.
  */
 
 import { randomUUID } from "node:crypto";
@@ -23,7 +23,8 @@ export type PushKind =
 	| "question.requested"
 	| "question.resolved"
 	| "session.queue"
-	| "host.event";
+	| "host.event"
+	| "inbox.reset";
 
 export interface PushEnvelope {
 	readonly push: PushKind;
@@ -91,11 +92,14 @@ export type RespondInput =
 	  };
 
 export interface UpstreamHub {
+	/** Start background observation and deliver the existing pending baseline to the notification hook. */
+	start(): void;
 	addSubscriber(subscriber: Subscriber): void;
 	removeSubscriber(subscriber: Subscriber): void;
 	subscribeSession(subscriber: Subscriber, sessionId: string): void;
 	unsubscribeSession(subscriber: Subscriber, sessionId: string): void;
 	subscribeHost(subscriber: Subscriber): void;
+	pending(): readonly PushEnvelope[];
 	list(): Promise<FoldedResult<SessionListResult>>;
 	history(params: HistoryParams): Promise<FoldedResult<HistoryResult>>;
 	prompt(params: PromptParams): Promise<FoldedResult<unknown>>;
@@ -112,6 +116,7 @@ const HUGE_STRING = 4_096;
 export interface UpstreamHubOptions {
 	/** Optional side-effect hook (e.g. offline push). Must not throw into mux. */
 	readonly onApprovalRequested?: (push: PushEnvelope) => void;
+	readonly onApprovalResolved?: (push: PushEnvelope) => void;
 }
 
 export function createUpstreamHub(
@@ -120,6 +125,7 @@ export function createUpstreamHub(
 	options: UpstreamHubOptions = {},
 ): UpstreamHub {
 	const subscribers = new Set<Subscriber>();
+	const pending = new Map<string, PushEnvelope>();
 	const controller = new AbortController();
 	let streaming = false;
 	let muxTask: Promise<void> | null = null;
@@ -144,12 +150,27 @@ export function createUpstreamHub(
 		if (streaming || controller.signal.aborted) return;
 		streaming = true;
 		muxTask = runIterator("mux", controller.signal, logger, async (signal) => {
+			pending.clear();
+			for (const subscriber of subscribers) {
+				if (subscriber.host) subscriber.send({ push: "inbox.reset", data: {} });
+			}
 			const apiProxy = resolveApiProxy();
 			if (apiProxy === undefined) throw new Error("apiProxy is unavailable");
 			for await (const frame of apiProxy.events.mux({ rpcId: randomUUID(), payload: {} }, signal)) {
 				if (signal.aborted) return;
 				const mapped = mapMuxFrame(frame.rpcId, frame.payload);
 				if (mapped === null) continue;
+				if ((mapped.push === "approval.requested" || mapped.push === "question.requested") && mapped.rpcId !== undefined) pending.set(mapped.rpcId, mapped);
+				if (mapped.push === "approval.resolved") {
+					const approvalId = asRecord(mapped.data)?.approvalId;
+					for (const [rpcId, item] of pending) {
+						if (item.push === "approval.requested" && sessionIdOf(item.data) === sessionIdOf(mapped.data) && asRecord(item.data)?.approvalId === approvalId) pending.delete(rpcId);
+					}
+				}
+				if (mapped.push === "question.resolved") {
+					const rpcId = asRecord(mapped.data)?.questionRpcId;
+					if (typeof rpcId === "string") pending.delete(rpcId);
+				}
 				const sessionId = sessionIdOf(mapped.data);
 				if (sessionId === null) continue;
 				if (mapped.push === "approval.requested" && options.onApprovalRequested !== undefined) {
@@ -159,9 +180,13 @@ export function createUpstreamHub(
 						logger.warn("approval push hook failed (details redacted)");
 					}
 				}
-				for (const subscriber of subscribers) {
-					if (subscriber.sessionIds.has(sessionId)) subscriber.send(mapped);
-				}
+    if (mapped.push === "approval.resolved") {
+     try { options.onApprovalResolved?.(mapped); } catch { logger.warn("approval resolved hook failed (details redacted)"); }
+    }
+    const inboxEvent = mapped.push.startsWith("approval.") || mapped.push.startsWith("question.");
+    for (const subscriber of subscribers) {
+     if (subscriber.sessionIds.has(sessionId) || (subscriber.host && inboxEvent)) subscriber.send(mapped);
+    }
 			}
 		});
 		hostTask = runIterator("host", controller.signal, logger, async (signal) => {
@@ -183,6 +208,12 @@ export function createUpstreamHub(
 	const subscribeSession = (subscriber: Subscriber, sessionId: string): void => {
 		subscriber.sessionIds.add(sessionId);
 		ensureStreaming();
+		// A mux can already be open before this phone subscribes. Replay its
+		// unresolved items for this session so subscription timing cannot lose an
+		// approval while keeping ordinary transcript events session-local.
+		for (const item of pending.values()) {
+			if (sessionIdOf(item.data) === sessionId) subscriber.send(item);
+		}
 	};
 
 	const unsubscribeSession = (subscriber: Subscriber, sessionId: string): void => {
@@ -192,7 +223,9 @@ export function createUpstreamHub(
 	const subscribeHost = (subscriber: Subscriber): void => {
 		subscriber.host = true;
 		ensureStreaming();
+		for (const item of pending.values()) subscriber.send(item);
 	};
+	const pendingSnapshot = (): readonly PushEnvelope[] => [...pending.values()];
 
 	const list = async (): Promise<FoldedResult<SessionListResult>> => {
 		const apiProxy = resolveApiProxy();
@@ -289,14 +322,24 @@ export function createUpstreamHub(
 	const stop = (): void => {
 		controller.abort();
 		subscribers.clear();
+		pending.clear();
 	};
 
-	return {
+ const start = (): void => {
+  ensureStreaming();
+  for (const item of pending.values()) if (item.push === "approval.requested") {
+   try { options.onApprovalRequested?.(item); } catch { logger.warn("approval push hook failed (details redacted)"); }
+  }
+ };
+
+ return {
+  start,
 		addSubscriber,
 		removeSubscriber,
 		subscribeSession,
 		unsubscribeSession,
 		subscribeHost,
+		pending: pendingSnapshot,
 		list,
 		history,
 		prompt,

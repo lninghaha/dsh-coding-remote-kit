@@ -207,6 +207,10 @@ class MobileConnection implements MobileConnectionHandle {
 		this.#deps.upstream.subscribeHost(this.#subscriber);
 	}
 
+	pendingInbox(): readonly import("./upstream.js").PushEnvelope[] {
+		return this.#deps.upstream.pending();
+	}
+
 	#sealOut(payload: Uint8Array): Uint8Array {
 		if (this.#keys === null) throw new Error("session keys are not ready");
 		const counter = this.#sendCounter[PAYLOAD_KIND_TEXT] ?? 0;

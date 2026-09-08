@@ -268,9 +268,6 @@ export function planApprovalPush(input: {
 		};
 	}
 	const topic = input.config.credential.trim().replace(/^\/+/u, "");
-	const ntfyUrl = `${checked.url.origin}${checked.url.pathname.replace(/\/+$/u, "")}/${encodeURIComponent(topic)}`;
-	const ntfyCheck = assertAllowedPushUrl(ntfyUrl);
-	if (!ntfyCheck.ok) return { ok: false, reason: ntfyCheck.reason };
 	const payload = JSON.stringify({
 		topic,
 		title,
@@ -284,7 +281,9 @@ export function planApprovalPush(input: {
 	return {
 		ok: true,
 		plan: {
-			url: ntfyCheck.url.toString(),
+			// docs.ntfy.sh JSON publishing uses the server root; topic stays in
+			// the JSON body and is never appended to a URL path.
+			url: `${checked.url.origin}/`,
 			method: "POST",
 			headers: {
 				"content-type": "application/json; charset=utf-8",
@@ -306,6 +305,7 @@ export interface PushBridgeDeps {
 	readonly hasActiveDevice: () => boolean;
 	readonly fetchImpl?: typeof fetch;
 	readonly now?: () => number;
+	readonly onEnabled?: () => void;
 }
 
 export class PushBridge {
@@ -315,9 +315,13 @@ export class PushBridge {
 	readonly #hasActiveDevice: () => boolean;
 	readonly #fetch: typeof fetch;
 	#config: PushBridgeConfig;
+ readonly #onEnabled: (() => void) | undefined;
+ readonly #delivered = new Map<string, { sessionId: string; approvalId: string }>();
+ readonly #inFlight = new Map<string, { sessionId: string; approvalId: string; resolved: boolean }>();
 
 	constructor(deps: PushBridgeDeps) {
 		this.#path = join(deps.storageDirectory, "push-bridge.json");
+		this.#onEnabled = deps.onEnabled;
 		this.#logger = deps.logger;
 		this.#resolvePageUrl = deps.resolvePageUrl;
 		this.#hasActiveDevice = deps.hasActiveDevice;
@@ -338,8 +342,15 @@ export class PushBridge {
 		if (!validated.ok) return validated;
 		this.#config = validated.config;
 		writeFileAtomic(this.#path, `${JSON.stringify(this.#config, null, "\t")}\n`);
+		if (this.#config.enabled) this.#onEnabled?.();
 		return { ok: true, status: this.status() };
 	}
+
+ forgetApproval(push: PushEnvelope): void {
+  const data = asRecord(push.data);
+  for (const [key, item] of this.#delivered) if (item.sessionId === data?.sessionId && item.approvalId === data?.approvalId) this.#delivered.delete(key);
+  for (const item of this.#inFlight.values()) if (item.sessionId === data?.sessionId && item.approvalId === data?.approvalId) item.resolved = true;
+ }
 
 	/** Fire-and-forget; never throws into the mux loop. */
 	notifyApprovalRequested(push: PushEnvelope): void {
@@ -367,26 +378,32 @@ export class PushBridge {
 			this.#logger.warn(`push-bridge skipped (${planned.reason})`);
 			return;
 		}
+		const identity = JSON.stringify([sessionId, approvalId, push.rpcId ?? approvalId]);
+  if (this.#delivered.has(identity) || this.#inFlight.has(identity)) return;
+  const attempt = { sessionId, approvalId, resolved: false };
+  this.#inFlight.set(identity, attempt);
 		try {
 			const controller = new AbortController();
 			const timer = setTimeout(() => controller.abort(), PUSH_TIMEOUT_MS);
 			try {
-				const response = await this.#fetch(planned.plan.url, {
+				const request: RequestInit = {
 					method: planned.plan.method,
 					headers: planned.plan.headers,
-					body: planned.plan.body ?? undefined,
 					signal: controller.signal,
 					redirect: "error",
-				});
-				if (!response.ok) {
-					this.#logger.warn(`push-bridge delivery failed (http ${String(response.status)})`);
-				}
+				};
+				if (planned.plan.body !== null) request.body = planned.plan.body;
+				const response = await this.#fetch(planned.plan.url, request);
+    if (!response.ok) this.#logger.warn(`push-bridge delivery failed (http ${String(response.status)})`);
+    else if (!attempt.resolved) this.#delivered.set(identity, { sessionId, approvalId });
 			} finally {
 				clearTimeout(timer);
 			}
-		} catch {
-			this.#logger.warn("push-bridge delivery failed (network)");
-		}
+  } catch {
+   this.#logger.warn("push-bridge delivery failed (network)");
+  } finally {
+   this.#inFlight.delete(identity);
+  }
 	}
 }
 

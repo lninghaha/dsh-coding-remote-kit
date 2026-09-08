@@ -25,6 +25,7 @@ export interface RpcConnection {
 	subscribeSession(sessionId: string): void;
 	unsubscribeSession(sessionId: string): void;
 	subscribeHost(): void;
+	pendingInbox?(): readonly import("./upstream.js").PushEnvelope[];
 }
 
 export interface RpcDispatchContext {
@@ -133,7 +134,7 @@ async function dispatchAllowed(
 		}
 		case "host.subscribe":
 			ctx.connection?.subscribeHost();
-			return ok(id, { accepted: true });
+			return ok(id, { accepted: true, pending: ctx.connection?.pendingInbox?.() ?? [] });
 		case "session.prompt": {
 			const sessionId = readSessionId(params);
 			if (sessionId === null) return error(id, "invalid_params", "sessionId is required");

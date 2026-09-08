@@ -182,10 +182,12 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 		logger,
 		resolvePageUrl: resolveAdvertisePageUrl,
 		hasActiveDevice: () => registry.hasActiveDevice(),
+		onEnabled: () => upstream.start(),
 	});
 
 	const upstream = createUpstreamHub(resolveApiProxy, logger, {
 		onApprovalRequested: (push) => pushBridge.notifyApprovalRequested(push),
+		onApprovalResolved: (push) => pushBridge.forgetApproval(push),
 	});
 	cleanupSteps.push(() => upstream.stop());
 
@@ -215,6 +217,7 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 	const startBind = registry.hasActiveDevice() && registry.networkReach === "lan" ? ALL_INTERFACES : config.bind;
 	try {
 		await dataPlane.listen(startBind);
+		if (pushBridge.config.enabled) upstream.start();
 		logger.info(`mobile-remote data plane listening on ${dataPlane.host}:${String(config.port)}`);
 	} catch (error) {
 		logger.warn(`mobile-remote data plane failed to listen (${error instanceof Error ? error.name : "error"})`);
