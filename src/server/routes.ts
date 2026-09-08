@@ -108,6 +108,8 @@ export interface ManagementDeps {
 	readonly compatibility?: HostCompatibilityDiagnostics | (() => HostCompatibilityDiagnostics);
 	/** Optional offline push bridge (ntfy/Bark). Absent → route returns disabled defaults. */
 	readonly pushBridge?: Pick<PushBridge, "status" | "update">;
+	/** Close live data-plane connections after a successful revoke. */
+	revokeDevice?(deviceId: string): boolean;
 }
 
 export interface TunnelDeps {
@@ -361,7 +363,7 @@ export function registerManagementRoutes(
 				}
 				try {
 					await handler(request, response, accessMode);
-				} catch (error) {
+				} catch {
 					deps.logger.warn("management request failed (details redacted)");
 					reject(response, 500, "internal", "management request failed");
 				}
@@ -624,8 +626,8 @@ export function registerManagementRoutes(
 				reject(response, 400, "invalid_params", "deviceId is required");
 				return;
 			}
-			const revoked = deps.registry.revoke(deviceId, deps.now());
-			if (revoked === null) {
+			const revoked = deps.revokeDevice?.(deviceId) ?? (deps.registry.revoke(deviceId, deps.now()) !== null);
+			if (!revoked) {
 				reject(response, 404, "not-found", "device not found");
 				return;
 			}

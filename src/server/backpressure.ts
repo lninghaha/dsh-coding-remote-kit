@@ -35,13 +35,15 @@ interface QueuedFrame {
 export class FrameQueue {
 	readonly #sink: OutboundSink;
 	readonly #encode: FrameEncode;
+	readonly #canSend: () => boolean;
 	readonly #frames: QueuedFrame[] = [];
 	#bytes = 0;
 	#timer: ReturnType<typeof setInterval> | null = null;
 
-	constructor(sink: OutboundSink, encode: FrameEncode) {
+	constructor(sink: OutboundSink, encode: FrameEncode, canSend: () => boolean = () => true) {
 		this.#sink = sink;
 		this.#encode = encode;
+		this.#canSend = canSend;
 	}
 
 	get queuedFrames(): number {
@@ -56,7 +58,7 @@ export class FrameQueue {
 	 * Enqueue a plaintext payload. Returns "sent" when written immediately,
 	 * "queued" when buffered, or "overflow" after closing the socket (1013).
 	 */
-	enqueue(payload: Uint8Array): "sent" | "queued" | "overflow" {
+	enqueue(payload: Uint8Array): "sent" | "queued" | "overflow" | "stopped" {
 		if (exceedsHardLimit(this.#bytes, this.#frames.length)) {
 			this.#sink.close(1013, "outbound queue overflow");
 			return "overflow";
@@ -66,6 +68,7 @@ export class FrameQueue {
 			this.#bytes += payload.length;
 			return "queued";
 		}
+		if (!this.#canSend()) return "stopped";
 		this.#sink.send(this.#encode(payload));
 		return "sent";
 	}
@@ -73,6 +76,7 @@ export class FrameQueue {
 	/** Flush as many queued frames as the socket will accept. */
 	drain(): void {
 		while (this.#frames.length > 0 && !exceedsSoftLimit(this.#sink.bufferedAmount)) {
+			if (!this.#canSend()) { this.stop(); this.#frames.length = 0; this.#bytes = 0; return; }
 			const frame = this.#frames[0]!;
 			this.#sink.send(this.#encode(frame.payload));
 			this.#bytes -= frame.payload.length;

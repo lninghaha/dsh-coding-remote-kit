@@ -9,12 +9,14 @@ import { WebSocket, WebSocketServer } from "ws";
 export class MockRendezvous {
 	constructor(options = {}) {
 		this.hostToken = options.hostToken ?? "test-host-token";
+		this.now = options.now ?? Date.now;
 		this.hostId = null;
 		this.host = null;
 		this.invites = new Map();
 		this.tickets = new Map();
 		this.phones = new Map();
 		this.accepts = new Map();
+		this.pendingPhoneFrames = new Map();
 		this.claims = [];
 		this.server = createServer((request, response) => this.#http(request, response));
 		this.wss = new WebSocketServer({ noServer: true });
@@ -153,7 +155,7 @@ export class MockRendezvous {
 		}
 		const resume = url.searchParams.get("resume") === "1";
 		const invite = url.searchParams.get("invite");
-		if (!resume && !this.invites.has(invite)) {
+		if (!resume && (this.invites.get(invite)?.expiresAt ?? 0) <= this.now()) {
 			ws.close(4403, "invite invalid");
 			return;
 		}
@@ -161,14 +163,21 @@ export class MockRendezvous {
 		const expiresAt = Date.now() + 15_000;
 		this.tickets.set(ticket, { expiresAt });
 		this.phones.set(ticket, ws);
-		ws.on("message", (data) => {
+		ws.on("message", (data, isBinary) => {
 			const peer = this.accepts.get(ticket);
-			if (peer && peer.readyState === WebSocket.OPEN) peer.send(data);
+			if (peer && peer.readyState === WebSocket.OPEN) {
+				peer.send(data, { binary: isBinary });
+				return;
+			}
+			const pending = this.pendingPhoneFrames.get(ticket) ?? [];
+			pending.push({ data, isBinary });
+			this.pendingPhoneFrames.set(ticket, pending);
 		});
 		ws.on("close", () => {
 			this.phones.delete(ticket);
+			this.pendingPhoneFrames.delete(ticket);
 			const peer = this.accepts.get(ticket);
-			if (peer) peer.close();
+			if (peer) peer.close(1001, "peer closed");
 		});
 		this.host.send(JSON.stringify({ type: "phone_waiting", ticket, expiresAt }));
 	}
@@ -180,14 +189,16 @@ export class MockRendezvous {
 		}
 		this.tickets.delete(ticket);
 		this.accepts.set(ticket, ws);
-		ws.on("message", (data) => {
+		for (const frame of this.pendingPhoneFrames.get(ticket) ?? []) ws.send(frame.data, { binary: frame.isBinary });
+		this.pendingPhoneFrames.delete(ticket);
+		ws.on("message", (data, isBinary) => {
 			const peer = this.phones.get(ticket);
-			if (peer && peer.readyState === WebSocket.OPEN) peer.send(data);
+			if (peer && peer.readyState === WebSocket.OPEN) peer.send(data, { binary: isBinary });
 		});
 		ws.on("close", () => {
 			this.accepts.delete(ticket);
 			const peer = this.phones.get(ticket);
-			if (peer) peer.close();
+			if (peer) peer.close(1001, "peer closed");
 		});
 	}
 }

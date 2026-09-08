@@ -44,7 +44,7 @@ export function isTunnelRegistered(text: string): boolean {
 	return /registered tunnel connection/i.test(text);
 }
 
-const HINT_PATH = join(homedir(), ".local", "bin", "cloudflared");
+const HINT_PATH = join(homedir(), ".local", "bin", process.platform === "win32" ? "cloudflared.exe" : "cloudflared");
 
 /** Resolve a resolve() result to a filesystem path for hashing (null if bare name missing). */
 export function filesystemPathForBinary(resolved: string): string | null {
@@ -67,7 +67,7 @@ export function resolveCloudflaredBinary(): string | null {
 		return existsSync(trimmed) ? trimmed : null;
 	}
 	if (existsSync(HINT_PATH)) return HINT_PATH;
-	return resolveExistingBinaryPath("cloudflared");
+	return resolveExistingBinaryPath(process.platform === "win32" ? "cloudflared.exe" : "cloudflared");
 }
 
 export interface CloudflareQuickTunnelSnapshot {
@@ -165,6 +165,7 @@ export class CloudflareQuickTunnel {
 	private readonly persistFile: string | null;
 	private child: ChildLike | null = null;
 	private url: string | null = null;
+	private cancelPendingStart: (() => void) | null = null;
 
 	constructor(
 		options: {
@@ -231,10 +232,14 @@ export class CloudflareQuickTunnel {
 		if (this.persistFile !== null) {
 			args.push("--logfile", join(dirname(this.persistFile), "cloudflared.log"));
 		}
-		const child = this.spawnImpl(trusted, args);
+		let child: ChildLike;
+		try {
+			child = this.spawnImpl(trusted, args);
+		} catch (error) {
+			throw new Error(`cloudflared failed to spawn (${error instanceof Error ? error.message : "error"})`);
+		}
 		this.child = child;
 		this.url = null;
-		this.#persist();
 
 		return await new Promise<string>((resolvePromise, rejectPromise) => {
 			let settled = false;
@@ -243,24 +248,35 @@ export class CloudflareQuickTunnel {
 				if (settled) return;
 				settled = true;
 				clearTimeout(timer);
-				this.child = null;
-				this.url = null;
-				this.#removePersisted();
+				this.cancelPendingStart = null;
+				if (this.child === child) {
+					this.child = null;
+					this.url = null;
+					this.#removePersisted();
+				}
 				rejectPromise(new Error(message));
+				try { child.kill("SIGTERM"); } catch { /* this child already exited */ }
 			};
+			this.cancelPendingStart = () => fail("tunnel stopped");
 			const onChunk = (chunk: string | Buffer): void => {
-				buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8");
 				if (settled) return;
+				buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8");
 				const parsed = parseQuickTunnelUrl(buffer);
 				if (parsed !== null) this.url = parsed;
 				if (this.url !== null && isTunnelRegistered(buffer)) {
+					try { this.#persist(); }
+					catch { fail("cloudflared state persistence failed"); return; }
 					settled = true;
 					clearTimeout(timer);
-					this.#persist();
+					// The URL has been extracted; retaining banner output would grow for
+					// the lifetime of a healthy tunnel.
+					buffer = "";
+					this.cancelPendingStart = null;
 					resolvePromise(this.url);
 				}
 			};
 			const onExit = (_code: unknown, _signal: unknown): void => {
+				if (this.child !== child) return;
 				if (!settled) {
 					fail(`cloudflared exited before publishing a tunnel URL`);
 					return;
@@ -282,15 +298,30 @@ export class CloudflareQuickTunnel {
 						: "timed out waiting for the tunnel to register with Cloudflare (HTTP/2). Tailscale exit node can break QUIC; retry after the plugin uses --protocol http2",
 				);
 			}, timeoutMs);
+			child.on("error", () => {
+				if (settled) {
+					if (this.child === child) {
+						this.child = null;
+						this.url = null;
+						this.#removePersisted();
+					}
+					return;
+				}
+				fail("cloudflared failed to spawn");
+			});
+			child.on("exit", onExit);
 			if (child.stderr !== null) child.stderr.on("data", onChunk);
 			if (child.stdout !== null) child.stdout.on("data", onChunk);
-			child.on("exit", onExit);
+			try { this.#persist(); }
+			catch { fail("cloudflared state persistence failed"); }
 		});
 	}
 
 	/** SIGTERM the child (if any) and clear state/persistence. */
 	async stop(): Promise<void> {
 		const child = this.child;
+		this.cancelPendingStart?.();
+		this.cancelPendingStart = null;
 		this.child = null;
 		this.url = null;
 		this.#removePersisted();

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawn as spawnChild } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -119,6 +120,9 @@ test("start returns the URL from stderr then stop kills the child (no real tunne
 	assert.equal(tunnel.snapshot().running, true);
 	assert.equal(tunnel.snapshot().kind, "cloudflare-quick");
 	assert.equal(tunnel.snapshot().url, url);
+	let postSuccessToString = 0;
+	child.stderr.write({ toString() { postSuccessToString += 1; return "late banner"; } });
+	assert.equal(postSuccessToString, 0);
 	await tunnel.stop();
 	assert.equal(child.killed, true);
 	assert.equal(tunnel.snapshot().running, false);
@@ -274,6 +278,86 @@ test("start rejects when the child exits before publishing a URL", async () => {
 	await new Promise((resolve) => setImmediate(resolve));
 	child.emit("exit", 1, "SIGTERM");
 	await assert.rejects(startPromise, /exited/);
+	assert.equal(tunnel.snapshot().running, false);
+});
+
+test("synchronous spawn failure rejects without leaving tunnel state", async () => {
+	const tunnel = new CloudflareQuickTunnel({
+		binary: tempBinaryPath(),
+		verifyBinary: okVerify,
+		spawn() { throw new Error("ENOENT"); },
+	});
+	await assert.rejects(tunnel.start({ port: 6879 }), /failed to spawn/);
+	assert.equal(tunnel.snapshot().running, false);
+});
+
+test("async child error before URL rejects promptly and clears state", async () => {
+	const child = fakeChild();
+	const tunnel = new CloudflareQuickTunnel({ binary: tempBinaryPath(), verifyBinary: okVerify, spawn() { return child; } });
+	const started = tunnel.start({ port: 6879 });
+	await new Promise((resolve) => setImmediate(resolve));
+	child.emit("error", new Error("ENOENT"));
+	await assert.rejects(started, /failed to spawn/);
+	assert.equal(tunnel.snapshot().running, false);
+});
+
+test("persistence failure cannot leave a real asynchronous spawn error unhandled", async () => {
+ const dir = mkdtempSync(join(tmpdir(), "dshmr-tunnel-storage-"));
+ const blocked = join(dir, "not-a-directory"); writeFileSync(blocked, "blocked");
+ let closed;
+ const tunnel = new CloudflareQuickTunnel({ binary: tempBinaryPath(), verifyBinary: okVerify, persistFile: join(blocked, "state.json"),
+  spawn() { const child = spawnChild(join(dir, "missing-binary")); closed = new Promise(resolve => child.once("close", resolve)); return child; },
+ });
+ try {
+  await assert.rejects(tunnel.start({ port: 6879 }), /persistence failed/);
+  await closed;
+  assert.equal(tunnel.snapshot().running, false);
+ } finally { await tunnel.stop(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("banner persistence failure rejects start, kills its child and clears state", async () => {
+ const dir = mkdtempSync(join(tmpdir(), "dshmr-tunnel-banner-storage-"));
+ const persistFile = join(dir, "state.json"), child = fakeChild();
+ const tunnel = new CloudflareQuickTunnel({ binary: tempBinaryPath(), verifyBinary: okVerify, persistFile, spawn() { return child; } });
+ try {
+  const started = tunnel.start({ port: 6879 });
+  await new Promise(resolve => setImmediate(resolve));
+  rmSync(persistFile); mkdirSync(persistFile);
+  child.stderr.write("https://ready.trycloudflare.com Registered tunnel connection");
+  await assert.rejects(started, /persistence failed/);
+  assert.equal(child.killed, true); assert.equal(tunnel.snapshot().running, false);
+ } finally { await tunnel.stop(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("late exit from an old child cannot clear a replacement tunnel", async () => {
+	const first = fakeChild();
+	const second = fakeChild();
+	let count = 0;
+	const tunnel = new CloudflareQuickTunnel({
+		binary: tempBinaryPath(), verifyBinary: okVerify,
+		spawn() { return count++ === 0 ? first : second; },
+	});
+	const startOne = tunnel.start({ port: 6879 });
+	await new Promise((resolve) => setImmediate(resolve));
+	first.stderr.write("https://first.trycloudflare.com Registered tunnel connection");
+	await startOne;
+	await tunnel.stop();
+	const startTwo = tunnel.start({ port: 6879 });
+	await new Promise((resolve) => setImmediate(resolve));
+	second.stderr.write("https://second.trycloudflare.com Registered tunnel connection");
+	await startTwo;
+	first.emit("exit", 0, null);
+	assert.equal(tunnel.snapshot().url, "https://second.trycloudflare.com");
+});
+
+test("error after success clears the active child state", async () => {
+	const child = fakeChild();
+	const tunnel = new CloudflareQuickTunnel({ binary: tempBinaryPath(), verifyBinary: okVerify, spawn() { return child; } });
+	const started = tunnel.start({ port: 6879 });
+	await new Promise((resolve) => setImmediate(resolve));
+	child.stderr.write("https://ready.trycloudflare.com Registered tunnel connection");
+	await started;
+	child.emit("error", new Error("broken"));
 	assert.equal(tunnel.snapshot().running, false);
 });
 

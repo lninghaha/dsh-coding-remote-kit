@@ -10,6 +10,7 @@ import {
 	CLOUDFLARED_DOWNLOAD_PREFIX,
 	CLOUDFLARED_RELEASE,
 	installOfficialCloudflared,
+	installedBinaryName,
 	isBareCommandName,
 	parseSha256Sums,
 	redactHomePath,
@@ -24,6 +25,11 @@ test("maps linux/darwin/win32 arches and rejects unknown platforms", () => {
 	assert.equal(cloudflaredAssetFor("win32", "x64"), "cloudflared-windows-amd64.exe");
 	assert.equal(cloudflaredAssetFor("win32", "ia32"), "cloudflared-windows-386.exe");
 	assert.equal(cloudflaredAssetFor("freebsd", "x64"), null);
+});
+
+test("Windows resolver and installer use the same .exe binary name", () => {
+	assert.equal(installedBinaryName("win32"), "cloudflared.exe");
+	assert.equal(installedBinaryName("linux"), "cloudflared");
 });
 
 test("download prefix pins a release tag (not latest)", () => {
@@ -132,7 +138,7 @@ test("installOfficialCloudflared rejects a checksum mismatch", async () => {
 test("installOfficialCloudflared extracts darwin .tgz and verifies binary pin", async () => {
 	const { gzipSync } = await import("node:zlib");
 	const { createHash } = await import("node:crypto");
-	const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+	const { mkdtempSync, readFileSync } = await import("node:fs");
 	const { join } = await import("node:path");
 	const { tmpdir } = await import("node:os");
 	function tarHeader(name, size) {

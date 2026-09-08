@@ -119,7 +119,21 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 			logger.warn("mobile-remote: apiProxy capability watcher unavailable; using safe lazy lookup");
 		}
 	}
-	const fallbackOwnerRequestPolicy = createOwnerRequestPolicy(config.ownerRequest);
+	const trustedProxy = config.ownerRequest.trustedProxy;
+	const fallbackOwnerConfig = {
+		loopbackAccessMode: config.ownerRequest.loopbackAccessMode,
+		...(trustedProxy === undefined
+			? {}
+			: {
+					trustedProxy: {
+						peers: trustedProxy.peers,
+						origins: trustedProxy.origins,
+						...(trustedProxy.ownerProof === undefined ? {} : { ownerProof: trustedProxy.ownerProof }),
+						...(trustedProxy.csrfToken === undefined ? {} : { csrfToken: trustedProxy.csrfToken }),
+					},
+				}),
+	};
+	const fallbackOwnerRequestPolicy = createOwnerRequestPolicy(fallbackOwnerConfig);
 	const ownerRequestPolicy = safeguardOwnerRequestPolicy(host.ownerRequestPolicy ?? fallbackOwnerRequestPolicy);
 	let ownerRequestDiagnostics: readonly OwnerRequestDiagnostic[] = [];
 	try {
@@ -260,6 +274,7 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 				},
 				installCloudflared: () => installOfficialCloudflared(),
 				pushBridge,
+				revokeDevice: (deviceId) => dataPlane.revokeDevice(deviceId),
 				compatibility: () => {
 					resolveApiProxy();
 					return {

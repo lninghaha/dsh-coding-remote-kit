@@ -16,11 +16,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join, normalize, sep } from "node:path";
 import { type WebSocket, WebSocketServer } from "ws";
-import { CLOSE_OVERLOAD, MAX_CONNECTIONS, MAX_WS_PAYLOAD } from "../shared/constants.js";
+import { CLOSE_AUTH_FAILED, CLOSE_OVERLOAD, MAX_CONNECTIONS, MAX_WS_PAYLOAD } from "../shared/constants.js";
 import { MOBILE_SHELL_SECURITY_HEADERS } from "../shared/mobile-shell-headers.js";
 import { isCompletePairCode, normalizePairCode } from "../shared/pair-code.js";
 import { AuthFailureLimiter } from "./auth-failure-limiter.js";
-import { acceptMobileSocket, type ConnectionDeps } from "./connection.js";
+import { acceptMobileSocket, type ConnectionDeps, type MobileConnectionHandle } from "./connection.js";
 import { resolveDeviceToken } from "./e2ee.js";
 import type { AuditLogger, DeviceRegistry, OfferRegistry } from "./registry.js";
 import { readJsonBody, writeJson } from "./security.js";
@@ -80,6 +80,7 @@ export class MobileDataPlane {
 	#wss: WebSocketServer | null = null;
 	#host: string;
 	#connections = 0;
+	readonly #connectionsByDevice = new Map<string, Set<MobileConnectionHandle>>();
 
 	constructor(deps: DataPlaneDeps) {
 		this.#deps = deps;
@@ -268,7 +269,34 @@ export class MobileDataPlane {
 			onAuthFailure: () => {
 				this.#authFailures.recordFailure(remoteAddress, this.#now());
 			},
+			onAuthenticated: (deviceId, connection) => {
+				const connections = this.#connectionsByDevice.get(deviceId) ?? new Set<MobileConnectionHandle>();
+				connections.add(connection);
+				this.#connectionsByDevice.set(deviceId, connections);
+			},
+			onDisconnected: (deviceId, connection) => {
+				const connections = this.#connectionsByDevice.get(deviceId);
+				if (connections === undefined) return;
+				connections.delete(connection);
+				if (connections.size === 0) this.#connectionsByDevice.delete(deviceId);
+			},
+			isDeviceActive: (deviceId) => {
+				const device = this.#deps.registry.findById(deviceId);
+				return device !== null && device.revokedAt === undefined && !this.#deps.registry.isIdleExpired(device, this.#now());
+			},
+			touchDevice: (deviceId) => this.#deps.registry.touch(deviceId, this.#now()),
 		};
+	}
+
+	/** Revoke exactly one device and close only its active transports. */
+	revokeDevice(deviceId: string): boolean {
+		const revoked = this.#deps.registry.revoke(deviceId, this.#now());
+		if (revoked === null) return false;
+		for (const connection of this.#connectionsByDevice.get(deviceId) ?? []) {
+			connection.close(CLOSE_AUTH_FAILED, "device revoked");
+		}
+		this.#connectionsByDevice.delete(deviceId);
+		return true;
 	}
 
 	#onConnection = (ws: WebSocket, request: IncomingMessage): void => {
@@ -326,6 +354,10 @@ export class MobileDataPlane {
 	}
 
 	async close(): Promise<void> {
+		for (const connections of this.#connectionsByDevice.values()) {
+			for (const connection of connections) connection.close(1001, "server stopping");
+		}
+		this.#connectionsByDevice.clear();
 		await this.#closeListener();
 	}
 }

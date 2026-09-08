@@ -7,6 +7,7 @@ import nacl from "tweetnacl";
 import { generateClientKeyPair, MobileE2eeSession } from "../lib/mobile/e2ee.js";
 import { base64Encode } from "../lib/shared/base64.js";
 import { CLOSE_AUTH_FAILED } from "../lib/shared/constants.js";
+import { DEVICE_IDLE_TTL_MS } from "../lib/shared/constants.js";
 import { resolveDeviceToken, ServerHandshake } from "../lib/server/e2ee.js";
 import { AuditLogger, DeviceRegistry, OfferRegistry } from "../lib/server/registry.js";
 import { ensureStorageDir } from "../lib/server/storage.js";
@@ -54,6 +55,21 @@ test("revoked device → unauthorized", () => {
 	d.registry.revoke(first.device.deviceId, 3000);
 	const second = resolveDeviceToken(offer.deviceToken, { ...d, now: () => 4000 });
 	assert.equal(second.kind, "unauthorized");
+});
+
+test("successful authentication refreshes idle clock but revoked and idle devices never revive", () => {
+	const d = deps();
+	const { offer } = d.offers.createOffer({ endpoint: "e", pageUrl: "p", publicKeyB64: "k", ttlMs: DEVICE_IDLE_TTL_MS * 2, now: 1 });
+	const first = resolveDeviceToken(offer.deviceToken, { ...d, now: () => 10 });
+	assert.equal(first.kind, "ok");
+	const refreshed = resolveDeviceToken(offer.deviceToken, { ...d, now: () => 20 });
+	assert.equal(refreshed.kind, "ok");
+	assert.equal(d.registry.findById(first.device.deviceId)?.lastSeenAt, 20);
+	const idle = resolveDeviceToken(offer.deviceToken, { ...d, now: () => 20 + DEVICE_IDLE_TTL_MS + 1 });
+	assert.equal(idle.kind, "unauthorized");
+	assert.notEqual(d.registry.findById(first.device.deviceId)?.revokedAt, undefined);
+	const revoked = resolveDeviceToken(offer.deviceToken, { ...d, now: () => 30 + DEVICE_IDLE_TTL_MS });
+	assert.equal(revoked.kind, "unauthorized");
 });
 
 test("ServerHandshake maps a bad token to bad_auth and close code 4001", () => {

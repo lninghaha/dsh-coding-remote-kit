@@ -47,10 +47,19 @@ export interface ConnectionDeps {
 	readonly now?: () => number;
 	/** Fired when the handshake/auth path rejects the peer (rate-limit accounting). */
 	onAuthFailure?(): void;
+	/** Records a successfully authenticated connection under its device. */
+	onAuthenticated?(deviceId: string, connection: MobileConnectionHandle): void;
+	/** Removes a connection from its device's active connection set. */
+	onDisconnected?(deviceId: string, connection: MobileConnectionHandle): void;
+	/** Returns false once a device has been revoked or has expired. */
+	isDeviceActive?(deviceId: string): boolean;
+	/** Refreshes the device idle clock after authenticated traffic. */
+	touchDevice?(deviceId: string): void;
 }
 
 export interface MobileConnectionHandle {
 	start(): void;
+	close(code?: number, reason?: string): void;
 }
 
 type ConnectionState = "awaiting-hello" | "awaiting-auth" | "authenticated";
@@ -94,6 +103,7 @@ class MobileConnection implements MobileConnectionHandle {
 				close: (code, reason) => ws.close(code, reason),
 			},
 			(payload) => this.#sealOut(payload),
+			() => !this.#disposed && this.#deviceActive(),
 		);
 	}
 
@@ -106,6 +116,7 @@ class MobileConnection implements MobileConnectionHandle {
 		this.#ws.on("message", (data, isBinary) => this.#onMessage(data, isBinary));
 		this.#ws.on("pong", () => {
 			this.#alive = true;
+			this.#touchDevice();
 		});
 		this.#ws.on("close", () => this.#dispose());
 		this.#ws.on("error", () => this.#dispose());
@@ -143,7 +154,42 @@ class MobileConnection implements MobileConnectionHandle {
 			this.#authTimeout = null;
 		}
 		this.#queue.stop();
-		if (this.#admitted) this.#deps.release();
+		if (this.#deviceId !== null) this.#deps.onDisconnected?.(this.#deviceId, this);
+		if (this.#admitted) {
+			try { this.#deps.release(); }
+			catch { this.#deps.logger.warn("connection close audit failed (details redacted)"); }
+		}
+	}
+
+	close(code = CLOSE_AUTH_FAILED, reason = "device revoked"): void {
+		if (this.#disposed) return;
+		try {
+			this.#queue.stop();
+			// Relay transports may replace close codes. Send the existing encrypted
+			// authorization error before closing, without draining queued business data.
+			if (code === CLOSE_AUTH_FAILED && this.#keys !== null && this.#ws.readyState === WebSocket.OPEN) {
+				this.#ws.send(base64Encode(this.#sealOut(utf8Encode(JSON.stringify({ type: "e2ee_error", error: { code: "unauthorized" } })))));
+			}
+			this.#ws.close(code, reason);
+		} catch {
+			this.#ws.terminate();
+		}
+		this.#dispose();
+	}
+
+	#touchDevice(): void {
+		if (this.#deviceId === null) return;
+		if (!this.#deviceActive()) return;
+		try { this.#deps.touchDevice?.(this.#deviceId); }
+		catch { this.#deps.logger.warn("device activity persistence failed (details redacted)"); this.close(1011, "device storage unavailable"); }
+	}
+
+	#deviceActive(): boolean {
+		try {
+			if (this.#deviceId === null || this.#deps.isDeviceActive?.(this.#deviceId) !== false) return true;
+			this.close(CLOSE_AUTH_FAILED, "device unavailable");
+		} catch { this.#deps.logger.warn("device authorization storage failed (details redacted)"); this.close(1011, "device storage unavailable"); }
+		return false;
 	}
 
 	subscribeSession(sessionId: string): void {
@@ -176,6 +222,11 @@ class MobileConnection implements MobileConnectionHandle {
 	}
 
 	#sendEncrypted(value: unknown): void {
+		if (this.#disposed) return;
+		// Pushes and replies may be emitted after their initiating RPC. Re-check
+		// authorization here so an idle-expired or newly revoked device cannot
+		// receive an already queued asynchronous result.
+		if (!this.#deviceActive()) return;
 		const outcome = this.#queue.enqueue(utf8Encode(JSON.stringify(value)));
 		if (outcome === "overflow") this.#dispose();
 	}
@@ -293,6 +344,7 @@ class MobileConnection implements MobileConnectionHandle {
 		this.#keys = result.keys ?? this.#keys;
 		this.#state = "authenticated";
 		this.#deviceId = result.deviceId ?? null;
+		if (!this.#deviceActive()) return;
 		if (this.#deviceId !== null && deviceName !== undefined) {
 			this.#deps.renameDevice?.(this.#deviceId, deviceName);
 		}
@@ -302,6 +354,7 @@ class MobileConnection implements MobileConnectionHandle {
 			send: (push) => this.#sendEncrypted(push),
 		};
 		this.#deps.upstream.addSubscriber(this.#subscriber);
+		if (this.#deviceId !== null) this.#deps.onAuthenticated?.(this.#deviceId, this);
 		if (this.#authTimeout !== null) {
 			clearTimeout(this.#authTimeout);
 			this.#authTimeout = null;
@@ -314,6 +367,8 @@ class MobileConnection implements MobileConnectionHandle {
 	}
 
 	async #dispatchRpc(message: unknown): Promise<void> {
+		this.#touchDevice();
+		if (this.#disposed) return;
 		const reply = await dispatchRpc(message, {
 			upstream: this.#deps.upstream,
 			...(this.#deviceId === null ? {} : { deviceId: this.#deviceId }),

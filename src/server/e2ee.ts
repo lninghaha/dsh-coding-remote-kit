@@ -58,6 +58,7 @@ export function resolveDeviceToken(
 			deps.audit.log({ event: "auth_failed", detail: { reason: "idle_expired" } }, now);
 			return { kind: "unauthorized" };
 		}
+		deps.registry.touch(existing.deviceId, now);
 		return { kind: "ok", device: existing };
 	}
 	const offer = deps.offers.consumeByToken(deviceToken, now);
@@ -91,7 +92,6 @@ export class ServerHandshake {
 	readonly #resolveToken: ResolveToken;
 
 	#hello?: HelloMessage;
-	#ready?: ReadyMessage;
 	#clientPublicKey?: Uint8Array;
 	#clientNonce?: Uint8Array;
 	#serverNonce?: Uint8Array;
@@ -117,7 +117,6 @@ export class ServerHandshake {
 			this.#clientNonce = parsed.clientNonce;
 			this.#serverNonce = randomBytes(32);
 			const ready = buildReady(this.#serverPublicKey, parsed.clientNonce, this.#serverNonce, HANDSHAKE_CONTEXT);
-			this.#ready = ready;
 			this.#transcriptHash = computeTranscriptHash(this.#hello, ready);
 			return { ok: true, ready };
 		} catch {

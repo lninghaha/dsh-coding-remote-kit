@@ -333,8 +333,9 @@ export async function installOfficialCloudflared(options?: {
 	const actualDownload = createHash("sha256").update(downloaded).digest("hex");
 	if (actualDownload !== pinnedDownload) throw new Error("cloudflared checksum mismatch");
 
+	const extractImpl = options?.extractTarGzImpl;
 	const binaryBytes = isTarGzAsset(asset)
-		? extractCloudflaredFromTarGz(downloaded, { extractImpl: options?.extractTarGzImpl })
+		? extractCloudflaredFromTarGz(downloaded, extractImpl === undefined ? {} : { extractImpl })
 		: downloaded;
 
 	await mkdir(destDir, { recursive: true });

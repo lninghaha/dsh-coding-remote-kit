@@ -27,7 +27,7 @@ const OwnerRequestSchema = z
 		trustedProxy: TrustedProxySchema.optional(),
 	})
 	.strict()
-	.default({});
+	.default({ loopbackAccessMode: "loopback" });
 
 export const RuntimeConfigSchema = z
 	.object({
