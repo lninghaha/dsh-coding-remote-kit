@@ -425,6 +425,15 @@ export const MESSAGES = {
 		en: "Send another instruction to the agent",
 	},
 	"app.send": { "zh-CN": "发送", en: "Send" },
+ "app.activity.toolFailed": { "zh-CN": "工具失败：{tool}", en: "Tool failed: {tool}" },
+ "app.activity.toolDone": { "zh-CN": "工具已完成：{tool}", en: "Tool completed: {tool}" },
+
+ "app.approvalLinkRestoring": { "zh-CN": "正在恢复通知对应的待办…", en: "Restoring the request linked by this notification…" },
+ "app.approvalLinkUnavailable": { "zh-CN": "暂未恢复此审批，可能已处理。请核对宿主；后续同步到达后会定位待办。", en: "This approval is not available yet and may already be resolved. Check the host; a later replay will locate it here." },
+ "app.approvalLinkResolved": { "zh-CN": "此审批已处理，无需重复提交。", en: "This approval has been resolved; no further response is needed." },
+
+	"app.promptUnknown": { "zh-CN": "上次发送结果未知，请先核对会话，草稿已保留。", en: "The last send result is unknown. Check the session first; your draft is preserved." },
+	"app.promptRejected": { "zh-CN": "发送失败，草稿已保留。", en: "Send failed; your draft is preserved." },
 	"app.mode.label": { "zh-CN": "发送模式", en: "Send mode" },
 	"app.mode.queue": { "zh-CN": "排队", en: "Queue" },
 	"app.mode.steer": { "zh-CN": "插队", en: "Steer" },
@@ -471,5 +480,5 @@ export const MESSAGES = {
 } as const satisfies Record<string, Record<Locale, string>>;
 
 export function isMessageKey(key: string): key is MessageKey {
-	return Object.prototype.hasOwnProperty.call(MESSAGES, key);
+	return Object.hasOwn(MESSAGES, key);
 }

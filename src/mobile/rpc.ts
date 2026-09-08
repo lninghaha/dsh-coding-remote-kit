@@ -10,6 +10,13 @@ export interface MobileRpcError {
 	readonly message: string;
 }
 
+/** A negative server receipt is distinct from losing an in-flight connection. */
+export class MobileRequestError extends Error {
+	constructor(message: string, readonly delivery: "rejected" | "unknown" | "not-sent") {
+		super(message);
+	}
+}
+
 export interface MobilePush {
 	readonly push: string;
 	readonly data: unknown;
@@ -45,7 +52,7 @@ export class MobileRpcClient {
 	}
 
 	request(method: string, params?: Record<string, unknown>): Promise<unknown> {
-		if (this.#failureReason !== null) return Promise.reject(new Error(this.#failureReason));
+		if (this.#failureReason !== null) return Promise.reject(new MobileRequestError(this.#failureReason, "not-sent"));
 		const id = this.#nextId;
 		this.#nextId += 1;
 		return new Promise((resolve, reject) => {
@@ -54,7 +61,7 @@ export class MobileRpcClient {
 				this.#send(params === undefined ? { id, method } : { id, method, params });
 			} catch (error) {
 				this.#pending.delete(id);
-				reject(error instanceof Error ? error : new Error("request send failed"));
+				reject(new MobileRequestError(error instanceof Error ? error.message : "request send failed", "not-sent"));
 			}
 		});
 	}
@@ -82,12 +89,12 @@ export class MobileRpcClient {
 		const err = message.error as { code?: string; message?: string } | undefined;
 		const code = typeof err?.code === "string" ? err.code : "upstream_error";
 		const text = typeof err?.message === "string" ? err.message : "request failed";
-		pending.reject(new Error(`${code}: ${text}`));
+		pending.reject(new MobileRequestError(`${code}: ${text}`, "rejected"));
 	}
 
 	failAll(reason: string): void {
 		this.#failureReason = reason;
-		for (const pending of this.#pending.values()) pending.reject(new Error(reason));
+		for (const pending of this.#pending.values()) pending.reject(new MobileRequestError(reason, "unknown"));
 		this.#pending.clear();
 	}
 }

@@ -14,9 +14,38 @@ export interface StorageLike {
 	removeItem?(key: string): void;
 }
 
+/** Tab-scoped UI key: host public key + device + session prevent cross-pair leaks. */
+export function sessionUiKey(hostPublicKeyB64: string, deviceId: string, sessionId: string, field: string): string {
+	return `dshmr.ui.${hostPublicKeyB64}.${deviceId}.${sessionId}.${field}`;
+}
+
+export function readSessionUi(storage: StorageLike, key: string): string | null {
+	try { return storage.getItem(key); } catch { return null; }
+}
+
+export function writeSessionUi(storage: StorageLike, key: string, value: string): void {
+	try { storage.setItem(key, value); } catch { /* session restore is best effort */ }
+}
+
+export function clearSessionUi(storage: StorageLike, key: string): void {
+	try {
+		if (storage.removeItem !== undefined) storage.removeItem(key);
+		else storage.setItem(key, "");
+	} catch { /* session restore is best effort */ }
+}
+
 export function persistOffer(storage: StorageLike, offer: PairingOffer): void {
 	storage.setItem(HOST_STORAGE_KEY, offer.pageUrl);
 	storage.setItem(OFFER_STORAGE_KEY, JSON.stringify(offer));
+}
+
+/** Only call after successful E2EE authentication: an invite is no longer needed. */
+export function resumableOffer(offer: PairingOffer): PairingOffer {
+	const endpoint = new URL(offer.endpoint);
+	if (!/^\/v1\/phone\/[^/]+$/u.test(endpoint.pathname)) return offer;
+	endpoint.searchParams.delete("invite");
+	endpoint.searchParams.set("resume", "1");
+	return { ...offer, endpoint: endpoint.href };
 }
 
 export function loadPersistedOffer(storage: StorageLike): PairingOffer | null {
@@ -52,4 +81,20 @@ export function migratePersistedOffer(session: StorageLike, durable: StorageLike
 	persistOffer(session, fromDurable);
 	clearPersistedOffer(durable);
 	return fromDurable;
+}
+
+export interface ReadingPosition {
+ readonly top: number;
+ readonly firstSeq: number | null;
+ readonly atEnd: boolean;
+}
+export function readReadingPosition(storage: StorageLike, key: string): ReadingPosition | null {
+ try {
+  const raw = readSessionUi(storage, key);
+  if (raw === null) return null;
+  const value = JSON.parse(raw) as Partial<ReadingPosition> | null;
+  if (value === null || typeof value.top !== "number" || !Number.isFinite(value.top) || value.top < 0 ||
+   typeof value.atEnd !== "boolean" || !(value.firstSeq === null || (typeof value.firstSeq === "number" && Number.isFinite(value.firstSeq)))) return null;
+  return { top: value.top, firstSeq: value.firstSeq, atEnd: value.atEnd };
+ } catch { return null; }
 }

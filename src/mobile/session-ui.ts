@@ -90,7 +90,7 @@ export function activeTools(events: readonly unknown[]): ActiveTool[] {
 				done.callId !== undefined
 					? open.findIndex((item) => item.callId === done.callId)
 					: open.findIndex((item) => item.name === done.name && item.callId === undefined);
-			const fallback = index >= 0 ? index : open.findIndex((item) => item.name === done.name);
+			const fallback = index >= 0 || done.callId !== undefined ? index : open.findIndex((item) => item.name === done.name);
 			if (fallback >= 0) open.splice(fallback, 1);
 		}
 	}
@@ -98,34 +98,22 @@ export function activeTools(events: readonly unknown[]): ActiveTool[] {
 }
 
 export function mergeHistoryPage(
-	existing: readonly unknown[],
-	older: readonly unknown[],
+ existing: readonly unknown[], incoming: readonly unknown[], placement: "older" | "newer" = "older",
 ): unknown[] {
-	if (older.length === 0) return [...existing];
-	if (existing.length === 0) return [...older];
-	const seen = new Set<string>();
-	const keyOf = (entry: unknown, index: number): string => {
-		const seq = eventSeq(entry);
-		if (seq !== null) return `seq:${String(seq)}`;
-		const event = unwrapEvent(entry);
-		const type = typeof event?.type === "string" ? event.type : "?";
-		return `i:${String(index)}:${type}:${JSON.stringify(event?.data ?? null).slice(0, 80)}`;
-	};
-	const merged: unknown[] = [];
-	for (const [index, entry] of older.entries()) {
-		const key = keyOf(entry, index);
-		if (seen.has(key)) continue;
-		seen.add(key);
-		merged.push(entry);
-	}
-	const offset = older.length;
-	for (const [index, entry] of existing.entries()) {
-		const key = keyOf(entry, offset + index);
-		if (seen.has(key)) continue;
-		seen.add(key);
-		merged.push(entry);
-	}
-	return merged;
+ // Legacy rows retain source order; only host sequences identify duplicates.
+ const source = placement === "older" ? [...incoming, ...existing] : [...existing, ...incoming];
+ const seen = new Set<number>();
+ const merged = source.filter((entry) => {
+  const seq = eventSeq(entry);
+  if (seq === null) return true;
+  if (seen.has(seq)) return false;
+  seen.add(seq); return true;
+ });
+ const ordered = merged.filter((entry) => eventSeq(entry) !== null)
+  .sort((left, right) => (eventSeq(left) as number) - (eventSeq(right) as number));
+ let index = 0;
+ // Sort the sequenced subsequence without a non-transitive mixed comparator.
+ return merged.map((entry) => eventSeq(entry) === null ? entry : ordered[index++]);
 }
 
 export function historyCursorFromResult(

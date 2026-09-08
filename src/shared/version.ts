@@ -1,16 +1,14 @@
 /**
- * Version-gate rules enforced by the mobile page after `status.get`.
- *
- * The mobile page must make `status.get` its first authenticated call, then
- * hard-block on either direction being too old. A failed `status.get` fails
- * open (does not block) so a transient transport error never bricks pairing.
+ * Version-gate rules enforced from authenticated handshake metadata before
+ * business RPC. The nullable helper input remains for legacy callers only;
+ * the mobile handshake validates and supplies a concrete VersionStatus.
  */
 
 import { MIN_COMPATIBLE_DESKTOP_VERSION } from "./constants.js";
 
 export type VersionGateVerdict = "ok" | "mobile-too-old" | "desktop-too-old";
 
-/** The fields of `status.get` result that participate in the gate. */
+/** Authenticated version fields, also exposed by `status.get` for diagnostics. */
 export interface VersionStatus {
 	readonly protocolVersion: number;
 	readonly minCompatibleMobileVersion: number;
@@ -27,9 +25,8 @@ export function isDesktopTooOld(desktopProtocolVersion: number, minDesktop = MIN
 }
 
 /**
- * Resolve the gate. `status === null` means `status.get` failed, which fails
- * open (`ok`). Otherwise the mobile floor and desktop floor are checked in
- * that order.
+ * Resolve the gate. Null retains legacy helper behavior (`ok`); the current
+ * mobile entrypoint never supplies null. Check mobile then desktop floors.
  */
 export function evaluateVersionGate(mobileProtocolVersion: number, status: VersionStatus | null): VersionGateVerdict {
 	if (status === null) return "ok";

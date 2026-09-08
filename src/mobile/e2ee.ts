@@ -42,7 +42,7 @@ export type ReadyOutcome =
 	| { readonly ok: false; readonly reason: "pinned-key-mismatch" | "invalid" };
 
 export type AuthenticatedOutcome =
-	| { readonly ok: true; readonly status: VersionStatus }
+	| { readonly ok: true; readonly status: VersionStatus; readonly deviceId: string }
 	| { readonly ok: false; readonly reason: "transcript-mismatch" | "invalid" };
 
 export function generateClientKeyPair(): { readonly secretKey: Uint8Array; readonly publicKey: Uint8Array } {
@@ -114,6 +114,7 @@ export class MobileE2eeSession {
 					protocolVersion: parsed.protocolVersion,
 					minCompatibleMobileVersion: parsed.minCompatibleMobileVersion,
 				},
+				deviceId: parsed.deviceId,
 			};
 		} catch {
 			return { ok: false, reason: "invalid" };

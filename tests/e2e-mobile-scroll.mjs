@@ -4,11 +4,14 @@
  * Optional local static server on 127.0.0.1:19081 unless E2E_NO_SERVE=1.
  */
 import { createServer } from "node:http";
-import { readFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { build as esbuild } from "esbuild";
+import { draftRecoveryScenario } from "./e2e-draft-scenario.mjs";
+import { stateRecoveryScenario } from "./e2e-state-scenario.mjs";
+import { runLiveConnectionScenario } from "./e2e-live-connection.mjs";
 
 const ROOT = fileURLToPath(new URL("../lib/mobile/", import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -21,11 +24,12 @@ const MIME = {
 
 let server = null;
 await prepareSettingsHarness();
+await prepareDraftRecoveryHarness();
 if (process.env.E2E_NO_SERVE !== "1") {
 	server = createServer((request, response) => {
 		const url = new URL(request.url ?? "/", `http://127.0.0.1:${String(PORT)}`);
 		const relative =
-			url.pathname === "/"
+			url.pathname === "/" || url.pathname === "/m/"
 				? "index.html"
 				: url.pathname.startsWith("/m/")
 					? url.pathname.slice(3)
@@ -57,9 +61,12 @@ try {
 } finally {
 	server?.close();
 	cleanupSettingsHarness();
+	cleanupDraftRecoveryHarness();
 }
 
 console.log(JSON.stringify(metrics));
+mkdirSync(join(REPO_ROOT, "output"), { recursive: true });
+writeFileSync(join(REPO_ROOT, "output", "e2e-mobile-scroll-metrics.json"), JSON.stringify(metrics, null, 2));
 if (!metrics.ok) process.exit(1);
 for (const profile of metrics.profiles) {
 	if (profile.canScroll !== undefined && (!profile.canScroll || profile.afterTop < 100)) {
@@ -113,6 +120,7 @@ function measureScroll() {
 
 async function runViaCdp(cdpOrigin, targetUrl) {
 	const base = cdpOrigin.replace(/\/$/, "");
+	await (await import("./e2e-cdp-ready.mjs")).waitForCdp(base);
 	const created = await fetchJson(`${base}/json/new?${encodeURIComponent("about:blank")}`, { method: "PUT" });
 	const wsUrl = created.webSocketDebuggerUrl;
 	if (typeof wsUrl !== "string") throw new Error("chrome CDP missing page webSocketDebuggerUrl");
@@ -136,12 +144,14 @@ async function runViaCdp(cdpOrigin, targetUrl) {
 				features: [{ name: "prefers-reduced-motion", value: profile.reduced ? "reduce" : "no-preference" }],
 			});
 			const url = profile.kind === "settings" ? new URL("/m/e2e-settings.html", targetUrl).href : targetUrl;
+			const loaded = chrome.wait("Page.loadEventFired", 12_000);
 			await chrome.send("Page.navigate", { url });
-			await Promise.race([chrome.wait("Page.loadEventFired", 12_000), sleep(2_500)]);
+			await loaded;
 			if (profile.kind === "settings") {
 				const settings = await runSettingsInteraction(chrome);
 				const environment = await evaluateValue(chrome, `({ innerWidth, innerHeight, dpr: devicePixelRatio, reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches })`);
 				const shot = await chrome.send("Page.captureScreenshot", { format: "png", fromSurface: true });
+				writeArtifact(profile.name, shot.data);
 				profiles.push({ ...settings, ...environment, name: profile.name, screenshot: pngDimensions(Buffer.from(shot.data, "base64")), manifestStatus: 200, ok: Object.values(settings).every(Boolean) });
 				continue;
 			}
@@ -163,6 +173,7 @@ async function runViaCdp(cdpOrigin, targetUrl) {
 				return { innerWidth, innerHeight, dpr: devicePixelRatio, reducedMotion, reducedMotionApplied: !reducedMotion || style.transitionDuration === "1e-05s" || style.transitionDuration === "0.01ms" };
 			})()`);
 			const shot = await chrome.send("Page.captureScreenshot", { format: "png", fromSurface: true });
+			writeArtifact(profile.name, shot.data);
 			profiles.push({
 				...after,
 				...environment,
@@ -174,7 +185,17 @@ async function runViaCdp(cdpOrigin, targetUrl) {
 				ok: after.ok === true && after.tasks > 0 && after.canScroll === true,
 			});
 		}
-		return { ok: profiles.every((profile) => profile.ok), profiles };
+		const recoveryLoaded = chrome.wait("Page.loadEventFired", 12_000);
+		await chrome.send("Page.navigate", { url: new URL("/m/e2e-draft-recovery.html", targetUrl).href });
+		await recoveryLoaded;
+		const recovery = await evaluateValue(chrome, `(${draftRecoveryScenario.toString()})()`, true);
+		const recoveryManifest = await evaluateValue(chrome, `fetch("/m/manifest.webmanifest").then((r) => r.status)`, true);
+		profiles.push({ name: "draft-recovery", manifestStatus: recoveryManifest, ...recovery, ok: Object.values(recovery).every((value) => value === true) });
+  const stateRecovery = await evaluateValue(chrome, `(${stateRecoveryScenario.toString()})()`, true);
+  profiles.push({ name: "state-recovery", manifestStatus: recoveryManifest, ...stateRecovery, ok: Object.values(stateRecovery).every((value) => value === true) });
+  const live = await runLiveConnectionScenario(chrome, base, openCdp, ROOT);
+  profiles.push({ name: "live-e2ee-recovery", ...live, ok: Object.entries(live).every(([key, value]) => key === "manifestStatus" ? value === 200 : value === true) });
+  return { ok: profiles.every((profile) => profile.ok), profiles };
 	} finally {
 		chrome.close();
 	}
@@ -182,14 +203,14 @@ async function runViaCdp(cdpOrigin, targetUrl) {
 
 async function runSettingsInteraction(chrome) {
 	for (let attempt = 0; attempt < 20; attempt += 1) {
-		if (await evaluateValue(chrome, `/Connection|连接方式/.test(document.querySelector('[aria-current="step"]')?.textContent ?? "")`)) break;
+		if (await evaluateValue(chrome, `/connection|连接方式/i.test(document.querySelector('[aria-current="step"]')?.textContent ?? "")`)) break;
 		await sleep(80);
 	}
 	return evaluateValue(chrome, `(async () => {
 		const text = () => document.body.innerText;
 		const current = () => document.querySelector('[aria-current="step"]')?.textContent ?? "";
 		const advancedHidden = !text().includes("19081");
-		const connectionStep = /Connection|连接方式/.test(current());
+		const connectionStep = /connection|连接方式/i.test(current());
 		document.querySelector('input[name="channel"]')?.click();
 		await Promise.resolve();
 		const pairStep = /Pair|配对/.test(current());
@@ -244,7 +265,7 @@ function cleanupSettingsHarness() {
 
 async function evaluateValue(chrome, expression, awaitPromise = false) {
 	const result = await chrome.send("Runtime.evaluate", { expression, awaitPromise, returnByValue: true });
-	if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? "browser evaluation failed");
+	if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "browser evaluation failed");
 	return result.result?.value;
 }
 
@@ -257,6 +278,7 @@ async function runInteraction(chrome) {
 	return evaluateValue(chrome, `(async () => {
 		const input = document.querySelector(".composer textarea");
 		input.value = "draft stays here";
+		input.dispatchEvent(new Event("input", { bubbles: true }));
 		input.focus();
 		input.setSelectionRange(2, 7);
 		globalThis.__dshmrE2e.pushHostUpdate();
@@ -276,8 +298,10 @@ async function runInteraction(chrome) {
 		const form = document.querySelector(".composer");
 		const oldInput = form.querySelector("textarea");
 		oldInput.value = "send once";
+		oldInput.dispatchEvent(new Event("input", { bubbles: true }));
 		form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 		oldInput.value = "send twice";
+		oldInput.dispatchEvent(new Event("input", { bubbles: true }));
 		form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 		await new Promise((resolve) => setTimeout(resolve, 120));
 		globalThis.__dshmrE2e.dispose();
@@ -290,6 +314,22 @@ async function runInteraction(chrome) {
 function pngDimensions(bytes) {
 	if (bytes.toString("ascii", 1, 4) !== "PNG") throw new Error("invalid PNG screenshot");
 	return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+async function prepareDraftRecoveryHarness() {
+	await esbuild({ entryPoints: [join(REPO_ROOT, "tests", "e2e-draft-recovery.mjs")], outfile: join(ROOT, "e2e-draft-recovery.js"), bundle: true, format: "iife", platform: "browser", target: "es2022" });
+	writeFileSync(join(ROOT, "e2e-draft-recovery.html"), readFileSync(join(ROOT, "index.html"), "utf8").replace("/m/app.js", "/m/e2e-draft-recovery.js"));
+}
+
+function cleanupDraftRecoveryHarness() {
+	rmSync(join(ROOT, "e2e-draft-recovery.js"), { force: true });
+	rmSync(join(ROOT, "e2e-draft-recovery.html"), { force: true });
+}
+
+function writeArtifact(name, base64) {
+	const output = join(REPO_ROOT, "output");
+	mkdirSync(output, { recursive: true });
+	writeFileSync(join(output, `${name}.png`), Buffer.from(base64, "base64"));
 }
 
 function sleep(ms) {

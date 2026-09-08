@@ -81,3 +81,14 @@ test("historyCursorFromResult exposes beforeSeq and hasMore", () => {
 	);
 	assert.deepEqual(cursor, { beforeSeq: 5, hasMore: true });
 });
+
+test("live and history sequences sort and deduplicate even on the first page and across legacy rows", () => {
+ const row = (seq) => ({ seq, event: { type: "assistant/chunk", data: { text: String(seq) } } });
+ const legacy = { event: { type: "assistant/chunk", data: { text: "legacy" } } };
+ assert.deepEqual(mergeHistoryPage([], [row(3), row(1), row(3)]).map(eventSeq), [1, 3]);
+ const merged = mergeHistoryPage([row(3), legacy], [row(1), row(2)], "newer");
+ assert.deepEqual(merged.filter((event) => eventSeq(event) !== null).map(eventSeq), [1, 2, 3]);
+ assert.equal(merged[1], legacy);
+ assert.deepEqual(mergeHistoryPage([legacy], [legacy], "newer"), [legacy, legacy]);
+ assert.deepEqual(activeTools([{ event: { type: "tool/call", data: { name: "read", callId: "active" } } }, { event: { type: "tool/result", data: { name: "read", callId: "other" } } }]), [{ name: "read", callId: "active" }]);
+});

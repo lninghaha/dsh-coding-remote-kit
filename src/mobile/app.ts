@@ -3,14 +3,15 @@
  */
 
 import { formatAgo, getLocale, setLocale, subscribeLocale, t } from "../shared/i18n/index.js";
-import { asRecord, extractText, type MobilePush, type MobileRpcClient } from "./rpc.js";
+import { asRecord, extractText, MobileRequestError, type MobilePush, type MobileRpcClient } from "./rpc.js";
 import {
 	activeTools,
+	unwrapEvent,
 	earliestSeq,
-	historyCursorFromResult,
 	historyPageSize,
 	mergeHistoryPage,
 } from "./session-ui.js";
+import { clearSessionUi, readSessionUi, readReadingPosition, sessionUiKey, writeSessionUi, type StorageLike, type ReadingPosition } from "./persist.js";
 
 export interface SessionRow {
 	sessionId: string;
@@ -70,7 +71,7 @@ const SEARCH_DEBOUNCE_MS = 200;
 export function startConnectedApp(
 	root: HTMLElement,
 	rpc: MobileRpcClient,
-	options: { focusApproval?: ApprovalFocusTarget | null } = {},
+	options: { focusApproval?: ApprovalFocusTarget | null; hostPublicKeyB64?: string; deviceId?: string; storage?: StorageLike; onApprovalFocusConsumed?: () => void } = {},
 ): () => void {
 	document.documentElement.classList.add("connected");
 	document.body.classList.add("connected");
@@ -97,12 +98,39 @@ export function startConnectedApp(
 		focusApprovalId: options.focusApproval?.approvalId ?? null,
 		historyHasMore: false,
 		historyLoadingOlder: false,
+		drafts: new Map<string, { value: string; revision: number }>(),
+		promptErrors: new Map<string, string>(),
 	};
 
 	let disposed = false;
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
 	let searchTimer: ReturnType<typeof setTimeout> | null = null;
 	let sheetTriggerKey: string | null = null;
+	let viewGeneration = 0;
+	let operationGeneration = 0;
+	let focusTarget = options.focusApproval ?? null;
+ let focusNotice: string | null = focusTarget === null ? null : "app.approvalLinkRestoring";
+ const inboxResolved = new Set<string>();
+ let inboxGeneration = 0;
+ let readingReady = false;
+	let restoreReading: ReadingPosition | null = null;
+ let historyRecoveryGeneration = 0;
+ let transcriptResetGeneration = 0;
+	const storage = options.storage ?? (typeof sessionStorage === "undefined" ? null : sessionStorage);
+	const scopedKey = (sessionId: string, field: string): string | null =>
+		storage === null || options.hostPublicKeyB64 === undefined || options.deviceId === undefined
+			? null
+			: sessionUiKey(options.hostPublicKeyB64, options.deviceId, sessionId, field);
+
+ const currentSessionKey = scopedKey("", "current-session");
+ const saveReading = (): void => {
+  if (!readingReady || state.view.name !== "session" || storage === null) return;
+  const scroller = root.querySelector(".transcript");
+  const key = scopedKey(state.view.sessionId, "reading");
+  if (!(scroller instanceof HTMLElement) || key === null) return;
+  writeSessionUi(storage, key, JSON.stringify({ top: scroller.scrollTop, firstSeq: earliestSeq(state.events),
+   atEnd: scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 96 }));
+ };
 
 	const showToast = (message: string): void => {
 		if (disposed) return;
@@ -158,6 +186,12 @@ export function startConnectedApp(
 		const transTop = trans?.scrollTop ?? 0;
 		root.replaceChildren();
 		root.appendChild(renderChrome());
+  if (focusNotice !== null) {
+   const notice = el("div", { className: "bar-err", role: "status" }, t(focusNotice));
+   const dismiss = el("button", { type: "button", className: "ghost" }, t("common.close"));
+   dismiss.addEventListener("click", () => { consumeFocus(); focusNotice = null; render(); });
+   notice.appendChild(dismiss); root.appendChild(notice);
+  }
 		const live = el("div", { className: "sr-only", "aria-live": "polite", "aria-atomic": "true" });
 		live.textContent = state.error ?? state.toast ?? "";
 		root.appendChild(live);
@@ -183,9 +217,14 @@ export function startConnectedApp(
 		const nextTrans = root.querySelector(".transcript");
 		if (nextList instanceof HTMLElement) nextList.scrollTop = listTop;
 		if (nextTrans instanceof HTMLElement) {
-			nextTrans.scrollTop = state.scrollSessionToEnd || stickBottom ? nextTrans.scrollHeight : transTop;
+			nextTrans.scrollTop = restoreReading !== null
+    ? (restoreReading.atEnd ? nextTrans.scrollHeight : restoreReading.top)
+    : state.scrollSessionToEnd || stickBottom ? nextTrans.scrollHeight : transTop;
+   restoreReading = null;
+   nextTrans.addEventListener("scroll", saveReading);
 			state.scrollSessionToEnd = false;
 		}
+		queueMicrotask(tryApprovalFocus);
 	};
 
 	const renderChrome = (): HTMLElement => {
@@ -229,7 +268,7 @@ export function startConnectedApp(
 					{ className: "sub" },
 					pending > 0 ? t("app.connectedPending", { n: pending }) : t("app.connectedWindow"),
 				),
-			);
+			) as HTMLButtonElement;
 			header.appendChild(block);
 			const actions = el("div", { className: "bar-actions" });
 			appendLanguageSwitcher(actions);
@@ -460,7 +499,7 @@ export function startConnectedApp(
 		wrap.appendChild(renderActivityStrip(running));
 		const scroller = el("div", { className: "transcript" });
 		if (state.historyHasMore) {
-			const older = el(
+		const older = el(
 				"button",
 				{
 					type: "button",
@@ -468,7 +507,7 @@ export function startConnectedApp(
 					"aria-busy": String(state.historyLoadingOlder),
 				},
 				state.historyLoadingOlder ? t("app.history.loadingOlder") : t("app.history.loadOlder"),
-			);
+			) as HTMLButtonElement;
 			older.disabled = state.historyLoadingOlder || state.busy;
 			older.addEventListener("click", () => {
 				void loadOlderHistory(sessionId);
@@ -481,7 +520,7 @@ export function startConnectedApp(
 		wrap.appendChild(scroller);
 		const composer = el("form", { className: "composer" });
 		if (running) {
-			const stop = el("button", { type: "button", className: "ghost danger" }, state.busy ? t("app.stopping") : t("app.stop"));
+			const stop = el("button", { type: "button", className: "ghost danger" }, state.busy ? t("app.stopping") : t("app.stop")) as HTMLButtonElement;
 			stop.disabled = state.busy;
 			stop.addEventListener("click", () => {
 				void run(async () => {
@@ -499,7 +538,7 @@ export function startConnectedApp(
 			"button",
 			{ type: "button", className: state.promptMode === "queue" ? "mode active" : "mode" },
 			t("app.mode.queue"),
-		);
+		) as HTMLButtonElement;
 		const steerBtn = el(
 			"button",
 			{ type: "button", className: state.promptMode === "steer" ? "mode active" : "mode" },
@@ -523,21 +562,59 @@ export function startConnectedApp(
 		const input = el("textarea") as HTMLTextAreaElement;
 		input.setAttribute("data-preserve-key", `composer:${sessionId}`);
 		input.placeholder = t("app.composerPlaceholder");
+		const draftKey = scopedKey(sessionId, "draft");
+		let draft = state.drafts.get(sessionId);
+		if (draft === undefined) {
+			draft = { value: draftKey === null ? "" : readSessionUi(storage as StorageLike, draftKey) ?? "", revision: 0 };
+			state.drafts.set(sessionId, draft);
+		}
+		const savedDraft = draft.value;
+		const pendingKey = draftKey === null ? null : `${draftKey}.pending`;
+		const pendingMarker = pendingKey === null ? null : readSessionUi(storage as StorageLike, pendingKey);
+		input.value = savedDraft;
+		if (pendingMarker !== null && pendingMarker.length > 0 && !state.pendingActions.has(`prompt:${sessionId}`)) composer.appendChild(el("p", { className: "muted" }, t("app.promptUnknown")));
+		const promptError = state.promptErrors.get(sessionId);
+		if (promptError !== undefined) composer.appendChild(el("p", { className: "error" }, t(promptError)));
 		input.addEventListener("input", () => {
+			const prior = state.drafts.get(sessionId);
+			state.drafts.set(sessionId, { value: input.value, revision: (prior?.revision ?? 0) + 1 });
+			if (draftKey !== null) writeSessionUi(storage as StorageLike, draftKey, input.value);
 			input.style.height = "auto";
 			input.style.height = `${String(Math.min(input.scrollHeight, 120))}px`;
 		});
-		const send = el("button", { type: "submit" }, state.busy ? "…" : t("app.send"));
-		send.disabled = state.busy;
+		const promptKey = `prompt:${sessionId}`;
+		const sending = state.pendingActions.has(promptKey);
+		const send = el("button", { type: "submit" }, sending ? "…" : t("app.send")) as HTMLButtonElement;
+		send.disabled = sending;
 		composer.addEventListener("submit", (event) => {
 			event.preventDefault();
+			if (disposed || state.pendingActions.has(promptKey)) return;
 			const text = input.value.trim();
 			if (text.length === 0) return;
 			const mode = state.promptMode;
-			input.value = "";
-			input.style.height = "";
-			void run(async () => {
-				await rpc.request("session.prompt", { sessionId, mode, text });
+			const submitted = state.drafts.get(sessionId) ?? { value: input.value, revision: 0 };
+			if (pendingKey !== null) writeSessionUi(storage as StorageLike, pendingKey, JSON.stringify({ revision: submitted.revision, text, mode }));
+			state.pendingActions.add(promptKey);
+			state.promptErrors.delete(sessionId);
+			render();
+			void rpc.request("session.prompt", { sessionId, mode, text }).then(() => {
+				if (disposed) return;
+				const currentDraft = state.drafts.get(sessionId);
+				if (currentDraft?.revision === submitted.revision && currentDraft.value === submitted.value) {
+					state.drafts.set(sessionId, { value: "", revision: submitted.revision + 1 });
+					if (draftKey !== null) clearSessionUi(storage as StorageLike, draftKey);
+				}
+				if (pendingKey !== null) clearSessionUi(storage as StorageLike, pendingKey);
+			}).catch((error) => {
+				if (disposed) return;
+				if (error instanceof MobileRequestError && error.delivery !== "unknown") {
+					if (pendingKey !== null) clearSessionUi(storage as StorageLike, pendingKey);
+					state.promptErrors.set(sessionId, "app.promptRejected");
+				}
+			}).finally(() => {
+				if (disposed) return;
+				state.pendingActions.delete(promptKey);
+				render();
 			});
 		});
 		row.appendChild(input);
@@ -566,8 +643,13 @@ export function startConnectedApp(
 						: t("app.activity.tools", { tools: names, n: tools.length }),
 				),
 			);
-		} else if (running) {
-			strip.appendChild(el("span", { className: "activity-dot", "aria-hidden": "true" }, ""));
+  } else if (["tool/result", "tool/error"].includes(String(unwrapEvent(state.events.at(-1))?.type))) {
+   const last = unwrapEvent(state.events.at(-1));
+   const data = asRecord(last?.data);
+   const name = typeof data?.name === "string" ? data.name : typeof data?.toolName === "string" ? data.toolName : "tool";
+   strip.appendChild(el("span", {}, t(last?.type === "tool/error" ? "app.activity.toolFailed" : "app.activity.toolDone", { tool: name })));
+  } else if (running) {
+   strip.appendChild(el("span", { className: "activity-dot", "aria-hidden": "true" }, ""));
 			strip.appendChild(el("span", {}, t("app.activity.running")));
 		} else {
 			strip.appendChild(el("span", { className: "muted" }, t("app.activity.idle")));
@@ -610,8 +692,8 @@ export function startConnectedApp(
 		}
 		if (approval.reason !== undefined) card.appendChild(el("p", {}, approval.reason));
 		const actions = el("div", { className: "actions" });
-		const allow = el("button", { type: "button" }, pending ? t("app.submitting") : t("app.allowOnce"));
-		const reject = el("button", { type: "button", className: "ghost" }, t("app.deny"));
+		const allow = el("button", { type: "button" }, pending ? t("app.submitting") : t("app.allowOnce")) as HTMLButtonElement;
+		const reject = el("button", { type: "button", className: "ghost" }, t("app.deny")) as HTMLButtonElement;
 		allow.disabled = pending;
 		reject.disabled = pending;
 		allow.addEventListener("click", () => {
@@ -661,7 +743,7 @@ export function startConnectedApp(
 				}
 			}
 		}
-		const submit = el("button", { type: "submit" }, pending ? t("app.submitting") : t("app.submit"));
+		const submit = el("button", { type: "submit" }, pending ? t("app.submitting") : t("app.submit")) as HTMLButtonElement;
 		submit.disabled = pending;
 		card.addEventListener("submit", (event) => {
 			event.preventDefault();
@@ -695,7 +777,7 @@ export function startConnectedApp(
 						if (node.value.trim().length > 0) custom = node.value.trim();
 						return;
 					}
-					if (node.checked) selected.push(node.value);
+					if (node instanceof HTMLInputElement && node.checked) selected.push(node.value);
 				});
 				return custom === undefined ? { id: item.id, selected } : { id: item.id, selected, custom };
 			});
@@ -732,37 +814,57 @@ export function startConnectedApp(
 	};
 
 	const loadSession = async (sessionId: string): Promise<void> => {
-		const current = state.view;
-		if (current.name === "session" && current.sessionId !== sessionId) {
-			await rpc.request("session.unsubscribe", { sessionId: current.sessionId }).catch(() => undefined);
-		}
-		const history = asRecord(
-			await rpc.request("session.history", {
-				sessionId,
-				maxMessages: historyPageSize(),
-			}),
-		);
-		const events = Array.isArray(history?.events) ? history.events : [];
-		state.events = events;
-		const cursor = historyCursorFromResult(events, history?.hasMore === true);
-		state.historyHasMore = cursor.hasMore;
-		state.historyLoadingOlder = false;
-		await rpc.request("session.subscribe", { sessionId });
-		state.view = { name: "session", sessionId };
-		state.scrollSessionToEnd = true;
-	};
+  saveReading();
+  const generation = ++viewGeneration;
+  const resetGeneration = transcriptResetGeneration;
+  const current = state.view;
+  const readingKey = scopedKey(sessionId, "reading");
+  const saved = storage !== null && readingKey !== null ? readReadingPosition(storage, readingKey) : null;
+  readingReady = false; restoreReading = null;
+  if (current.name === "session" && current.sessionId !== sessionId) void rpc.request("session.unsubscribe", { sessionId: current.sessionId }).catch(() => undefined);
+  state.view = { name: "session", sessionId };
+  state.events = []; state.historyHasMore = false; state.historyLoadingOlder = false;
+  if (storage !== null && currentSessionKey !== null) writeSessionUi(storage, currentSessionKey, sessionId);
+  const valid = () => !disposed && generation === viewGeneration;
+  await rpc.request("session.subscribe", { sessionId });
+  if (!valid()) return;
+  const history = asRecord(await rpc.request("session.history", { sessionId, maxMessages: historyPageSize() }));
+  if (!valid()) return;
+  state.events = mergeHistoryPage(state.events, Array.isArray(history?.events) ? history.events : []);
+  state.historyHasMore = history?.hasMore === true;
+  // Restore the previously loaded range before reapplying its reading position.
+  let cursor = earliestSeq(state.events);
+  while (saved?.firstSeq !== null && saved?.firstSeq !== undefined && cursor !== null && cursor > saved.firstSeq && state.historyHasMore) {
+   const page = asRecord(await rpc.request("session.history", { sessionId, beforeSeq: cursor, maxMessages: historyPageSize() }));
+   if (!valid()) return;
+   const events = Array.isArray(page?.events) ? page.events : [];
+   state.events = mergeHistoryPage(state.events, events);
+   const next = earliestSeq(state.events);
+   state.historyHasMore = page?.hasMore === true && next !== null && next < cursor;
+   cursor = next;
+  }
+  if (saved?.firstSeq !== null && saved?.firstSeq !== undefined) {
+   const boundary = saved.firstSeq;
+   const trimmed = state.events.filter((event) => { const seq = earliestSeq([event]); return seq === null || seq >= boundary; });
+   if (trimmed.length < state.events.length) state.historyHasMore = true;
+   state.events = trimmed;
+  }
+  readingReady = true; restoreReading = saved;
+  state.scrollSessionToEnd = saved === null;
+  if (resetGeneration !== transcriptResetGeneration) await recoverTranscript(sessionId);
+ };
 
 	const loadOlderHistory = async (sessionId: string): Promise<void> => {
 		if (disposed || state.historyLoadingOlder || !state.historyHasMore) return;
+		const generation = viewGeneration;
+		if (state.view.name !== "session" || state.view.sessionId !== sessionId) return;
 		const beforeSeq = earliestSeq(state.events);
 		if (beforeSeq === null) {
 			state.historyHasMore = false;
 			render();
 			return;
 		}
-		const scroller = root.querySelector(".transcript");
-		const previousHeight = scroller instanceof HTMLElement ? scroller.scrollHeight : 0;
-		const previousTop = scroller instanceof HTMLElement ? scroller.scrollTop : 0;
+		let insertionPosition: { height: number; top: number; anchorFromEnd: number; anchorTop: number } | null = null;
 		state.historyLoadingOlder = true;
 		render();
 		try {
@@ -773,22 +875,34 @@ export function startConnectedApp(
 					maxMessages: historyPageSize(),
 				}),
 			);
-			if (disposed) return;
+			if (disposed || generation !== viewGeneration || state.view.name !== "session" || state.view.sessionId !== sessionId) return;
+			const scroller = root.querySelector(".transcript");
+			if (scroller instanceof HTMLElement) {
+				const bubbles = Array.from(scroller.querySelectorAll<HTMLElement>(".bubble"));
+				const anchorIndex = bubbles.findIndex(node => node.getBoundingClientRect().top >= scroller.getBoundingClientRect().top);
+				insertionPosition = { height: scroller.scrollHeight, top: scroller.scrollTop,
+					anchorFromEnd: anchorIndex < 0 ? -1 : bubbles.length - 1 - anchorIndex,
+					anchorTop: bubbles[anchorIndex]?.getBoundingClientRect().top ?? 0 };
+			}
 			const older = Array.isArray(history?.events) ? history.events : [];
 			state.events = mergeHistoryPage(state.events, older);
 			state.historyHasMore = history?.hasMore === true && older.length > 0;
 		} catch (error) {
-			if (disposed) return;
+			if (disposed || generation !== viewGeneration || state.view.name !== "session" || state.view.sessionId !== sessionId) return;
 			state.error = error instanceof Error ? error.message : t("app.requestFailed");
-		} finally {
-			if (disposed) return;
-			state.historyLoadingOlder = false;
-			render();
-			const next = root.querySelector(".transcript");
-			if (next instanceof HTMLElement && previousHeight > 0) {
-				next.scrollTop = previousTop + (next.scrollHeight - previousHeight);
-			}
-		}
+  } finally {
+   if (!disposed && generation === viewGeneration && state.view.name === "session" && state.view.sessionId === sessionId) {
+    state.historyLoadingOlder = false;
+    render();
+    const next = root.querySelector(".transcript");
+    if (next instanceof HTMLElement && insertionPosition !== null) {
+     const bubbles = Array.from(next.querySelectorAll<HTMLElement>(".bubble"));
+     const anchor = insertionPosition.anchorFromEnd < 0 ? undefined : bubbles[bubbles.length - 1 - insertionPosition.anchorFromEnd];
+     if (anchor !== undefined) next.scrollTop += anchor.getBoundingClientRect().top - insertionPosition.anchorTop;
+     else next.scrollTop = insertionPosition.top + (next.scrollHeight - insertionPosition.height);
+    }
+   }
+  }
 	};
 
 	const openSession = async (sessionId: string): Promise<void> => {
@@ -798,28 +912,30 @@ export function startConnectedApp(
 	};
 
 	const leaveSession = async (): Promise<void> => {
-		const current = state.view;
-		if (current.name === "session") {
-			await rpc.request("session.unsubscribe", { sessionId: current.sessionId }).catch(() => undefined);
-		}
-		state.view = { name: "list" };
-		state.events = [];
-		state.historyHasMore = false;
-		state.historyLoadingOlder = false;
-		render();
-	};
+  consumeFocus(); focusNotice = null;
+  saveReading();
+  const current = state.view;
+  ++viewGeneration; ++operationGeneration;
+  readingReady = false; restoreReading = null;
+  if (current.name === "session") void rpc.request("session.unsubscribe", { sessionId: current.sessionId }).catch(() => undefined);
+  if (storage !== null && currentSessionKey !== null) clearSessionUi(storage, currentSessionKey);
+  state.view = { name: "list" }; state.events = []; state.busy = false; state.error = null;
+  state.historyHasMore = false; state.historyLoadingOlder = false;
+  render();
+ };
 
 	const run = async (work: () => Promise<void>, retry: (() => void) | null = null): Promise<void> => {
 		if (disposed || state.busy) return;
+		const operation = ++operationGeneration;
 		state.busy = true;
 		state.error = null;
 		state.retry = null;
 		render();
 		try {
 			await work();
-			if (disposed) return;
+			if (disposed || operation !== operationGeneration) return;
 		} catch (error) {
-			if (disposed) return;
+			if (disposed || operation !== operationGeneration) return;
 			state.error = error instanceof Error ? error.message : t("app.requestFailed");
 			state.retry = retry;
 			if (state.view.name === "list") {
@@ -828,11 +944,9 @@ export function startConnectedApp(
 					? "permissionDenied"
 					: state.sessions.length > 0 ? "stale" : "unavailable";
 			}
-		} finally {
-			if (disposed) return;
-			state.busy = false;
-			render();
-		}
+  } finally {
+   if (!disposed && operation === operationGeneration) { state.busy = false; render(); }
+  }
 	};
 
 	const runAction = async (key: string, work: () => Promise<void>): Promise<void> => {
@@ -846,15 +960,46 @@ export function startConnectedApp(
 		} catch (error) {
 			if (disposed) return;
 			state.error = error instanceof Error ? error.message : t("app.requestFailed");
-		} finally {
-			if (disposed) return;
-			state.pendingActions.delete(key);
-			render();
-		}
+  } finally {
+   if (!disposed) { state.pendingActions.delete(key); render(); }
+  }
 	};
 
-	const handlePush = (push: MobilePush): void => {
+ const recoverTranscript = async (sessionId: string): Promise<void> => {
+  if (disposed || state.view.name !== "session" || state.view.sessionId !== sessionId) return;
+  const generation = viewGeneration, recovery = ++historyRecoveryGeneration;
+  const valid = () => !disposed && generation === viewGeneration && recovery === historyRecoveryGeneration;
+  const boundary = earliestSeq(state.events);
+  try {
+   let page = asRecord(await rpc.request("session.history", { sessionId, maxMessages: historyPageSize() }));
+   if (!valid()) return;
+   let recovered = Array.isArray(page?.events) ? page.events : [];
+   let cursor = earliestSeq(recovered);
+   while (boundary !== null && cursor !== null && cursor > boundary && page?.hasMore === true) {
+    page = asRecord(await rpc.request("session.history", { sessionId, beforeSeq: cursor, maxMessages: historyPageSize() }));
+    if (!valid()) return;
+    recovered = mergeHistoryPage(recovered, Array.isArray(page?.events) ? page.events : []);
+    const next = earliestSeq(recovered);
+    if (next === null || next >= cursor) break;
+    cursor = next;
+   }
+   // Keep the already visible prefix so history recovery does not move the reader.
+   state.events = mergeHistoryPage(state.events, recovered.filter((event) => { const seq = earliestSeq([event]); return boundary === null || seq === null || seq >= boundary; }));
+   render();
+  } catch (error) { if (valid()) { state.error = error instanceof Error ? error.message : t("app.requestFailed"); state.retry = () => { void recoverTranscript(sessionId); }; render(); } }
+  finally { if (valid() && focusTarget !== null) { focusNotice = "app.approvalLinkUnavailable"; render(); } }
+ };
+	const handlePush = (push: MobilePush, fromSnapshot = false): void => {
 		if (disposed) return;
+		if (push.push === "inbox.reset") {
+			transcriptResetGeneration += 1; historyRecoveryGeneration += 1;
+			inboxGeneration += 1; inboxResolved.clear();
+			if (focusTarget !== null) focusNotice = "app.approvalLinkRestoring";
+			state.approvals = [];
+			state.questions = [];
+			render();
+			return;
+		}
 		if (push.push === "host.event") {
 			applyHostEvent(state.sessions, push.data);
 			render();
@@ -862,8 +1007,11 @@ export function startConnectedApp(
 		}
 		if (push.push === "approval.requested" && push.rpcId !== undefined) {
 			const approval = parseApproval(push.rpcId, push.data);
-			if (approval !== null) {
-				state.approvals = [...state.approvals.filter((item) => item.rpcId !== approval.rpcId), approval];
+   if (approval !== null) {
+    const identity = JSON.stringify([approval.sessionId, approval.approvalId]);
+    if (fromSnapshot && inboxResolved.has(identity)) return;
+    if (!fromSnapshot) inboxResolved.delete(identity);
+    state.approvals = [...state.approvals.filter((item) => item.rpcId !== approval.rpcId && (item.approvalId !== approval.approvalId || item.sessionId !== approval.sessionId)), approval];
 				render();
 			}
 			return;
@@ -871,14 +1019,21 @@ export function startConnectedApp(
 		if (push.push === "approval.resolved") {
 			const record = asRecord(push.data);
 			const approvalId = typeof record?.approvalId === "string" ? record.approvalId : "";
-			state.approvals = state.approvals.filter((item) => item.approvalId !== approvalId);
+   const sessionId = typeof record?.sessionId === "string" ? record.sessionId : "";
+   inboxResolved.add(JSON.stringify([sessionId, approvalId]));
+   state.approvals = state.approvals.filter((item) => item.approvalId !== approvalId || item.sessionId !== sessionId);
+   if (focusTarget?.approvalId === approvalId && focusTarget.sessionId === sessionId) {
+    focusNotice = "app.approvalLinkResolved"; consumeFocus();
+   }
 			render();
 			return;
 		}
 		if (push.push === "question.requested" && push.rpcId !== undefined) {
 			const question = parseQuestion(push.rpcId, push.data);
-			if (question !== null) {
-				state.questions = [...state.questions.filter((item) => item.rpcId !== question.rpcId), question];
+   if (question !== null) {
+    if (fromSnapshot && inboxResolved.has(question.rpcId)) return;
+    if (!fromSnapshot) inboxResolved.delete(question.rpcId);
+    state.questions = [...state.questions.filter((item) => item.rpcId !== question.rpcId), question];
 				render();
 			}
 			return;
@@ -886,24 +1041,28 @@ export function startConnectedApp(
 		if (push.push === "question.resolved") {
 			const record = asRecord(push.data);
 			const rpcId = typeof record?.questionRpcId === "string" ? record.questionRpcId : "";
-			state.questions = state.questions.filter((item) => item.rpcId !== rpcId);
+   inboxResolved.add(rpcId);
+   state.questions = state.questions.filter((item) => item.rpcId !== rpcId);
 			render();
 			return;
 		}
 		const view = state.view;
+		if (push.push === "session.subscribed" && view.name === "session" && readingReady) {
+			const record = asRecord(push.data);
+			if (record?.sessionId === view.sessionId) void recoverTranscript(view.sessionId);
+			return;
+		}
 		if (push.push === "session.event" && view.name === "session") {
 			const record = asRecord(push.data);
 			if (typeof record?.sessionId === "string" && record.sessionId === view.sessionId) {
-				state.events = [...state.events, record];
-				const scroller = root.querySelector(".transcript");
-				if (scroller instanceof HTMLElement && appendTranscriptLine(scroller, state.events)) return;
+				state.events = mergeHistoryPage(state.events, [record], "newer");
 				render();
 			}
 		}
 	};
 
 	const disposePush = rpc.onPush(handlePush);
-	const onKeyDown = (event: EventLike): void => {
+	const onKeyDown = (event: KeyboardEvent): void => {
 		if (!state.sheet) return;
 		if (event.key === "Escape") {
 			event.preventDefault();
@@ -922,34 +1081,57 @@ export function startConnectedApp(
 	const disposeLocale = subscribeLocale(() => {
 		render();
 	});
-	const applyApprovalFocus = async (): Promise<void> => {
-		const target = options.focusApproval;
-		if (target === undefined || target === null) return;
-		state.focusApprovalId = target.approvalId;
-		await loadSession(target.sessionId);
-		queueMicrotask(() => {
-			const cards = root.querySelectorAll("[data-approval-id]");
-			for (const card of cards) {
-				if (!(card instanceof HTMLElement)) continue;
-				if (card.getAttribute("data-approval-id") !== target.approvalId) continue;
-				card.scrollIntoView({ block: "nearest", behavior: "smooth" });
-				break;
-			}
-		});
-	};
+	function consumeFocus(): void {
+  if (focusTarget === null) return;
+  focusTarget = null;
+  options.onApprovalFocusConsumed?.();
+ }
+ function tryApprovalFocus(): void {
+  if (disposed || focusTarget === null || state.view.name !== "session" || state.view.sessionId !== focusTarget.sessionId) return;
+  const target = focusTarget;
+  const card = Array.from(root.querySelectorAll<HTMLElement>("[data-approval-id]")).find((node) => node.getAttribute("data-approval-id") === target.approvalId);
+  if (card === undefined) return;
+  focusNotice = null; consumeFocus();
+  render();
+  queueMicrotask(() => {
+   if (disposed) return;
+   const current = Array.from(root.querySelectorAll<HTMLElement>("[data-approval-id]")).find((node) => node.getAttribute("data-approval-id") === target.approvalId);
+   current?.scrollIntoView({ block: "nearest" });
+   current?.querySelector<HTMLElement>("button")?.focus();
+  });
+ }
+ const applyApprovalFocus = async (): Promise<void> => {
+  const target = focusTarget;
+  if (target === null) return;
+  state.focusApprovalId = target.approvalId;
+  try { await loadSession(target.sessionId); }
+  finally {
+   // The mux has no replay-complete marker: absence is not proof of resolution.
+   if (focusTarget !== null) focusNotice = "app.approvalLinkUnavailable";
+  }
+ };
 
 	void run(async () => {
-		await rpc.request("host.subscribe", {});
+  const baselineGeneration = inboxGeneration;
+  const hostSubscription = asRecord(await rpc.request("host.subscribe", {}));
+  if (baselineGeneration === inboxGeneration) for (const pending of Array.isArray(hostSubscription?.pending) ? hostSubscription.pending : []) {
+   if (typeof pending === "object" && pending !== null) handlePush(pending as MobilePush, true);
+  }
 		const listed = asRecord(await rpc.request("session.list", {}));
 		state.sessions = Array.isArray(listed?.items)
 			? listed.items.map(parseSession).filter((row): row is SessionRow => row !== null && !row.blank)
 			: [];
 		state.listState = state.sessions.length === 0 ? "empty" : "ready";
-		await applyApprovalFocus();
+		if (options.focusApproval !== undefined && options.focusApproval !== null) await applyApprovalFocus();
+  else if (storage !== null && currentSessionKey !== null) {
+   const remembered = readSessionUi(storage, currentSessionKey);
+   if (remembered !== null && state.sessions.some((session) => session.sessionId === remembered)) await loadSession(remembered);
+  }
 	}, () => void refreshList());
 	render();
 	return () => {
 		if (disposed) return;
+		saveReading();
 		disposed = true;
 		disposePush();
 		disposeLocale();
@@ -1128,37 +1310,6 @@ function filterGroups(groups: WorkspaceGroup[], query: string): WorkspaceGroup[]
 	return out;
 }
 
-function appendTranscriptLine(scroller: HTMLElement, events: unknown[]): boolean {
-	const lines = foldTranscript(events);
-	const line = lines[lines.length - 1];
-	if (line === undefined) return true;
-	const lastRaw = events[events.length - 1];
-	const event = asRecord(asRecord(lastRaw)?.event) ?? asRecord(lastRaw);
-	const stick = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 96;
-	const streaming = event?.type === "assistant/chunk";
-	if (streaming && line.role === "assistant") {
-		let last = scroller.lastElementChild;
-		if (
-			last instanceof HTMLElement &&
-			last.classList.contains("bubble-row") &&
-			last.classList.contains("assistant")
-		) {
-			const bubble = last.querySelector(".bubble");
-			if (bubble instanceof HTMLElement) {
-				bubble.replaceChildren();
-				appendMarkdown(bubble, line.text);
-				bubble.classList.add("streaming");
-			}
-		} else {
-			scroller.appendChild(renderBubbleRow(line, true));
-		}
-	} else {
-		scroller.appendChild(renderBubbleRow(line, false));
-	}
-	if (stick) scroller.scrollTop = scroller.scrollHeight;
-	return true;
-}
-
 function basenameOf(cwd: string): string {
 	const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
 	return parts[parts.length - 1] ?? cwd;
@@ -1232,7 +1383,7 @@ function capturePreservedControls(root: HTMLElement): PreservedControls {
 		if (key === null) return;
 		values.set(key, {
 			value: node.value,
-			checked: node.checked,
+			checked: node instanceof HTMLInputElement && node.checked,
 			selectionStart: node.selectionStart,
 			selectionEnd: node.selectionEnd,
 		});
@@ -1249,17 +1400,19 @@ function restorePreservedControls(root: HTMLElement, preserved: PreservedControl
 		if (key === null) return;
 		const value = preserved.values.get(key);
 		if (value === undefined) return;
-		node.value = value.value;
-		node.checked = value.checked;
+		// Composer values belong to revisioned state; DOM preservation only owns focus/selection.
+		if (!key.startsWith("composer:")) node.value = value.value;
+		if (node instanceof HTMLInputElement) node.checked = value.checked;
 		if (key === preserved.focusKey) {
 			focusTarget = node;
 			focusValue = value;
 		}
 	});
-	if (focusTarget !== null) {
-		const target = focusTarget;
-		const value = focusValue;
+	const target = focusTarget as HTMLInputElement | HTMLTextAreaElement | null;
+	const value = focusValue as PreservedControl | null;
+	if (target !== null) {
 		queueMicrotask(() => {
+			if (root.querySelector(".sheet") !== null) return;
 			target.focus();
 			if (value !== null && value.selectionStart !== null && value.selectionEnd !== null) {
 				target.setSelectionRange(value.selectionStart, value.selectionEnd);

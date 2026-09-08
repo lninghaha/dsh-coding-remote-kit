@@ -4,7 +4,7 @@
 
 import nacl from "tweetnacl";
 import { base64Decode, base64Encode, utf8Decode, utf8Encode } from "../shared/base64.js";
-import { MOBILE_PROTOCOL_VERSION } from "../shared/constants.js";
+import { CLOSE_AUTH_FAILED, MOBILE_PROTOCOL_VERSION } from "../shared/constants.js";
 import { normalizeDeviceName } from "../shared/device-name.js";
 import { bootstrapLocale, getLocale, pairErrorMessage, setLocale, subscribeLocale, t } from "../shared/i18n/index.js";
 import { decodeOffer, type PairingOffer, validateOffer } from "../shared/offer.js";
@@ -12,7 +12,7 @@ import { formatPairCode, isCompletePairCode, normalizePairCode } from "../shared
 import { evaluateVersionGate } from "../shared/version.js";
 import { type ApprovalFocusTarget, startConnectedApp } from "./app.js";
 import { generateClientKeyPair, MobileE2eeSession } from "./e2ee.js";
-import { clearPersistedOffer, migratePersistedOffer, persistOffer } from "./persist.js";
+import { clearPersistedOffer, migratePersistedOffer, persistOffer, resumableOffer, type StorageLike } from "./persist.js";
 import { type MobilePush, type MobilePushHandler, MobileRpcClient } from "./rpc.js";
 
 const KEY_KEY = "dshmr.key";
@@ -38,12 +38,20 @@ interface NoticeOptions {
 let lastOffer: PairingOffer | null = null;
 let lastConnectOptions: { fallbackToPin?: boolean; deviceName?: string } = {};
 let rerenderCurrent: (() => void) | null = null;
-let activeSocket: WebSocketLike | null = null;
+let activeSocket: WebSocket | null = null;
 let disposeConnectedApp: (() => void) | null = null;
 let connectionGeneration = 0;
+let activeRpc: MobileRpcClient | null = null;
+let canResume = false;
+let wasOffline = false;
+let wasHidden = document.visibilityState === "hidden";
 
 function disposeConnection(): void {
-	connectionGeneration += 1;
+ connectionGeneration += 1;
+ canResume = false;
+ activeRpc?.failAll("connection replaced"); activeRpc = null;
+ document.documentElement.classList.remove("connected");
+ document.body.classList.remove("connected");
 	disposeConnectedApp?.();
 	disposeConnectedApp = null;
 	const socket = activeSocket;
@@ -129,7 +137,7 @@ function renderNoticeCard(getOptions: () => NoticeOptions): void {
 	app.appendChild(wrap);
 }
 
-function render(title: string, body: string, isError = false): void {
+function _render(title: string, body: string, isError = false): void {
 	renderNoticeCard(() => ({
 		title,
 		message: body,
@@ -195,6 +203,7 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 	const generation = connectionGeneration;
 	lastOffer = offer;
 	lastConnectOptions = options;
+	canResume = true;
 	let phase: Phase = "awaiting-ready";
 	const keyPair = loadOrCreateKey();
 	const session = new MobileE2eeSession({
@@ -210,12 +219,13 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 	): void => {
 		if (generation !== connectionGeneration) return;
 		closeNoticeShown = true;
+		canResume = false;
 		renderNoticeCard(() => ({
 			title: t(titleKey),
 			message: t(messageKey, vars),
 			tone: "error",
 			actions: [
-				{ label: t("pair.retryConnect"), onClick: () => connect(offer, options) },
+				{ label: t("pair.retryConnect"), onClick: () => connect(lastOffer ?? offer, options) },
 				{ label: t("pair.changeCode"), onClick: () => bootPairForm(), ghost: true },
 				{
 					label: t("pair.clearLocal"),
@@ -235,21 +245,17 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 		loading: true,
 	}));
 
-	let ws: WebSocketLike;
+	let ws: WebSocket;
 	try {
 		ws = new WebSocket(offer.endpoint);
 		activeSocket = ws;
 	} catch {
-		if (options.fallbackToPin === true) {
-			bootPairForm();
-			return;
-		}
 		renderNoticeCard(() => ({
 			title: t("pair.failed.title"),
 			message: t("pair.failed.unreachable"),
 			tone: "error",
 			actions: [
-				{ label: t("common.retry"), onClick: () => connect(offer, options) },
+				{ label: t("common.retry"), onClick: () => connect(lastOffer ?? offer, options) },
 				{ label: t("pair.enterPin"), onClick: () => bootPairForm(), ghost: true },
 			],
 		}));
@@ -260,7 +266,8 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 		ws.send(base64Encode(session.sealOut(utf8Encode(JSON.stringify(value)))));
 	};
 	const rpc = new MobileRpcClient(sendEncrypted);
-	let appStarted = false;
+	activeRpc = rpc;
+	let authenticatedDeviceId: string | undefined;
 	const isCurrent = (): boolean => generation === connectionGeneration && activeSocket === ws;
 
 	ws.onopen = () => {
@@ -340,101 +347,61 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 				ws.close();
 				return;
 			}
-			phase = "authenticated";
+   const verdict = evaluateVersionGate(MOBILE_PROTOCOL_VERSION, result.status);
+   if (verdict !== "ok") {
+    if (verdict === "mobile-too-old") failNotice("pair.mobileTooOld.title", "pair.mobileTooOld.body");
+    else failNotice("pair.desktopTooOld.title", "pair.desktopTooOld.body");
+    ws.close(); return;
+   }
+   phase = "authenticated";
+   authenticatedDeviceId = result.deviceId;
+			lastOffer = resumableOffer(offer);
+			try { persistOffer(readSecretStore(), lastOffer); } catch { /* in-memory resume remains available */ }
+			// Remove the consumed QR offer so refresh cannot replace resume state.
+			const pairedUrl = new URL(location.href); pairedUrl.hash = "";
+			history.replaceState(null, "", pairedUrl);
 			void enterConnected(rpc);
 			return;
 		}
 		rpc.handleMessage(message);
 	};
 
-	ws.onerror = () => {
-		if (!isCurrent()) return;
-		if (phase !== "authenticated" && options.fallbackToPin === true) {
-			bootPairForm();
-			return;
-		}
-		if (phase !== "authenticated") failNotice("pair.failed.title", "pair.wsError");
-	};
-
-	ws.onclose = () => {
-		if (!isCurrent()) return;
-		activeSocket = null;
-		disposeConnectedApp?.();
-		disposeConnectedApp = null;
-		rpc.failAll("disconnected");
-		if (closeNoticeShown) return;
-		if (phase === "authenticated" || appStarted) {
-			document.body.classList.remove("connected");
-			const retryOffer = lastOffer;
-			renderNoticeCard(() => ({
-				title: t("pair.disconnected.title"),
-				message: t("pair.disconnected.body"),
-				tone: "warn",
-				actions: [
-					{
-						label: t("pair.retryConnect"),
-						onClick: () => {
-							if (retryOffer !== null) connect(retryOffer, lastConnectOptions);
-							else bootPairForm();
-						},
-					},
-					{ label: t("pair.changeCode"), onClick: () => bootPairForm(), ghost: true },
-					{
-						label: t("pair.clearLocal"),
-						onClick: () => {
-							clearPersistedOffer(readSecretStore());
-							bootPairForm();
-						},
-						danger: true,
-					},
-				],
-			}));
-			return;
-		}
-		if (options.fallbackToPin === true) {
-			bootPairForm();
-		}
-	};
+	ws.onerror = () => { /* The close event owns the recoverable network state. */ };
+ ws.onclose = (event) => {
+  if (!isCurrent()) return;
+  activeSocket = null; activeRpc = null;
+  disposeConnectedApp?.(); disposeConnectedApp = null;
+  rpc.failAll("disconnected");
+  document.documentElement.classList.remove("connected"); document.body.classList.remove("connected");
+  if (closeNoticeShown) return;
+  if (event.code === CLOSE_AUTH_FAILED) {
+   failNotice("pair.permissionDenied.title", "pair.permissionDenied.body"); return;
+  }
+  renderNoticeCard(() => ({ title: t("pair.disconnected.title"), message: t("pair.disconnected.body"), tone: "warn",
+   actions: [
+    { label: t("pair.retryConnect"), onClick: () => connect(lastOffer ?? offer, options) },
+    { label: t("pair.changeCode"), onClick: () => bootPairForm(), ghost: true },
+   ],
+  }));
+ };
 
 	async function enterConnected(client: MobileRpcClient): Promise<void> {
-		try {
-			const result = (await client.request("status.get")) as
-				| { protocolVersion?: number; minCompatibleMobileVersion?: number }
-				| undefined;
-			const verdict = evaluateVersionGate(MOBILE_PROTOCOL_VERSION, {
-				protocolVersion: result?.protocolVersion ?? 1,
-				minCompatibleMobileVersion: result?.minCompatibleMobileVersion ?? 1,
-			});
-			if (verdict === "mobile-too-old") {
-				renderNoticeCard(() => ({
-					title: t("pair.mobileTooOld.title"),
-					message: t("pair.mobileTooOld.body"),
-					tone: "error",
-					actions: [{ label: t("pair.changeCode"), onClick: () => bootPairForm(), ghost: true }],
-				}));
-				ws.close();
-				return;
-			}
-			if (verdict === "desktop-too-old") {
-				renderNoticeCard(() => ({
-					title: t("pair.desktopTooOld.title"),
-					message: t("pair.desktopTooOld.body"),
-					tone: "error",
-					actions: [{ label: t("pair.changeCode"), onClick: () => bootPairForm(), ghost: true }],
-				}));
-				ws.close();
-				return;
-			}
-		} catch {
-			// status.get failed → fail open (still show the connected state).
-		}
 		if (!isCurrent()) return;
-		appStarted = true;
 		rerenderCurrent = null;
 		const app = root();
 		app.textContent = "";
 		app.className = "shell";
-		disposeConnectedApp = startConnectedApp(app, client, { focusApproval: readApprovalFocus() });
+		disposeConnectedApp = startConnectedApp(app, client, {
+			focusApproval: readApprovalFocus(),
+   onApprovalFocusConsumed: () => {
+    const url = new URL(location.href);
+    for (const key of ["focus", "sessionId", "approvalId"]) url.searchParams.delete(key);
+    history.replaceState(null, "", url);
+   },
+			hostPublicKeyB64: offer.publicKeyB64,
+			...(authenticatedDeviceId === undefined ? {} : { deviceId: authenticatedDeviceId }),
+			storage: readSecretStore(),
+		});
 		const deviceName = options.deviceName?.trim();
 		if (deviceName !== undefined && deviceName.length > 0) {
 			// 新桌面会保存名称，旧桌面拒绝该附加 RPC 也不影响冻结的 v1 握手或已连会话。
@@ -443,6 +410,18 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 	}
 }
 
+function resumeConnection(force = false): void {
+ if (!canResume || lastOffer === null || navigator.onLine === false || document.visibilityState === "hidden") return;
+ if (!force && activeSocket !== null && activeSocket.readyState < WebSocket.CLOSING) return;
+ connect(lastOffer, lastConnectOptions);
+}
+window.addEventListener("offline", () => { wasOffline = true; });
+window.addEventListener("online", () => { const force = wasOffline; wasOffline = false; resumeConnection(force); });
+document.addEventListener("visibilitychange", () => {
+ if (document.visibilityState === "hidden") { wasHidden = true; return; }
+ const force = wasHidden; wasHidden = false; resumeConnection(force);
+});
+
 function readApprovalFocus(): ApprovalFocusTarget | null {
 	try {
 		const params = new URLSearchParams(location.search);
@@ -450,12 +429,6 @@ function readApprovalFocus(): ApprovalFocusTarget | null {
 		const sessionId = params.get("sessionId") ?? "";
 		const approvalId = params.get("approvalId") ?? "";
 		if (sessionId.length === 0 || approvalId.length === 0) return null;
-		params.delete("focus");
-		params.delete("sessionId");
-		params.delete("approvalId");
-		const next = params.toString();
-		const url = `${location.pathname}${next.length > 0 ? `?${next}` : ""}${location.hash}`;
-		history.replaceState(null, "", url);
 		return { sessionId, approvalId };
 	} catch {
 		return null;
@@ -568,7 +541,7 @@ function bootPairForm(): void {
 	deviceName.id = "device-name";
 	deviceName.type = "text";
 	deviceName.placeholder = t("pair.form.deviceNamePlaceholder");
-	deviceName.autocomplete = "nickname";
+	deviceName.autocomplete = "nickname" as AutoFill;
 	deviceName.value = readDeviceName();
 	deviceName.setAttribute("aria-describedby", "device-name-hint pair-error");
 	const deviceNameLabel = document.createElement("label");
