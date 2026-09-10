@@ -10,10 +10,12 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 - Mobile composer **Queue / Steer** mode toggle; `session.prompt` `mode` matches the selection (`#15`).
 - Mobile session **activity/status strip** for in-flight tools (and running generation) with zh-CN + en copy (`#15`).
 - Mobile `session.history` **cursor paging** (`beforeSeq` / `maxMessages`): “Load earlier messages” prepends older events without clearing the composer draft (`#15`).
+- Record DeepSeek Harness `0.1.5-rc.1` as an unverified BOM candidate (verified pin remains `0.1.1-rc.2`).
 
 ### Documentation
 
 - Mark `#15` activity strip + history cursor UI as landed in research peer-capabilities notes.
+- Note `0.1.5-rc.1` alongside `0.1.2-alpha` as an unverified host candidate in install/architecture/ADR docs.
 
 ## v0.5.2 - 2026-09-02
 

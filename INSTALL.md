@@ -29,7 +29,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tg
 
 ## 升级注意事项
 
-- 本版按已验证的 DSH BOM `@deepseek-ai/dsh@0.1.1-rc.2` 发布。`0.1.2-alpha` 仍是候选版本，尚未纳入本版兼容声明。升级前先确认宿主版本，不要用 `*` 或未验证的宽泛范围替代精确版本。
+- 本版按已验证的 DSH BOM `@deepseek-ai/dsh@0.1.1-rc.2` 发布。`0.1.2-alpha` 与 `0.1.5-rc.1` 仍是未验证候选，尚未纳入本版兼容声明。升级前先确认宿主版本，不要用 `*` 或未验证的宽泛范围替代精确版本。
 - 从钉在 `0.1.0-rc.6` 的旧包升级：先把宿主升到 `0.1.1-rc.2`，再安装本插件；`status.get` 的 `dshVersion` 现在与 BOM 一致。不重置配对设备、存储或凭据。
 - 从 `0.5.1` 升级到 `0.5.2`：DSH pin 对齐 `0.1.1-rc.2`；`/m` 增加 CSP；配对 PIN 一次性 claim；WS 认证失败按 IP 熔断；空闲设备 30 天过期；手机密钥/offer 改 sessionStorage。不重置已配对设备（需在同一标签页内恢复会话）。
 - 从 `0.5.0` 升级到 `0.5.1`：每次 Start 会重新解析 `cloudflared`，`binaryOk` 按实时钉死校验；Settings 安装二进制后无需重载即可 Start。不重置配对设备、存储或凭据。

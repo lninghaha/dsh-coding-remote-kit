@@ -14,5 +14,6 @@ test("DSH compatibility manifest declares the exact verified BOM and only unveri
 	assert.equal(PLUGIN_VERSION, pkg.version);
 	assert.ok(bom.candidates.every((candidate) => candidate.status === "unverified"));
 	assert.ok(bom.candidates.some((candidate) => candidate.id === "dsh-0.1.2-alpha.4"));
+	assert.ok(bom.candidates.some((candidate) => candidate.id === "dsh-0.1.5-rc.1"));
 	for (const version of Object.values(bom.verified.packages)) assert.equal(String(version).includes("*"), false);
 });
