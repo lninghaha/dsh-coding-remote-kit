@@ -127,7 +127,7 @@ Do not `dsh plugin add ./` from this working tree. pnpm 11 treats some `file:` t
 
 ## Install
 
-Requires DeepSeek Harness `0.1.1-rc.2` (pinned) and Node.js 22.19+. Full steps, pairing, and tunnel notes: [INSTALL.md](INSTALL.md).
+Requires DeepSeek Harness `0.1.1-rc.2` (pinned) and Node.js 22.19+. Unverified candidates such as `0.1.5-rc.1` are recorded in the BOM only — see [INSTALL.md](INSTALL.md).
 
 Development:
 
@@ -220,6 +220,7 @@ MVP decision (route B): [docs/01-mvp-scope.md](docs/01-mvp-scope.md).
 | [docs/03-protocol.md](docs/03-protocol.md) | RPC allowlist and push envelopes (Chinese) |
 | [docs/04-threat-model.md](docs/04-threat-model.md) | Assets, attackers, invariants (Chinese) |
 | [docs/05-cloud-relay.md](docs/05-cloud-relay.md) | Self-hosted rendezvous Worker (M5) |
+| [docs/06-dsh-alpha-smoke.md](docs/06-dsh-alpha-smoke.md) | Isolated smoke on unverified DSH candidates (`0.1.2-alpha.*`, `0.1.5-rc.1`) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guide |
 | [AGENTS.md](AGENTS.md) | Agent/operator rules (no production restart) |
 

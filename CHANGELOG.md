@@ -16,6 +16,7 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 - Mark `#15` activity strip + history cursor UI as landed in research peer-capabilities notes.
 - Note `0.1.5-rc.1` alongside `0.1.2-alpha` as an unverified host candidate in install/architecture/ADR docs.
+- Expand `docs/06-dsh-alpha-smoke.md` and README install blurbs so candidate (`0.1.5-rc.1`) smoke rules are explicit and not confused with the verified pin.
 
 ## v0.5.2 - 2026-09-02
 

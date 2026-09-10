@@ -127,7 +127,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.5.2.tg
 
 ## 安装
 
-需要 DeepSeek Harness `0.1.1-rc.2`（钉死）与 Node.js 22.19+。完整步骤、配对与隧道说明见 [INSTALL.md](INSTALL.md)。
+需要 DeepSeek Harness `0.1.1-rc.2`（钉死）与 Node.js 22.19+。`0.1.5-rc.1` 等未验证候选仅记在 BOM，完整步骤、配对与隧道说明见 [INSTALL.md](INSTALL.md)。
 
 开发：
 
@@ -220,6 +220,7 @@ MVP 决策（路线 B）：[docs/01-mvp-scope.md](docs/01-mvp-scope.md)。
 | [docs/03-protocol.md](docs/03-protocol.md) | RPC 白名单与推送信封 |
 | [docs/04-threat-model.md](docs/04-threat-model.md) | 资产、攻击者、不变量 |
 | [docs/05-cloud-relay.md](docs/05-cloud-relay.md) | 自建会合中继（M5） |
+| [docs/06-dsh-alpha-smoke.md](docs/06-dsh-alpha-smoke.md) | 未验证 DSH 候选宿主的隔离冒烟（`0.1.2-alpha.*`、`0.1.5-rc.1`） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 |
 | [AGENTS.md](AGENTS.md) | Agent/操作者规则（禁止自行重启生产） |
 
