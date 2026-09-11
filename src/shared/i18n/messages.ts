@@ -74,8 +74,38 @@ export const MESSAGES = {
 		en: "Download official cloudflared",
 	},
 	"settings.channel.nextOffer": {
-		"zh-CN": "下一步点「生成二维码」时会自动打开临时公网。",
-		en: "The next “Generate QR” will open a temporary public URL automatically.",
+		"zh-CN": "接受提示后点击「应用连接方式」，才会打开临时公网。",
+		en: "After accepting the notice, use “Apply connection method” to open the temporary public URL.",
+	},
+	"settings.overview.title": { "zh-CN": "远程访问", en: "Remote access" },
+	"settings.overview.summary": { "zh-CN": "{devices} 台已配对设备 · 当前连接：{mode}", en: "{devices} paired devices · current connection: {mode}" },
+	"settings.overview.connectPhone": { "zh-CN": "连接新手机", en: "Connect a new phone" },
+	"settings.overview.hidePairing": { "zh-CN": "收起配对步骤", en: "Hide pairing steps" },
+	"settings.channel.mode.lan": { "zh-CN": "同一 Wi-Fi / 局域网", en: "Same Wi-Fi / LAN" },
+	"settings.channel.mode.public": { "zh-CN": "临时公网", en: "Temporary public URL" },
+	"settings.channel.mode.relay": { "zh-CN": "会合中继", en: "Rendezvous relay" },
+	"settings.channel.applied": {
+		"zh-CN": "当前用于新配对的连接方式：{mode}",
+		en: "Connection used for new pairings: {mode}",
+	},
+	"settings.channel.apply": { "zh-CN": "应用连接方式", en: "Apply connection method" },
+	"settings.channel.applyStopsPublic": { "zh-CN": "将停止临时公网。", en: "The temporary public URL will stop." },
+	"settings.channel.applyStopsRelay": { "zh-CN": "将断开会合中继。", en: "The rendezvous relay will disconnect." },
+	"settings.channel.applyActiveDevices": {
+		"zh-CN": "有 {n} 台活跃设备，现有连接可能中断。",
+		en: "There are {n} active device(s); existing connections may be interrupted.",
+	},
+	"settings.channel.applyConfirm": {
+		"zh-CN": "应用此连接方式会产生以下影响：\n{effects}\n\n继续吗？",
+		en: "Applying this connection method has these effects:\n{effects}\n\nContinue?",
+	},
+	"settings.channel.relayOriginRequired": {
+		"zh-CN": "请先填写会合中继地址，再应用连接方式。",
+		en: "Enter the rendezvous relay URL before applying this connection method.",
+	},
+	"settings.channel.applyRelayHint": {
+		"zh-CN": "填写后点击「应用连接方式」连接中继。",
+		en: "After entering it, use “Apply connection method” to connect the relay.",
 	},
 	"settings.channel.running": { "zh-CN": "运行中", en: "Running" },
 	"settings.channel.stopPublic": { "zh-CN": "停止公网", en: "Stop public tunnel" },
@@ -106,6 +136,10 @@ export const MESSAGES = {
 	"settings.offer.title": { "zh-CN": "2. 生成二维码或配对码", en: "2. Generate QR or pairing code" },
 	"settings.offer.preparing": { "zh-CN": "正在准备…", en: "Preparing…" },
 	"settings.offer.generate": { "zh-CN": "生成二维码", en: "Generate QR" },
+	"settings.offer.applyConnection": {
+		"zh-CN": "请先应用所选连接方式，再生成二维码。",
+		en: "Apply the selected connection method before generating a QR code.",
+	},
 	"settings.offer.scanHint": {
 		"zh-CN": "扫码，或在手机打开配对页后输入配对码。不要发到群里。",
 		en: "Scan, or open the pairing page on the phone and type the code. Do not share in group chats.",
@@ -281,6 +315,18 @@ export const MESSAGES = {
 	"pair.disconnected.body": {
 		"zh-CN": "与桌面的加密连接已关闭。可重试连接，或回桌面重新生成配对码。",
 		en: "The encrypted link to the desktop closed. Retry, or regenerate a pairing code on the desktop.",
+	},
+	"app.actionResultUnknown": {
+		"zh-CN": "提交时连接已断开，结果未知。请先到任务状态中核对，不会自动重发。",
+		en: "The connection closed while submitting, so the result is unknown. Check the task status first; it will not be resent automatically.",
+	},
+	"app.promptResultUnknown": {
+		"zh-CN": "消息提交时连接已断开，结果未知。请先查看当前任务记录，确认后再决定是否重发。",
+		en: "The connection closed while sending. Check the current task history before deciding whether to send again.",
+	},
+	"app.promptResultChecked": {
+		"zh-CN": "已核对任务状态",
+		en: "I checked the task status",
 	},
 	"pair.mobileTooOld.title": { "zh-CN": "版本过旧", en: "Version too old" },
 	"pair.mobileTooOld.body": {

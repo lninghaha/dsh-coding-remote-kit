@@ -10,7 +10,12 @@ import { bootstrapLocale, getLocale, pairErrorMessage, setLocale, subscribeLocal
 import { decodeOffer, type PairingOffer, validateOffer } from "../shared/offer.js";
 import { formatPairCode, isCompletePairCode, normalizePairCode } from "../shared/pair-code.js";
 import { evaluateVersionGate } from "../shared/version.js";
-import { type ApprovalFocusTarget, startConnectedApp } from "./app.js";
+import {
+	type ApprovalFocusTarget,
+	clearVolatileRecoveryState,
+	createVolatileRecoveryState,
+	startConnectedApp,
+} from "./app.js";
 import { generateClientKeyPair, MobileE2eeSession } from "./e2ee.js";
 import { clearPersistedOffer, migratePersistedOffer, persistOffer } from "./persist.js";
 import { type MobilePush, type MobilePushHandler, MobileRpcClient } from "./rpc.js";
@@ -41,6 +46,7 @@ let rerenderCurrent: (() => void) | null = null;
 let activeSocket: WebSocketLike | null = null;
 let disposeConnectedApp: (() => void) | null = null;
 let connectionGeneration = 0;
+const volatileRecovery = createVolatileRecoveryState();
 
 function disposeConnection(): void {
 	connectionGeneration += 1;
@@ -129,14 +135,6 @@ function renderNoticeCard(getOptions: () => NoticeOptions): void {
 	app.appendChild(wrap);
 }
 
-function render(title: string, body: string, isError = false): void {
-	renderNoticeCard(() => ({
-		title,
-		message: body,
-		tone: isError ? "error" : "info",
-	}));
-}
-
 function registerShellWorker(): void {
 	if (!("serviceWorker" in navigator)) return;
 	const host = location.hostname;
@@ -221,6 +219,7 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 					label: t("pair.clearLocal"),
 					onClick: () => {
 						clearPersistedOffer(readSecretStore());
+						clearVolatileRecoveryState(volatileRecovery);
 						bootPairForm();
 					},
 					danger: true,
@@ -383,6 +382,7 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 						label: t("pair.clearLocal"),
 						onClick: () => {
 							clearPersistedOffer(readSecretStore());
+							clearVolatileRecoveryState(volatileRecovery);
 							bootPairForm();
 						},
 						danger: true,
@@ -434,7 +434,10 @@ function connect(offer: PairingOffer, options: { fallbackToPin?: boolean; device
 		const app = root();
 		app.textContent = "";
 		app.className = "shell";
-		disposeConnectedApp = startConnectedApp(app, client, { focusApproval: readApprovalFocus() });
+		disposeConnectedApp = startConnectedApp(app, client, {
+			focusApproval: readApprovalFocus(),
+			recovery: volatileRecovery,
+		});
 		const deviceName = options.deviceName?.trim();
 		if (deviceName !== undefined && deviceName.length > 0) {
 			// 新桌面会保存名称，旧桌面拒绝该附加 RPC 也不影响冻结的 v1 握手或已连会话。
@@ -480,6 +483,11 @@ function bootE2eList(): void {
 	}
 	let pushHandler: MobilePushHandler | null = null;
 	let promptRequests = 0;
+	let rejectNextPrompt = false;
+	let holdNextPrompt = false;
+	const pendingPrompts: Array<() => void> = [];
+	let respondRequests = 0;
+	const pendingResponds: Array<() => void> = [];
 	let pushDisposals = 0;
 	const client = {
 		async request(method: string, params?: Record<string, unknown>) {
@@ -491,7 +499,21 @@ function bootE2eList(): void {
 			if (method === "session.subscribe" || method === "session.unsubscribe") return { accepted: true };
 			if (method === "session.prompt") {
 				promptRequests += 1;
-				await new Promise((resolve) => setTimeout(resolve, 80));
+				if (holdNextPrompt) {
+					holdNextPrompt = false;
+					await new Promise<void>((resolve) => pendingPrompts.push(resolve));
+				} else {
+					await new Promise((resolve) => setTimeout(resolve, 80));
+				}
+				if (rejectNextPrompt) {
+					rejectNextPrompt = false;
+					throw new Error("prompt rejected");
+				}
+				return { accepted: true, params };
+			}
+			if (method === "respond") {
+				respondRequests += 1;
+				await new Promise<void>((resolve) => pendingResponds.push(resolve));
 				return { accepted: true, params };
 			}
 			return {};
@@ -511,7 +533,12 @@ function bootE2eList(): void {
 	const app = root();
 	app.textContent = "";
 	app.className = "shell";
-	const dispose = startConnectedApp(app, client);
+	let dispose = startConnectedApp(app, client, { recovery: volatileRecovery });
+	const recreate = () => {
+		dispose();
+		app.textContent = "";
+		dispose = startConnectedApp(app, client, { recovery: volatileRecovery });
+	};
 	Object.assign(globalThis, {
 		__dshmrE2e: {
 			push(push: MobilePush) {
@@ -524,8 +551,25 @@ function bootE2eList(): void {
 				});
 			},
 			dispose,
+			recreate,
+			rejectNextPrompt() {
+				rejectNextPrompt = true;
+			},
+			holdNextPrompt() {
+				holdNextPrompt = true;
+			},
+			resolvePrompt() {
+				pendingPrompts.shift()?.();
+			},
+			clearRecovery() {
+				clearVolatileRecoveryState(volatileRecovery);
+				recreate();
+			},
+			resolveRespond() {
+				pendingResponds.shift()?.();
+			},
 			metrics() {
-				return { promptRequests, pushDisposals, subscribed: pushHandler !== null };
+				return { promptRequests, respondRequests, pushDisposals, subscribed: pushHandler !== null };
 			},
 		},
 	});
@@ -667,6 +711,7 @@ function bootPairForm(): void {
 	clearBtn.textContent = t("pair.clearSaved");
 	clearBtn.addEventListener("click", () => {
 		clearPersistedOffer(readSecretStore());
+		clearVolatileRecoveryState(volatileRecovery);
 		err.textContent = t("pair.cleared");
 	});
 

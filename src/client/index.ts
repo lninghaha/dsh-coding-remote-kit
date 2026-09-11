@@ -192,7 +192,11 @@ async function copyText(text: string): Promise<boolean> {
 
 export function MobileRemoteSettings() {
 	const [status, setStatus] = useState<StatusInfo | null>(null);
-	const [channel, setChannel] = useState<Channel>("lan");
+	// The radio choice is deliberately separate from the connection that carries
+	// newly-created offers. A running service is status information; it must not
+	// silently move the user's radio selection.
+	const [desiredChannel, setDesiredChannel] = useState<Channel>("lan");
+	const [appliedChannel, setAppliedChannel] = useState<Channel | null>(null);
 	const [offerInfo, setOfferInfo] = useState<OfferInfo | null>(null);
 	const [devices, setDevices] = useState<DeviceInfo[]>([]);
 	const [statusError, setStatusError] = useState<string | null>(null);
@@ -211,7 +215,9 @@ export function MobileRemoteSettings() {
 	const [copyToast, setCopyToast] = useState<string | null>(null);
 	const [revokePendingId, setRevokePendingId] = useState<string | null>(null);
 	const [showAdvancedNetwork, setShowAdvancedNetwork] = useState(false);
+	const [showPairingFlow, setShowPairingFlow] = useState(false);
 	const [channelChosen, setChannelChosen] = useState(false);
+	const [offerDeviceIds, setOfferDeviceIds] = useState<string[] | null>(null);
 	const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
 	const [locale, setLocaleState] = useState<Locale>(() => bootstrapLocale());
 	const [pushEnabled, setPushEnabled] = useState(false);
@@ -261,6 +267,12 @@ export function MobileRemoteSettings() {
 				setStatusError(null);
 				setStatus(payload);
 				setStatusState("ready");
+				setAppliedChannel((current) => {
+					if (current !== null) return current;
+					if (payload.relay?.hostConnected === true) return "relay";
+					if (payload.tunnel?.running === true) return "public";
+					return "lan";
+				});
 				if (typeof payload.relay?.url === "string" && payload.relay.url.length > 0) {
 					setRelayOrigin(payload.relay.url);
 				}
@@ -447,8 +459,6 @@ export function MobileRemoteSettings() {
 				return false;
 			}
 			refreshStatus();
-			if (action === "start") setChannel("public");
-			if (action === "stop") setChannel("lan");
 			return true;
 		} catch {
 			setChannelError(action === "start" ? t("settings.tunnel.startFailed") : t("settings.tunnel.stopFailed"));
@@ -509,8 +519,6 @@ export function MobileRemoteSettings() {
 			}
 			if (action === "start") setRelayToken("");
 			refreshStatus();
-			if (action === "start") setChannel("relay");
-			if (action === "stop") setChannel("lan");
 			return true;
 		} catch {
 			setChannelError(action === "start" ? t("settings.relay.startFailed") : t("settings.relay.stopFailed"));
@@ -521,36 +529,59 @@ export function MobileRemoteSettings() {
 	};
 
 	const selectLan = () => {
-		setChannel("lan");
-		if (status?.tunnel.running) void tunnelAction("stop");
-		if (status?.relay?.running) void relayAction("stop");
+		setChannelChosen(true);
+		setDesiredChannel("lan");
+	};
+
+	const applyConnection = () => {
+		if (tunnelBusy || relayBusy || installBusy) return;
+		const activeDevices = status?.activeDevices ?? 0;
+		const stopsTunnel = desiredChannel !== "public" && tunnelRunning;
+		const stopsRelay = desiredChannel !== "relay" && relayRunning;
+		if (desiredChannel === "public" && !tunnelBinaryOk) {
+			setChannelError(t("settings.offer.needBinary"));
+			return;
+		}
+		if (desiredChannel === "public" && !tunnelRunning && !disclaimerAccepted) {
+			setChannelError(t("settings.tunnel.disclaimerRequired"));
+			return;
+		}
+		if (desiredChannel === "relay" && !relayConnected && relayOrigin.trim().length === 0) {
+			setChannelError(t("settings.channel.relayOriginRequired"));
+			return;
+		}
+		if (stopsTunnel || stopsRelay || activeDevices > 0) {
+			const effects = [
+				stopsTunnel ? t("settings.channel.applyStopsPublic") : null,
+				stopsRelay ? t("settings.channel.applyStopsRelay") : null,
+				activeDevices > 0 ? t("settings.channel.applyActiveDevices", { n: String(activeDevices) }) : null,
+			]
+				.filter((effect): effect is string => effect !== null)
+				.join("\n");
+			if (!(window as unknown as { confirm(message: string): boolean }).confirm(t("settings.channel.applyConfirm", { effects }))) return;
+		}
+
+		void (async () => {
+			setChannelError(null);
+			let ok = true;
+			if (stopsTunnel) ok = await tunnelAction("stop");
+			if (ok && stopsRelay) ok = await relayAction("stop");
+			if (ok && desiredChannel === "public" && !tunnelRunning) ok = await tunnelAction("start");
+			if (ok && desiredChannel === "relay" && !relayConnected) ok = await relayAction("start");
+			if (!ok) return;
+			setAppliedChannel(desiredChannel);
+			refreshStatus();
+		})();
 	};
 
 	const createOffer = () => {
-		setChannelChosen(true);
 		setOfferError(null);
+		if (!connectionApplied) {
+			setOfferError(t("settings.offer.applyConnection"));
+			return;
+		}
 		void (async () => {
 			try {
-				if (channel === "public") {
-					if (!(status?.tunnel.binaryOk ?? false)) {
-						setOfferError(t("settings.offer.needBinary"));
-						return;
-					}
-					if (!(status?.tunnel.running ?? false)) {
-						if (!disclaimerAccepted) {
-							setOfferError(t("settings.tunnel.disclaimerRequired"));
-							return;
-						}
-						const started = await tunnelAction("start");
-						if (!started) return;
-					}
-				}
-				if (channel === "relay") {
-					if (!(status?.relay?.hostConnected ?? false)) {
-						const started = await relayAction("start");
-						if (!started) return;
-					}
-				}
 				const { ok, status: httpStatus, payload } = await postJson("/api/mobile-remote/offers", {});
 				if (!ok) {
 					setOfferError(
@@ -573,6 +604,7 @@ export function MobileRemoteSettings() {
 					initialRemainingMs: initialRemainingMs > 0 ? initialRemainingMs : 600_000,
 				});
 				setShowOfferText(false);
+				setOfferDeviceIds(devices.filter((device) => device.revokedAt === undefined).map((device) => device.deviceId));
 				refreshStatus();
 			} catch {
 				setOfferError(t("settings.offer.failed"));
@@ -586,17 +618,25 @@ export function MobileRemoteSettings() {
 	const relayRunning = status?.relay?.running ?? false;
 	const relayConnected = status?.relay?.hostConnected ?? false;
 	const relayHost = extractTunnelHost(status?.relay?.url ?? null);
-	const publicMode = !relayRunning && (tunnelRunning || channel === "public");
-	const relayMode = relayRunning || channel === "relay";
-	const lanMode = !publicMode && !relayMode;
+	const appliedChannelAvailable =
+		appliedChannel === "public" ? tunnelRunning : appliedChannel === "relay" ? relayConnected : appliedChannel === "lan";
+	const connectionApplied = appliedChannel === desiredChannel && appliedChannelAvailable;
+	const appliedChannelLabel =
+		appliedChannel === "public"
+			? t("settings.channel.mode.public")
+			: appliedChannel === "relay"
+				? t("settings.channel.mode.relay")
+				: t("settings.channel.mode.lan");
 	const offerExpired = offerInfo !== null && remainingMs !== null && remainingMs <= 0;
 	const progressPct =
 		offerInfo !== null && remainingMs !== null && offerInfo.initialRemainingMs > 0
 			? Math.max(0, Math.min(100, (remainingMs / offerInfo.initialRemainingMs) * 100))
 			: 0;
 	const progressUrgent = remainingMs !== null && remainingMs > 0 && remainingMs <= 60_000;
-	const activeDevice = devices.find((device) => device.revokedAt === undefined);
-	const flowStep = activeDevice !== undefined ? 4 : offerInfo !== null ? 3 : channelChosen ? 2 : 1;
+	const offerPairedDevice =
+		offerDeviceIds !== null &&
+		devices.some((device) => device.revokedAt === undefined && !offerDeviceIds.includes(device.deviceId));
+	const flowStep = offerPairedDevice ? 4 : offerInfo !== null ? 3 : channelChosen && connectionApplied ? 2 : 1;
 	const flowLabels = [
 		t("settings.flow.connection"),
 		t("settings.flow.pair"),
@@ -688,13 +728,28 @@ export function MobileRemoteSettings() {
 			),
 		),
 		createElement(
+			"div",
+			{ style: { ...box, gridTemplateColumns: "1fr auto", alignItems: "center" } },
+			createElement(
+				"div",
+				{ style: { display: "grid", gap: "3px" } },
+				createElement("strong", { style: { fontSize: "14px" } }, t("settings.overview.title")),
+				createElement("span", { style: muted }, t("settings.overview.summary", { devices: String(devices.filter((device) => device.revokedAt === undefined).length), mode: appliedChannelLabel })),
+			),
+			createElement(
+				"button",
+				{ type: "button", onClick: () => setShowPairingFlow((value) => !value), "aria-expanded": showPairingFlow },
+				showPairingFlow ? t("settings.overview.hidePairing") : t("settings.overview.connectPhone"),
+			),
+		),
+		createElement(
 			"ol",
 			{
 				style: {
 					margin: 0,
 					padding: 0,
 					listStyle: "none",
-					display: "grid",
+					display: showPairingFlow ? "grid" : "none",
 					gridTemplateColumns: "repeat(auto-fit, minmax(8rem, 1fr))",
 					gap: "8px",
 				},
@@ -853,13 +908,13 @@ export function MobileRemoteSettings() {
 					)
 				: null,
 		),
-		createElement("p", { style: muted }, t("settings.intro")),
-		flowStep === 4
+		showPairingFlow ? createElement("p", { style: muted }, t("settings.intro")) : null,
+		showPairingFlow && flowStep === 4
 			? createElement("p", { style: { ...muted, color: "var(--dshmr-ok)" }, role: "status" }, t("settings.flow.completed"))
 			: flowStep === 3
 				? createElement("p", { style: muted, role: "status" }, t("settings.flow.nameHint"))
 				: null,
-		status?.compatibility !== undefined
+		showPairingFlow && status?.compatibility !== undefined
 			? createElement(
 					"details",
 					{ style: { ...box, padding: "10px 12px" } },
@@ -935,16 +990,16 @@ export function MobileRemoteSettings() {
 				)
 			: null,
 		createElement(
-			"div",
-			{ style: box },
-			createElement("strong", { style: { fontSize: "14px" } }, t("settings.channel.title")),
+			"fieldset",
+			{ style: { ...box, display: showPairingFlow ? "grid" : "none" } },
+			createElement("legend", { style: { fontSize: "14px", fontWeight: 700 } }, t("settings.channel.title")),
 			createElement(
 				"label",
 				{ style: { display: "flex", gap: "8px", alignItems: "center", fontSize: "13px" } },
 				createElement("input", {
 					type: "radio",
 					name: "channel",
-					checked: lanMode,
+					checked: desiredChannel === "lan",
 					onClick: () => setChannelChosen(true),
 					onChange: selectLan,
 				}),
@@ -956,11 +1011,11 @@ export function MobileRemoteSettings() {
 				createElement("input", {
 					type: "radio",
 					name: "channel",
-					checked: publicMode,
+					checked: desiredChannel === "public",
 					onClick: () => setChannelChosen(true),
 					onChange: () => {
-						setChannel("public");
-						if (status?.relay?.running) void relayAction("stop");
+						setChannelChosen(true);
+						setDesiredChannel("public");
 					},
 				}),
 				t("settings.channel.public"),
@@ -971,20 +1026,35 @@ export function MobileRemoteSettings() {
 				createElement("input", {
 					type: "radio",
 					name: "channel",
-					checked: relayMode,
+					checked: desiredChannel === "relay",
 					onClick: () => setChannelChosen(true),
 					onChange: () => {
-						setChannel("relay");
-						if (status?.tunnel.running) void tunnelAction("stop");
+						setChannelChosen(true);
+						setDesiredChannel("relay");
 					},
 				}),
 				t("settings.channel.relay"),
 			),
+			createElement(
+				"p",
+				{ style: muted, role: "status", "aria-live": "polite" },
+				t("settings.channel.applied", { mode: appliedChannelLabel }),
+			),
+			createElement(
+				"button",
+				{
+					type: "button",
+					disabled: tunnelBusy || relayBusy || installBusy || connectionApplied,
+					onClick: applyConnection,
+					style: { justifySelf: "start" },
+				},
+				t("settings.channel.apply"),
+			),
 			channelError !== null ? createElement("p", { style: errStyle }, channelError) : null,
-			publicMode
+			desiredChannel === "public"
 				? createElement("p", { style: warnStyle }, t("settings.channel.publicHint"))
 				: null,
-			publicMode && !tunnelBinaryOk
+			desiredChannel === "public" && !tunnelBinaryOk
 				? createElement(
 						"div",
 						{ style: { display: "grid", gap: "6px" } },
@@ -1001,7 +1071,7 @@ export function MobileRemoteSettings() {
 						),
 					)
 				: null,
-			publicMode && tunnelBinaryOk && !tunnelRunning
+			desiredChannel === "public" && tunnelBinaryOk && !tunnelRunning
 				? createElement(
 						"div",
 						{ style: { display: "grid", gap: "8px" } },
@@ -1017,16 +1087,6 @@ export function MobileRemoteSettings() {
 							}),
 							t("settings.tunnel.disclaimer"),
 						),
-						createElement(
-							"button",
-							{
-								type: "button",
-								disabled: tunnelBusy || !disclaimerAccepted,
-								onClick: () => void tunnelAction("start"),
-								style: { justifySelf: "start" },
-							},
-							t("settings.tunnel.start"),
-						),
 					)
 				: null,
 			tunnelRunning
@@ -1034,21 +1094,16 @@ export function MobileRemoteSettings() {
 						"div",
 						{ style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" } },
 						createElement("span", { style: { fontSize: "13px" } }, t("settings.channel.publicOpen", { host: tunnelHost ?? t("settings.channel.running") })),
-						createElement(
-							"button",
-							{ type: "button", disabled: tunnelBusy, onClick: () => void tunnelAction("stop") },
-							t("settings.channel.stopPublic"),
-						),
 					)
 				: null,
-			relayMode
+			desiredChannel === "relay"
 				? createElement(
 						"p",
 						{ style: warnStyle },
 						t("settings.channel.relayHint"),
 					)
 				: null,
-			relayMode
+			desiredChannel === "relay"
 				? createElement(
 						"div",
 						{ style: { display: "grid", gap: "6px" } },
@@ -1067,32 +1122,14 @@ export function MobileRemoteSettings() {
 							style: { fontSize: "13px", padding: "6px 8px" },
 						}),
 						relayConnected
-							? createElement(
-									"div",
-									{ style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" } },
-									createElement("span", { style: { fontSize: "13px" } }, t("settings.channel.relayConnectedLine", { host: relayHost ?? t("settings.channel.running") })),
-									createElement(
-										"button",
-										{ type: "button", disabled: relayBusy, onClick: () => void relayAction("stop") },
-										t("settings.channel.disconnectRelay"),
-									),
-								)
-							: createElement(
-									"button",
-									{
-										type: "button",
-										disabled: relayBusy || relayOrigin.trim().length === 0,
-										onClick: () => void relayAction("start"),
-										style: { justifySelf: "start" },
-									},
-									relayBusy ? t("settings.channel.connecting") : t("settings.channel.connectRelay"),
-								),
+							? createElement("span", { style: { fontSize: "13px" } }, t("settings.channel.relayConnectedLine", { host: relayHost ?? t("settings.channel.running") }))
+							: createElement("p", { style: muted }, t("settings.channel.applyRelayHint")),
 					)
 				: null,
 		),
 		createElement(
 			"div",
-			{ style: box },
+			{ style: { ...box, display: showPairingFlow ? "grid" : "none" } },
 			createElement("strong", { style: { fontSize: "14px" } }, t("settings.offer.title")),
 			createElement(
 				"button",
@@ -1102,9 +1139,7 @@ export function MobileRemoteSettings() {
 						tunnelBusy ||
 						relayBusy ||
 						installBusy ||
-						(publicMode && !tunnelBinaryOk) ||
-						(publicMode && !tunnelRunning && !disclaimerAccepted) ||
-						(relayMode && !relayConnected && relayOrigin.trim().length === 0),
+						!connectionApplied,
 					onClick: createOffer,
 					style: { justifySelf: "start" },
 				},

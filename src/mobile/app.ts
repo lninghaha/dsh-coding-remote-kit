@@ -34,7 +34,7 @@ interface TranscriptLine {
 	text: string;
 }
 
-interface PendingApproval {
+export interface PendingApproval {
 	rpcId: string;
 	sessionId: string;
 	approvalId: string;
@@ -42,7 +42,7 @@ interface PendingApproval {
 	reason?: string;
 }
 
-interface PendingQuestion {
+export interface PendingQuestion {
 	rpcId: string;
 	sessionId: string;
 	questions: QuestionItem[];
@@ -65,13 +65,40 @@ export interface ApprovalFocusTarget {
 	readonly approvalId: string;
 }
 
+export interface RecoveryDraft {
+	readonly value: string;
+	readonly revision: number;
+}
+
+/** Memory-only state shared by successive connected-app instances. */
+export interface VolatileRecoveryState {
+	drafts: Map<string, RecoveryDraft>;
+	unknownPrompts: Map<string, RecoveryDraft>;
+	approvals: PendingApproval[];
+	questions: PendingQuestion[];
+	unknownActions: Set<string>;
+}
+
+export function createVolatileRecoveryState(): VolatileRecoveryState {
+	return { drafts: new Map(), unknownPrompts: new Map(), approvals: [], questions: [], unknownActions: new Set() };
+}
+
+export function clearVolatileRecoveryState(state: VolatileRecoveryState): void {
+	state.drafts.clear();
+	state.unknownPrompts.clear();
+	state.approvals = [];
+	state.questions = [];
+	state.unknownActions.clear();
+}
+
 const SEARCH_DEBOUNCE_MS = 200;
 
 export function startConnectedApp(
 	root: HTMLElement,
 	rpc: MobileRpcClient,
-	options: { focusApproval?: ApprovalFocusTarget | null } = {},
+	options: { focusApproval?: ApprovalFocusTarget | null; recovery?: VolatileRecoveryState } = {},
 ): () => void {
+	const recovery = options.recovery ?? createVolatileRecoveryState();
 	document.documentElement.classList.add("connected");
 	document.body.classList.add("connected");
 	const state = {
@@ -87,8 +114,8 @@ export function startConnectedApp(
 		hintHidden: readHintHidden(),
 		expanded: new Set<string>(),
 		showAll: new Set<string>(),
-		approvals: [] as PendingApproval[],
-		questions: [] as PendingQuestion[],
+		approvals: recovery.approvals,
+		questions: recovery.questions,
 		pendingActions: new Set<string>(),
 		scrollSessionToEnd: false,
 		listState: "loading" as "loading" | "ready" | "empty" | "unavailable" | "permissionDenied" | "stale",
@@ -103,6 +130,21 @@ export function startConnectedApp(
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
 	let searchTimer: ReturnType<typeof setTimeout> | null = null;
 	let sheetTriggerKey: string | null = null;
+	let pendingPrompt: { sessionId: string; draft: RecoveryDraft } | null = null;
+	const updateDraft = (sessionId: string, value: string): RecoveryDraft => {
+		const current = recovery.drafts.get(sessionId);
+		const next = { value, revision: (current?.revision ?? 0) + 1 };
+		recovery.drafts.set(sessionId, next);
+		return next;
+	};
+	const setApprovals = (items: PendingApproval[]) => {
+		state.approvals = items;
+		recovery.approvals = items;
+	};
+	const setQuestions = (items: PendingQuestion[]) => {
+		state.questions = items;
+		recovery.questions = items;
+	};
 
 	const showToast = (message: string): void => {
 		if (disposed) return;
@@ -522,24 +564,49 @@ export function startConnectedApp(
 		const row = el("div", { className: "composer-row" });
 		const input = el("textarea") as HTMLTextAreaElement;
 		input.setAttribute("data-preserve-key", `composer:${sessionId}`);
+		input.setAttribute("data-preserve-value", "false");
 		input.placeholder = t("app.composerPlaceholder");
+		input.value = recovery.drafts.get(sessionId)?.value ?? "";
 		input.addEventListener("input", () => {
+			updateDraft(sessionId, input.value);
 			input.style.height = "auto";
 			input.style.height = `${String(Math.min(input.scrollHeight, 120))}px`;
 		});
 		const send = el("button", { type: "submit" }, state.busy ? "…" : t("app.send"));
-		send.disabled = state.busy;
+		const unknownPrompt = recovery.unknownPrompts.get(sessionId);
+		send.disabled = state.busy || unknownPrompt !== undefined;
 		composer.addEventListener("submit", (event) => {
 			event.preventDefault();
+			if (recovery.unknownPrompts.has(sessionId)) return;
 			const text = input.value.trim();
 			if (text.length === 0) return;
 			const mode = state.promptMode;
-			input.value = "";
-			input.style.height = "";
+			const current = recovery.drafts.get(sessionId);
+			const submitted = current?.value === input.value ? current : updateDraft(sessionId, input.value);
 			void run(async () => {
-				await rpc.request("session.prompt", { sessionId, mode, text });
+				pendingPrompt = { sessionId, draft: submitted };
+				try {
+					await rpc.request("session.prompt", { sessionId, mode, text });
+					if (disposed) return;
+					const latest = recovery.drafts.get(sessionId);
+					if (latest?.revision === submitted.revision) recovery.drafts.delete(sessionId);
+					recovery.unknownPrompts.delete(sessionId);
+				} finally {
+					if (!disposed) pendingPrompt = null;
+				}
 			});
 		});
+		if (unknownPrompt !== undefined) {
+			const unknown = el("div", { className: "bar-err", role: "status" });
+			unknown.appendChild(el("span", {}, t("app.promptResultUnknown")));
+			const checked = el("button", { type: "button", className: "ghost" }, t("app.promptResultChecked"));
+			checked.addEventListener("click", () => {
+				recovery.unknownPrompts.delete(sessionId);
+				render();
+			});
+			unknown.appendChild(checked);
+			composer.appendChild(unknown);
+		}
 		row.appendChild(input);
 		row.appendChild(send);
 		composer.appendChild(row);
@@ -589,7 +656,9 @@ export function startConnectedApp(
 	};
 
 	const renderApproval = (approval: PendingApproval, showContext: boolean): HTMLElement => {
-		const pending = state.pendingActions.has(`approval:${approval.rpcId}`);
+		const key = `approval:${approval.rpcId}`;
+		const pending = state.pendingActions.has(key);
+		const unknown = recovery.unknownActions.has(key);
 		const focused = state.focusApprovalId === approval.approvalId;
 		const card = el("div", {
 			className: focused ? "card focus-target" : "card",
@@ -610,10 +679,11 @@ export function startConnectedApp(
 		}
 		if (approval.reason !== undefined) card.appendChild(el("p", {}, approval.reason));
 		const actions = el("div", { className: "actions" });
+		if (unknown) card.appendChild(el("p", { className: "muted", role: "status" }, t("app.actionResultUnknown")));
 		const allow = el("button", { type: "button" }, pending ? t("app.submitting") : t("app.allowOnce"));
 		const reject = el("button", { type: "button", className: "ghost" }, t("app.deny"));
-		allow.disabled = pending;
-		reject.disabled = pending;
+		allow.disabled = pending || unknown;
+		reject.disabled = pending || unknown;
 		allow.addEventListener("click", () => {
 			void answerApproval(approval, "allowed-once");
 		});
@@ -627,10 +697,13 @@ export function startConnectedApp(
 	};
 
 	const renderQuestion = (question: PendingQuestion): HTMLElement => {
-		const pending = state.pendingActions.has(`question:${question.rpcId}`);
+		const key = `question:${question.rpcId}`;
+		const pending = state.pendingActions.has(key);
+		const unknown = recovery.unknownActions.has(key);
 		const card = el("form", { className: "card", "aria-busy": String(pending) });
 		const ctx = sessionContext(question.sessionId);
 		card.appendChild(el("p", { className: "ctx" }, `${ctx.workspace} · ${ctx.title}`));
+		if (unknown) card.appendChild(el("p", { className: "muted", role: "status" }, t("app.actionResultUnknown")));
 		for (const item of question.questions) {
 			card.appendChild(el("strong", {}, item.header ?? item.question));
 			if (item.header !== undefined) card.appendChild(el("p", {}, item.question));
@@ -640,7 +713,7 @@ export function startConnectedApp(
 				other.setAttribute("data-qid", item.id);
 				other.setAttribute("data-kind", "custom");
 				other.setAttribute("data-preserve-key", `question:${question.rpcId}:${item.id}:custom`);
-				other.disabled = pending;
+				other.disabled = pending || unknown;
 				card.appendChild(other);
 			} else {
 				for (const option of item.options) {
@@ -651,7 +724,7 @@ export function startConnectedApp(
 					input.value = option.label;
 					input.setAttribute("data-qid", item.id);
 					input.setAttribute("data-preserve-key", `question:${question.rpcId}:${item.id}:${option.label}`);
-					input.disabled = pending;
+					input.disabled = pending || unknown;
 					label.appendChild(input);
 					label.appendChild(el("span", {}, option.label));
 					if (option.description !== undefined) {
@@ -662,7 +735,7 @@ export function startConnectedApp(
 			}
 		}
 		const submit = el("button", { type: "submit" }, pending ? t("app.submitting") : t("app.submit"));
-		submit.disabled = pending;
+		submit.disabled = pending || unknown;
 		card.addEventListener("submit", (event) => {
 			event.preventDefault();
 			void answerQuestion(question, card);
@@ -679,7 +752,8 @@ export function startConnectedApp(
 				approvalId: approval.approvalId,
 				outcome,
 			});
-			state.approvals = state.approvals.filter((item) => item.rpcId !== approval.rpcId);
+			if (disposed) return;
+			setApprovals(state.approvals.filter((item) => item.rpcId !== approval.rpcId));
 			showToast(outcome === "allowed-once" ? t("app.allowed") : t("app.denied"));
 		});
 	};
@@ -704,7 +778,8 @@ export function startConnectedApp(
 				sessionId: question.sessionId,
 				answers,
 			});
-			state.questions = state.questions.filter((item) => item.rpcId !== question.rpcId);
+			if (disposed) return;
+			setQuestions(state.questions.filter((item) => item.rpcId !== question.rpcId));
 			showToast(t("app.answered"));
 		});
 	};
@@ -836,8 +911,9 @@ export function startConnectedApp(
 	};
 
 	const runAction = async (key: string, work: () => Promise<void>): Promise<void> => {
-		if (disposed || state.pendingActions.has(key)) return;
+		if (disposed || state.pendingActions.has(key) || recovery.unknownActions.has(key)) return;
 		state.pendingActions.add(key);
+		recovery.unknownActions.delete(key);
 		state.error = null;
 		render();
 		try {
@@ -863,7 +939,7 @@ export function startConnectedApp(
 		if (push.push === "approval.requested" && push.rpcId !== undefined) {
 			const approval = parseApproval(push.rpcId, push.data);
 			if (approval !== null) {
-				state.approvals = [...state.approvals.filter((item) => item.rpcId !== approval.rpcId), approval];
+				setApprovals([...state.approvals.filter((item) => item.rpcId !== approval.rpcId), approval]);
 				render();
 			}
 			return;
@@ -871,14 +947,17 @@ export function startConnectedApp(
 		if (push.push === "approval.resolved") {
 			const record = asRecord(push.data);
 			const approvalId = typeof record?.approvalId === "string" ? record.approvalId : "";
-			state.approvals = state.approvals.filter((item) => item.approvalId !== approvalId);
+			const resolved = state.approvals.filter((item) => item.approvalId === approvalId);
+			setApprovals(state.approvals.filter((item) => item.approvalId !== approvalId));
+			for (const item of resolved) recovery.unknownActions.delete(`approval:${item.rpcId}`);
+			if (push.rpcId !== undefined) recovery.unknownActions.delete(`approval:${push.rpcId}`);
 			render();
 			return;
 		}
 		if (push.push === "question.requested" && push.rpcId !== undefined) {
 			const question = parseQuestion(push.rpcId, push.data);
 			if (question !== null) {
-				state.questions = [...state.questions.filter((item) => item.rpcId !== question.rpcId), question];
+				setQuestions([...state.questions.filter((item) => item.rpcId !== question.rpcId), question]);
 				render();
 			}
 			return;
@@ -886,7 +965,8 @@ export function startConnectedApp(
 		if (push.push === "question.resolved") {
 			const record = asRecord(push.data);
 			const rpcId = typeof record?.questionRpcId === "string" ? record.questionRpcId : "";
-			state.questions = state.questions.filter((item) => item.rpcId !== rpcId);
+			setQuestions(state.questions.filter((item) => item.rpcId !== rpcId));
+			recovery.unknownActions.delete(`question:${rpcId}`);
 			render();
 			return;
 		}
@@ -950,6 +1030,8 @@ export function startConnectedApp(
 	render();
 	return () => {
 		if (disposed) return;
+		if (pendingPrompt !== null) recovery.unknownPrompts.set(pendingPrompt.sessionId, pendingPrompt.draft);
+		for (const key of state.pendingActions) recovery.unknownActions.add(key);
 		disposed = true;
 		disposePush();
 		disposeLocale();
@@ -1249,7 +1331,7 @@ function restorePreservedControls(root: HTMLElement, preserved: PreservedControl
 		if (key === null) return;
 		const value = preserved.values.get(key);
 		if (value === undefined) return;
-		node.value = value.value;
+		if (node.getAttribute("data-preserve-value") !== "false") node.value = value.value;
 		node.checked = value.checked;
 		if (key === preserved.focusKey) {
 			focusTarget = node;

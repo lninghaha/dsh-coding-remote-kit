@@ -78,15 +78,49 @@ if (desktop?.screenshot?.width !== 2048 || desktop?.screenshot?.height !== 1085)
 	console.error("FAIL: desktop physical screenshot is not 2048x1085");
 	process.exit(1);
 }
-if (!desktop?.advancedHidden || !desktop?.connectionStep || !desktop?.pairStep || !desktop?.nameStep || !desktop?.doneStep) {
+if (
+	!desktop?.advancedHidden ||
+	!desktop?.connectionStep ||
+	!desktop?.existingDeviceDidNotComplete ||
+	!desktop?.selectionDidNotAct ||
+	!desktop?.offerBlockedUntilApplied ||
+	!desktop?.applyStoppedRelay ||
+	!desktop?.applyStartedPublic ||
+	!desktop?.pairStep ||
+	!desktop?.nameStep ||
+	!desktop?.doneStep
+) {
 	console.error("FAIL: desktop progressive settings flow regression");
 	process.exit(1);
 }
-if (!interaction?.draftPreserved || !interaction?.focusPreserved || !interaction?.selectionPreserved || !interaction?.dialogFocused || !interaction?.tabTrapped || !interaction?.escapeRestoredFocus) {
+if (
+	!interaction?.rejectedDraftPreserved ||
+	!interaction?.successfulPromptCleared ||
+	!interaction?.newDraftPreservedAfterSuccess ||
+	!interaction?.promptUnknownVisible ||
+	!interaction?.promptUnknownBlocked ||
+	!interaction?.promptUnknownCanBeAcknowledged ||
+	!interaction?.recreatedDraftPreserved ||
+	!interaction?.clearLocalClearedRecovery ||
+	!interaction?.approvalUnknownVisible ||
+	!interaction?.approvalDisabled ||
+	!interaction?.approvalNoResend ||
+	!interaction?.approvalResolvedCleared ||
+	!interaction?.questionUnknownVisible ||
+	!interaction?.questionDisabled ||
+	!interaction?.questionNoResend ||
+	!interaction?.questionResolvedCleared ||
+	!interaction?.draftPreserved ||
+	!interaction?.focusPreserved ||
+	!interaction?.selectionPreserved ||
+	!interaction?.dialogFocused ||
+	!interaction?.tabTrapped ||
+	!interaction?.escapeRestoredFocus
+) {
 	console.error("FAIL: desktop draft/focus/dialog keyboard regression");
 	process.exit(1);
 }
-if (interaction?.promptRequests !== 1 || interaction?.pushDisposals !== 1 || interaction?.subscribedAfterDispose !== false) {
+if (interaction?.promptRequests !== 5 || interaction?.pushDisposals < 1 || interaction?.subscribedAfterDispose !== false) {
 	console.error("FAIL: duplicate submit or disposer regression");
 	process.exit(1);
 }
@@ -190,8 +224,19 @@ async function runSettingsInteraction(chrome) {
 		const current = () => document.querySelector('[aria-current="step"]')?.textContent ?? "";
 		const advancedHidden = !text().includes("19081");
 		const connectionStep = /Connection|连接方式/.test(current());
-		document.querySelector('input[name="channel"]')?.click();
+		const existingDeviceDidNotComplete = !/Done|完成/.test(current());
+		const radios = [...document.querySelectorAll('input[name="channel"]')];
+		radios[1]?.click();
 		await Promise.resolve();
+		const selectionDidNotAct = globalThis.__dshmrSettingsE2e.actions().length === 0;
+		const offerBlockedUntilApplied = [...document.querySelectorAll("button")].find((button) => /Generate QR|生成二维码/.test(button.textContent))?.disabled === true;
+		document.querySelector('input[type="checkbox"]')?.click();
+		[...document.querySelectorAll("button")].find((button) => /Apply connection|应用连接方式/.test(button.textContent))?.click();
+		for (let attempt = 0; attempt < 20 && !globalThis.__dshmrSettingsE2e.actions().some((action) => action.path.endsWith("/tunnel") && action.body.action === "start"); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+		const actionsAfterApply = globalThis.__dshmrSettingsE2e.actions();
+		const applyStoppedRelay = actionsAfterApply.some((action) => action.path.endsWith("/relay") && action.body.action === "stop");
+		const applyStartedPublic = actionsAfterApply.some((action) => action.path.endsWith("/tunnel") && action.body.action === "start");
+		for (let attempt = 0; attempt < 20 && !/Pair|配对/.test(current()); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 50));
 		const pairStep = /Pair|配对/.test(current());
 		[...document.querySelectorAll("button")].find((button) => /Generate QR|生成二维码/.test(button.textContent))?.click();
 		for (let attempt = 0; attempt < 20 && !/Name device|命名设备/.test(current()); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 50));
@@ -200,7 +245,7 @@ async function runSettingsInteraction(chrome) {
 		[...document.querySelectorAll("button")].find((button) => /Refresh|刷新/.test(button.textContent))?.click();
 		for (let attempt = 0; attempt < 20 && !/Done|完成/.test(current()); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 50));
 		const doneStep = /Done|完成/.test(current());
-		return { advancedHidden, connectionStep, pairStep, nameStep, doneStep };
+		return { advancedHidden, connectionStep, existingDeviceDidNotComplete, selectionDidNotAct, offerBlockedUntilApplied, applyStoppedRelay, applyStartedPublic, pairStep, nameStep, doneStep };
 	})()`, true);
 }
 
@@ -214,15 +259,28 @@ async function prepareSettingsHarness() {
 				import React from "react";
 				import { createRoot } from "react-dom/client";
 				import { MobileRemoteSettings } from "./src/client/index.ts";
-				let devices = [];
-				globalThis.__dshmrSettingsE2e = { connectNamedDevice() { devices = [{ deviceId: "device-e2e", displayName: "Pocket DSH", createdAt: Date.now(), lastSeenAt: Date.now(), scope: "mobile" }]; } };
+				let devices = [{ deviceId: "device-existing", displayName: "Existing phone", createdAt: Date.now(), lastSeenAt: Date.now(), scope: "mobile" }];
+				let tunnelRunning = false;
+				let relayRunning = true;
+				const actions = [];
+				window.confirm = () => true;
+				globalThis.__dshmrSettingsE2e = {
+					connectNamedDevice() { devices = [...devices, { deviceId: "device-e2e", displayName: "Pocket DSH", createdAt: Date.now(), lastSeenAt: Date.now(), scope: "mobile" }]; },
+					actions() { return actions; },
+				};
 				globalThis.fetch = async (input, init = {}) => {
 					const url = String(input);
 					let body;
-					if (url.endsWith("/status")) body = { enabled: true, bind: "127.0.0.1", port: 19081, listening: true, networkReach: "lan", activeDevices: devices.length, tunnel: { running: false, kind: null, url: null, binaryOk: true }, relay: { running: false, kind: null, url: null, hostConnected: false, binaryOk: true, hasToken: false } };
+					if (url.endsWith("/status")) body = { enabled: true, bind: "127.0.0.1", port: 19081, listening: true, networkReach: "lan", activeDevices: devices.length, tunnel: { running: tunnelRunning, kind: tunnelRunning ? "cloudflare-quick" : null, url: tunnelRunning ? "https://public.example.invalid" : null, binaryOk: true }, relay: { running: relayRunning, kind: relayRunning ? "rendezvous" : null, url: relayRunning ? "https://relay.example.invalid" : null, hostConnected: relayRunning, binaryOk: true, hasToken: false } };
 					else if (url.endsWith("/devices")) body = { devices };
 					else if (url.endsWith("/offers")) body = { offer: { expiresAt: Date.now() + 600000 }, qrText: "https://example.invalid/m#e2e", candidates: ["127.0.0.1"], pairCode: "ABCD-EFGH" };
-					else body = { accepted: true };
+					else {
+						const requestBody = JSON.parse(String(init.body ?? "{}"));
+						actions.push({ path: url, body: requestBody });
+						if (url.endsWith("/relay")) relayRunning = requestBody.action === "start";
+						if (url.endsWith("/tunnel")) tunnelRunning = requestBody.action === "start";
+						body = { accepted: true };
+					}
 					return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 				};
 				createRoot(document.getElementById("settings")).render(React.createElement(MobileRemoteSettings));
@@ -256,6 +314,83 @@ async function runInteraction(chrome) {
 	}
 	return evaluateValue(chrome, `(async () => {
 		const input = document.querySelector(".composer textarea");
+		input.value = "reject keeps draft";
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+		globalThis.__dshmrE2e.rejectNextPrompt();
+		document.querySelector(".composer").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+		await new Promise((resolve) => setTimeout(resolve, 120));
+		const rejectedDraftPreserved = document.querySelector(".composer textarea")?.value === "reject keeps draft";
+		document.querySelector(".composer").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+		await new Promise((resolve) => setTimeout(resolve, 120));
+		const successfulPromptCleared = document.querySelector(".composer textarea")?.value === "";
+		const pendingInput = document.querySelector(".composer textarea");
+		pendingInput.value = "confirmed prompt";
+		pendingInput.dispatchEvent(new Event("input", { bubbles: true }));
+		globalThis.__dshmrE2e.holdNextPrompt();
+		document.querySelector(".composer").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		const editedWhilePending = document.querySelector(".composer textarea");
+		editedWhilePending.value = "new draft while waiting";
+		editedWhilePending.dispatchEvent(new Event("input", { bubbles: true }));
+		globalThis.__dshmrE2e.resolvePrompt();
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		const newDraftPreservedAfterSuccess = document.querySelector(".composer textarea")?.value === "new draft while waiting";
+		const unknownInput = document.querySelector(".composer textarea");
+		unknownInput.value = "result may be unknown";
+		unknownInput.dispatchEvent(new Event("input", { bubbles: true }));
+		globalThis.__dshmrE2e.holdNextPrompt();
+		document.querySelector(".composer").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		globalThis.__dshmrE2e.recreate();
+		globalThis.__dshmrE2e.resolvePrompt();
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		document.querySelector(".task")?.click();
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		const promptUnknownVisible = /Check the current task history|查看当前任务记录/.test(document.body.innerText);
+		const promptRequestsBeforeBlockedSubmit = globalThis.__dshmrE2e.metrics().promptRequests;
+		document.querySelector(".composer")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+		const promptUnknownBlocked = globalThis.__dshmrE2e.metrics().promptRequests === promptRequestsBeforeBlockedSubmit;
+		[...document.querySelectorAll("button")].find((button) => /checked the task status|已核对任务状态/.test(button.textContent))?.click();
+		const promptUnknownCanBeAcknowledged = !/Check the current task history|查看当前任务记录/.test(document.body.innerText);
+		const recoveryInput = document.querySelector(".composer textarea");
+		recoveryInput.value = "recreate keeps draft";
+		recoveryInput.dispatchEvent(new Event("input", { bubbles: true }));
+		globalThis.__dshmrE2e.recreate();
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		document.querySelector(".task")?.click();
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		const recreatedDraftPreserved = document.querySelector(".composer textarea")?.value === "recreate keeps draft";
+		globalThis.__dshmrE2e.clearRecovery();
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		document.querySelector(".task")?.click();
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		const clearLocalClearedRecovery = document.querySelector(".composer textarea")?.value === "";
+		globalThis.__dshmrE2e.push({ push: "approval.requested", rpcId: "approval-e2e", data: { sessionId: "s-0-0", approvalId: "approval-id", toolName: "shell" } });
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		[...document.querySelectorAll("button")].find((button) => /Allow once|允许一次/.test(button.textContent))?.click();
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		globalThis.__dshmrE2e.recreate();
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		const approvalUnknownVisible = /result is unknown|结果未知/.test(document.body.innerText);
+		const approvalDisabled = [...document.querySelectorAll("button")].some((button) => /Allow once|允许一次/.test(button.textContent) && button.disabled);
+		[...document.querySelectorAll("button")].find((button) => /Allow once|允许一次/.test(button.textContent))?.click();
+		const approvalNoResend = globalThis.__dshmrE2e.metrics().respondRequests === 1;
+		globalThis.__dshmrE2e.push({ push: "approval.resolved", rpcId: "approval-e2e", data: { approvalId: "approval-id" } });
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		const approvalResolvedCleared = !/result is unknown|结果未知/.test(document.body.innerText);
+		globalThis.__dshmrE2e.push({ push: "question.requested", rpcId: "question-e2e", data: { sessionId: "s-0-0", questions: [{ id: "q", question: "Continue?", options: [{ label: "Yes" }] }] } });
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		document.querySelector("form.card")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		globalThis.__dshmrE2e.recreate();
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		const questionUnknownVisible = /result is unknown|结果未知/.test(document.body.innerText);
+		const questionDisabled = [...document.querySelectorAll("button")].some((button) => /Submit|提交/.test(button.textContent) && button.disabled);
+		document.querySelector("form.card")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+		const questionNoResend = globalThis.__dshmrE2e.metrics().respondRequests === 2;
+		globalThis.__dshmrE2e.push({ push: "question.resolved", rpcId: "question-e2e", data: { questionRpcId: "question-e2e" } });
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		const questionResolvedCleared = !/result is unknown|结果未知/.test(document.body.innerText);
 		input.value = "draft stays here";
 		input.focus();
 		input.setSelectionRange(2, 7);
@@ -283,7 +418,7 @@ async function runInteraction(chrome) {
 		globalThis.__dshmrE2e.dispose();
 		globalThis.__dshmrE2e.pushHostUpdate();
 		const lifecycle = globalThis.__dshmrE2e.metrics();
-		return { draftPreserved, focusPreserved, selectionPreserved, dialogFocused, tabTrapped, escapeRestoredFocus, promptRequests: lifecycle.promptRequests, pushDisposals: lifecycle.pushDisposals, subscribedAfterDispose: lifecycle.subscribed };
+		return { rejectedDraftPreserved, successfulPromptCleared, newDraftPreservedAfterSuccess, promptUnknownVisible, promptUnknownBlocked, promptUnknownCanBeAcknowledged, recreatedDraftPreserved, clearLocalClearedRecovery, approvalUnknownVisible, approvalDisabled, approvalNoResend, approvalResolvedCleared, questionUnknownVisible, questionDisabled, questionNoResend, questionResolvedCleared, draftPreserved, focusPreserved, selectionPreserved, dialogFocused, tabTrapped, escapeRestoredFocus, promptRequests: lifecycle.promptRequests, pushDisposals: lifecycle.pushDisposals, subscribedAfterDispose: lifecycle.subscribed };
 	})()`, true);
 }
 
