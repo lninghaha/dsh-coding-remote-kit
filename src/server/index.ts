@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { base64Encode } from "../shared/base64.js";
+import { registerInteractionAnswerers } from "./approval-bridge.js";
 import { installOfficialCloudflared } from "./cloudflared-install.js";
 import { type RuntimeConfig, RuntimeConfigSchema } from "./config.js";
 import { type MobileRemoteHostContext, resolveHostCompatibility } from "./context.js";
@@ -12,9 +13,10 @@ import { AuditLogger, DeviceRegistry, OfferRegistry } from "./registry.js";
 import { RendezvousClient } from "./relay.js";
 import { registerManagementRoutes } from "./routes.js";
 import { createOwnerRequestPolicy, type OwnerRequestDiagnostic, safeguardOwnerRequestPolicy } from "./security.js";
+import { createSessionControllerUpstream } from "./session-controller-upstream.js";
 import { ensureStorageDir } from "./storage.js";
 import { CloudflareQuickTunnel } from "./tunnel.js";
-import { createUpstreamHub } from "./upstream.js";
+import { createUpstreamHub, type Subscriber, type UpstreamHub } from "./upstream.js";
 
 export const name = "mobile-remote";
 
@@ -91,6 +93,7 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 
 	let host = resolveHostCompatibility(ctx);
 	let activeApiProxy = host.apiProxy;
+	let activeSessionController = host.sessionController;
 	const resolveApiProxy = () => {
 		const latest = resolveHostCompatibility(ctx);
 		if (latest.apiProxy !== undefined) {
@@ -98,6 +101,14 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 			activeApiProxy = latest.apiProxy;
 		}
 		return activeApiProxy;
+	};
+	const resolveSessionController = () => {
+		const latest = resolveHostCompatibility(ctx);
+		if (latest.sessionController !== undefined) {
+			host = latest;
+			activeSessionController = latest.sessionController;
+		}
+		return activeSessionController;
 	};
 	if (typeof ctx.inject === "function") {
 		try {
@@ -117,6 +128,24 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 			cleanupSteps.push(asDisposer(apiProxyFiber));
 		} catch {
 			logger.warn("mobile-remote: apiProxy capability watcher unavailable; using safe lazy lookup");
+		}
+		try {
+			const sessionControllerFiber = ctx.inject(["sessionController"], (injectedContext) => {
+				const injectedHost = resolveHostCompatibility(injectedContext);
+				if (injectedHost.sessionController === undefined) return () => undefined;
+				host = injectedHost;
+				activeSessionController = injectedHost.sessionController;
+				logger.info("mobile-remote: sessionController capability attached");
+				return () => {
+					if (activeSessionController === injectedHost.sessionController) {
+						activeSessionController = undefined;
+						host = resolveHostCompatibility(ctx);
+					}
+				};
+			});
+			cleanupSteps.push(asDisposer(sessionControllerFiber));
+		} catch {
+			logger.warn("mobile-remote: sessionController capability watcher unavailable; using safe lazy lookup");
 		}
 	}
 	const fallbackOwnerRequestPolicy = createOwnerRequestPolicy(config.ownerRequest);
@@ -139,7 +168,11 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 		);
 	}
 	if (activeApiProxy === undefined) {
-		logger.warn("mobile-remote: apiProxy service unavailable; session RPC will return upstream_error");
+		logger.info(
+			activeSessionController === undefined
+				? "mobile-remote: no session backend attached yet; session RPC waits for apiProxy or sessionController"
+				: "mobile-remote: sessionController is the active session backend",
+		);
 	}
 
 	const mobileDir = fileURLToPath(new URL("../mobile/", import.meta.url));
@@ -170,10 +203,62 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 		hasActiveDevice: () => registry.hasActiveDevice(),
 	});
 
-	const upstream = createUpstreamHub(resolveApiProxy, logger, {
+	const apiProxyUpstream = createUpstreamHub(resolveApiProxy, logger, {
 		onApprovalRequested: (push) => pushBridge.notifyApprovalRequested(push),
 	});
+	const sessionControllerUpstream = createSessionControllerUpstream(resolveSessionController, logger, {
+		hostEvents: ctx,
+		onApprovalRequested: (push) => pushBridge.notifyApprovalRequested(push),
+	});
+	// One backend per mobile connection: DSH 0.1.1 injects apiProxy, 0.1.5+
+	// exposes sessionController, and either may appear after apply(). The
+	// chosen backend is fixed when the connection authenticates, so events are
+	// never delivered twice.
+	const hubFor = new WeakMap<Subscriber, UpstreamHub>();
+	const pickUpstream = (): UpstreamHub =>
+		resolveSessionController() === undefined ? apiProxyUpstream : sessionControllerUpstream;
+	const upstreamFor = (subscriber: Subscriber): UpstreamHub => hubFor.get(subscriber) ?? pickUpstream();
+	const upstream: UpstreamHub = {
+		addSubscriber: (subscriber) => {
+			const chosen = pickUpstream();
+			hubFor.set(subscriber, chosen);
+			chosen.addSubscriber(subscriber);
+		},
+		removeSubscriber: (subscriber) => {
+			upstreamFor(subscriber).removeSubscriber(subscriber);
+			hubFor.delete(subscriber);
+		},
+		subscribeSession: (subscriber, sessionId) => {
+			upstreamFor(subscriber).subscribeSession(subscriber, sessionId);
+		},
+		unsubscribeSession: (subscriber, sessionId) => {
+			upstreamFor(subscriber).unsubscribeSession(subscriber, sessionId);
+		},
+		subscribeHost: (subscriber) => {
+			upstreamFor(subscriber).subscribeHost(subscriber);
+		},
+		list: () => pickUpstream().list(),
+		history: (params) => pickUpstream().history(params),
+		prompt: (params) => pickUpstream().prompt(params),
+		cancel: (sessionId) => pickUpstream().cancel(sessionId),
+		create: (params) => pickUpstream().create(params),
+		respond: (input) => pickUpstream().respond(input),
+		stop: () => {
+			apiProxyUpstream.stop();
+			sessionControllerUpstream.stop();
+		},
+		interactions: sessionControllerUpstream.interactions,
+		hasSessionSubscriber: (sessionId) => sessionControllerUpstream.hasSessionSubscriber?.(sessionId) === true,
+		broadcastToSession: (sessionId, push) => {
+			sessionControllerUpstream.broadcastToSession?.(sessionId, push);
+		},
+	};
 	cleanupSteps.push(() => upstream.stop());
+
+	// Live approvals / user questions on hosts where the plugin is the
+	// interactive answerer (DSH 0.1.5 sessionController).
+	const disposeAnswerers = registerInteractionAnswerers({ host: ctx, hub: sessionControllerUpstream, logger });
+	cleanupSteps.push(disposeAnswerers);
 
 	const dataPlane = new MobileDataPlane({
 		serverKeyPair,
@@ -262,6 +347,7 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 				pushBridge,
 				compatibility: () => {
 					resolveApiProxy();
+					resolveSessionController();
 					return {
 						...host.diagnostics,
 						ownerRequest: {

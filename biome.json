@@ -3,11 +3,14 @@
 	"files": {
 		"includes": [
 			"src/server/auth-failure-limiter.ts",
+			"src/server/approval-bridge.ts",
 			"src/server/dataplane.ts",
 			"src/server/connection.ts",
 			"src/server/registry.ts",
 			"src/server/e2ee.ts",
 			"src/server/index.ts",
+			"src/server/interactions.ts",
+			"src/server/session-controller-upstream.ts",
 			"src/shared/constants.ts",
 			"src/mobile/persist.ts",
 			"src/mobile/main.ts",

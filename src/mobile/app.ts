@@ -1137,8 +1137,16 @@ function foldTranscript(entries: unknown[]): TranscriptLine[] {
 			chunkKey = null;
 			lines.push({ key: `u-${index}`, role: "user", text: extractText(data) });
 		} else if (type === "assistant/message") {
+			const text = extractText(data);
+			const last = lines[lines.length - 1];
+			// A message that settles a live stream replaces the streamed bubble
+			// instead of appending a second copy of the same reply.
+			if (chunkKey !== null && last !== undefined && last.role === "assistant") {
+				lines[lines.length - 1] = { key: `a-${index}`, role: "assistant", text };
+			} else {
+				lines.push({ key: `a-${index}`, role: "assistant", text });
+			}
 			chunkKey = null;
-			lines.push({ key: `a-${index}`, role: "assistant", text: extractText(data) });
 		} else if (type === "assistant/chunk") {
 			const text = extractText(data);
 			if (text.length === 0) continue;
@@ -1217,7 +1225,9 @@ function appendTranscriptLine(scroller: HTMLElement, events: unknown[]): boolean
 	const lastRaw = events[events.length - 1];
 	const event = asRecord(asRecord(lastRaw)?.event) ?? asRecord(lastRaw);
 	const stick = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 96;
-	const streaming = event?.type === "assistant/chunk";
+	const settling =
+		event?.type === "assistant/message" && previousTranscriptEventType(events) === "assistant/chunk";
+	const streaming = event?.type === "assistant/chunk" || settling;
 	if (streaming && line.role === "assistant") {
 		let last = scroller.lastElementChild;
 		if (
@@ -1229,7 +1239,8 @@ function appendTranscriptLine(scroller: HTMLElement, events: unknown[]): boolean
 			if (bubble instanceof HTMLElement) {
 				bubble.replaceChildren();
 				appendMarkdown(bubble, line.text);
-				bubble.classList.add("streaming");
+				if (settling) bubble.classList.remove("streaming");
+				else bubble.classList.add("streaming");
 			}
 		} else {
 			scroller.appendChild(renderBubbleRow(line, true));
@@ -1239,6 +1250,12 @@ function appendTranscriptLine(scroller: HTMLElement, events: unknown[]): boolean
 	}
 	if (stick) scroller.scrollTop = scroller.scrollHeight;
 	return true;
+}
+
+function previousTranscriptEventType(events: unknown[]): string | null {
+	const raw = events[events.length - 2];
+	const event = asRecord(asRecord(raw)?.event) ?? asRecord(raw);
+	return typeof event?.type === "string" ? event.type : null;
 }
 
 function basenameOf(cwd: string): string {

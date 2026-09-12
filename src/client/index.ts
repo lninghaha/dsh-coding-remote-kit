@@ -56,6 +56,7 @@ interface StatusInfo {
 	connectionDiagnostics?: ConnectionDiagnostics;
 	compatibility?: {
 		apiProxy: { available: boolean; source: string };
+		sessionController?: { available: boolean; source: string };
 		webServer: { available: boolean; source: string };
 		coreAbi?: string;
 		dshVersion?: string | null;
@@ -936,11 +937,16 @@ export function MobileRemoteSettings() {
 							? t("settings.compatibility.incompatible")
 							: status.compatibility.status === "degraded"
 								? t("settings.compatibility.degraded")
-								: status.compatibility.apiProxy.available && status.compatibility.webServer.available
+								: (status.compatibility.apiProxy.available ||
+											status.compatibility.sessionController?.available === true) &&
+										status.compatibility.webServer.available
 									? t("settings.compatibility.ready")
 									: t("settings.compatibility.missing", {
 										services: [
-											...(status.compatibility.apiProxy.available ? [] : ["apiProxy"]),
+											...(status.compatibility.apiProxy.available ||
+											status.compatibility.sessionController?.available === true
+												? []
+												: ["apiProxy/sessionController"]),
 											...(status.compatibility.webServer.available ? [] : ["webServer"]),
 										].join(", "),
 									}),

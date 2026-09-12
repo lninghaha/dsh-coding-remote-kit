@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import type { ExactWebServer } from "./routes.js";
 import type { OwnerRequestDiagnostic, OwnerRequestPolicy } from "./security.js";
+import { isSessionController, type SessionControllerFace } from "./session-controller-upstream.js";
 
 const require = createRequire(import.meta.url);
 
@@ -98,8 +99,15 @@ export interface MobileRemoteHostContext {
 	readonly logger: MobileRemoteLogger;
 	readonly webServer?: ExactWebServer;
 	readonly apiProxy?: HostApiProxy;
+	/**
+	 * DSH 0.1.5+ Session Remote service. One of `apiProxy` / `sessionController`
+	 * must be present for session RPC; older hosts inject the former, newer
+	 * hosts expose the latter through the service locator.
+	 */
+	readonly sessionController?: SessionControllerFace;
 	readonly ownerRequestPolicy?: OwnerRequestPolicy;
 	get?(name: string): unknown;
+	on?(name: string, listener: (...args: never[]) => unknown, options?: unknown): unknown;
 	inject?(
 		deps: readonly string[],
 		callback: (context: MobileRemoteHostContext) => void | (() => void | Promise<void>),
@@ -118,11 +126,15 @@ export interface HostCompatibilityDiagnostics {
 	readonly apiProxy: { readonly available: boolean; readonly source: "injected" | "lookup" | "missing" };
 	/** Legacy service summary retained for existing settings clients. */
 	readonly webServer: { readonly available: boolean; readonly source: "injected" | "lookup" | "missing" };
+	/** Session Remote backend (DSH 0.1.5+). */
+	readonly sessionController: { readonly available: boolean; readonly source: "injected" | "lookup" | "missing" };
 	readonly coreAbi: string;
 	readonly dshVersion: string | null;
 	readonly verifiedBom: typeof VERIFIED_BOM;
 	readonly status: "healthy" | "degraded" | "incompatible";
-	readonly capabilities: Readonly<Record<"apiProxy" | "webServer" | "ownerRequestPolicy", HostCapability>>;
+	readonly capabilities: Readonly<
+		Record<"apiProxy" | "sessionController" | "webServer" | "ownerRequestPolicy", HostCapability>
+	>;
 	readonly ownerRequest?: {
 		readonly source: "host" | "plugin-fallback";
 		readonly diagnostics: readonly OwnerRequestDiagnostic[];
@@ -133,6 +145,7 @@ export interface HostCompatibilityDiagnostics {
 
 export interface HostCompatibilityAdapter {
 	readonly apiProxy?: HostApiProxy;
+	readonly sessionController?: SessionControllerFace;
 	readonly webServer?: ExactWebServer;
 	readonly ownerRequestPolicy?: OwnerRequestPolicy;
 	readonly diagnostics: HostCompatibilityDiagnostics;
@@ -208,24 +221,36 @@ function injectedService(ctx: MobileRemoteHostContext, name: keyof MobileRemoteH
  */
 export function resolveHostCompatibility(ctx: MobileRemoteHostContext): HostCompatibilityAdapter {
 	const injectedApiProxy = injectedService(ctx, "apiProxy");
+	const injectedSessionController = injectedService(ctx, "sessionController");
 	const injectedWebServer = injectedService(ctx, "webServer");
 	const injectedOwnerRequestPolicy = injectedService(ctx, "ownerRequestPolicy");
 	// Probe optional services independently: one missing service must not prevent
 	// discovery of a later capability during a DSH upgrade or partial unload.
 	const lookedUpApiProxy = injectedApiProxy === undefined ? lookupService(ctx, "apiProxy") : undefined;
+	const lookedUpSessionController =
+		injectedSessionController === undefined ? lookupService(ctx, "sessionController") : undefined;
 	const lookedUpWebServer = injectedWebServer === undefined ? lookupService(ctx, "webServer") : undefined;
 	const lookedUpOwnerRequestPolicy =
 		injectedOwnerRequestPolicy === undefined ? lookupService(ctx, "ownerRequestPolicy") : undefined;
 	const apiProxyCandidate = injectedApiProxy ?? lookedUpApiProxy;
+	const sessionControllerCandidate = injectedSessionController ?? lookedUpSessionController;
 	const webServerCandidate = injectedWebServer ?? lookedUpWebServer;
 	const ownerRequestPolicyCandidate = injectedOwnerRequestPolicy ?? lookedUpOwnerRequestPolicy;
 	const apiProxy = isHostApiProxy(apiProxyCandidate) ? apiProxyCandidate : undefined;
+	const sessionController = isSessionController(sessionControllerCandidate)
+		? sessionControllerCandidate
+		: undefined;
 	const webServer = isExactWebServer(webServerCandidate) ? webServerCandidate : undefined;
 	const ownerRequestPolicy = isOwnerRequestPolicy(ownerRequestPolicyCandidate)
 		? ownerRequestPolicyCandidate
 		: undefined;
 	const capabilities = {
 		apiProxy: capability(apiProxyCandidate, apiProxy !== undefined, "api-proxy-rpc-v1"),
+		sessionController: capability(
+			sessionControllerCandidate,
+			sessionController !== undefined,
+			"api-session-controller-v1",
+		),
 		webServer: capability(webServerCandidate, webServer !== undefined, "exact-route-v1"),
 		ownerRequestPolicy: capability(
 			ownerRequestPolicyCandidate,
@@ -233,18 +258,38 @@ export function resolveHostCompatibility(ctx: MobileRemoteHostContext): HostComp
 			"owner-request-policy-v1",
 		),
 	};
-	const diagnostics = Object.entries(capabilities).flatMap(([name, detail]) => {
-		if (detail.state === "available" || (name === "ownerRequestPolicy" && detail.state === "missing")) return [];
-		return [`${name}: ${detail.state}${detail.reason === undefined ? "" : ` (${detail.reason})`}`];
-	});
-	const recommendations = Object.entries(capabilities).flatMap(([name, detail]) => {
-		if (detail.state === "available" || (name === "ownerRequestPolicy" && detail.state === "missing")) return [];
-		return name === "webServer"
-			? ["install a DSH runtime that provides webServer.register before enabling mobile-remote"]
-			: name === "apiProxy"
-				? ["session RPC is unavailable; install or enable DSH apiProxy to use remote session control"]
-				: ["host owner-request context is unavailable; loopback works and remote Settings requires a complete plugin fallback policy"];
-	});
+	const sessionBackendAvailable = apiProxy !== undefined || sessionController !== undefined;
+	const diagnostics: string[] = [];
+	for (const [name, detail] of Object.entries(capabilities)) {
+		const optionalMissing =
+			(detail.state === "missing" && (name === "apiProxy" || name === "sessionController")) ||
+			(name === "ownerRequestPolicy" && detail.state === "missing");
+		if (detail.state === "available" || optionalMissing) continue;
+		if (name === "webServer") {
+			diagnostics.push("webServer: missing (exact-route-v1 requires a host with webServer.register)");
+			continue;
+		}
+		diagnostics.push(`${name}: ${detail.state}${detail.reason === undefined ? "" : ` (${detail.reason})`}`);
+	}
+	if (!sessionBackendAvailable) {
+		diagnostics.push(
+			"session backend: missing (neither apiProxy nor sessionController matches the verified contract)",
+		);
+	}
+	const recommendations: string[] = [];
+	if (capabilities.webServer.state !== "available") {
+		recommendations.push("install a DSH runtime that provides webServer.register before enabling mobile-remote");
+	}
+	if (!sessionBackendAvailable) {
+		recommendations.push(
+			"session RPC is unavailable; install a DSH runtime that provides apiProxy (0.1.1) or sessionController (0.1.5+) to use remote session control",
+		);
+	}
+	if (capabilities.ownerRequestPolicy.state === "incompatible") {
+		recommendations.push(
+			"host owner-request context is unavailable; loopback works and remote Settings requires a complete plugin fallback policy",
+		);
+	}
 	const required = capabilities.webServer;
 	const status =
 		required.state === "available"
@@ -254,11 +299,16 @@ export function resolveHostCompatibility(ctx: MobileRemoteHostContext): HostComp
 			: "incompatible";
 	return {
 		...(apiProxy === undefined ? {} : { apiProxy }),
+		...(sessionController === undefined ? {} : { sessionController }),
 		...(webServer === undefined ? {} : { webServer }),
 		...(ownerRequestPolicy === undefined ? {} : { ownerRequestPolicy }),
 		diagnostics: {
 			apiProxy: { available: apiProxy !== undefined, source: sourceFor(apiProxy, injectedApiProxy) },
 			webServer: { available: webServer !== undefined, source: sourceFor(webServer, injectedWebServer) },
+			sessionController: {
+				available: sessionController !== undefined,
+				source: sourceFor(sessionController, injectedSessionController),
+			},
 			coreAbi: CORE_ABI,
 			dshVersion: dshVersion(),
 			verifiedBom: VERIFIED_BOM,

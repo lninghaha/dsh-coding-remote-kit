@@ -52,7 +52,7 @@ src/server
   ├─ MobileDataPlane    HTTP + ws
   ├─ CloudflareQuickTunnel   data plane only (never port 3080)
   ├─ RendezvousClient   outbound WSS to a self-hosted Worker (never 3080)
-  └─ UpstreamHub        apiProxy sessions / approvals / questions
+  └─ UpstreamHub        apiProxy (0.1.1) / sessionController (0.1.5+) session RPC
 ```
 
 Unauthenticated WebSocket connections handle **handshake only**. Business RPC starts after `e2ee_auth`.
@@ -67,14 +67,17 @@ Re-exports Cordis `name` / `inject` / `Config` / `apply` from `src/server/index.
 
 - `index.ts`: plugin `apply`. Storage, server key, data-plane listen, management routes, tunnel + rendezvous disposers.
 - `config.ts`: Zod `enabled` / `bind` / `port` / `offerTtlMs` / fail-closed `ownerRequest`; legacy `trustedHosts` no longer grants access.
-- `context.ts`: host `apiProxy` + `webServer` typing.
+- `context.ts`: host `apiProxy` / `sessionController` / `webServer` typing and capability diagnostics (either session service is a valid backend; `healthy` no longer requires the legacy one).
 - `routes.ts`: one `webServer.register` per path (DSH de-duplicates by path, not method). GET/POST branch inside the handler.
 - `security.ts`: prefer a host owner policy; fallback validates loopback/SSH or trusted HTTPS peer + Origin/Host + owner proof + Fetch Metadata + independent CSRF, with bounded JSON bodies. A throwing or malformed host policy fails closed.
 - `dataplane.ts`: dedicated `node:http` + `ws` on the data-plane port; static `/m`; `/m/claim`; `/m/ws`.
 - `connection.ts`: `acceptMobileSocket` — E2EE + RPC session used by `/m/ws` and by rendezvous accept sockets.
 - `e2ee.ts` / `crypto.ts`: server handshake, token lookup, tweetnacl secretbox.
 - `rpc.ts`: allowlist dispatch; unknown methods → `forbidden`.
-- `upstream.ts`: host `apiProxy` session/approval/question bridge.
+- `upstream.ts`: legacy host `apiProxy` session/approval/question bridge (kept for `0.1.1-rc.2`).
+- `session-controller-upstream.ts`: DSH `0.1.5+` `sessionController` backend -- cold `list` / `page` history, one `follow` iterator per subscribed session, `prompt` / `cancel` / `create`, and `api-session/*` list mirroring.
+- `interactions.ts`: shared pending approval/question registry -- phone-facing `rpcId` cards, reconnect replay, and settlement when the last subscriber leaves.
+- `approval-bridge.ts`: prepended `approval/request` + `user-questions/request` answerers that race the watching phone against the composed chain and fail closed when nobody answers.
 - `registry.ts`: devices + in-memory offers + JSONL audit.
 - `keys.ts` / `storage.ts`: `$DSH_HOME/storages/mobile-remote/` (dir 0700, files 0600, atomic write).
 - `net.ts`: LAN candidate addresses for QR advertise.

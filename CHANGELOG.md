@@ -4,6 +4,31 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+## v0.7.0 - 2026-09-12
+
+### Added
+
+- DSH `0.1.5-rc.2` session backend: the plugin now drives the host `sessionController` service — session list, cold `page` history, prompt, cancel, create, `follow` live events and assistant streaming frames — while the legacy `apiProxy` backend keeps `0.1.1-rc.2` working. The backend is picked per connection from capability detection; both share the same mobile protocol and RPC allowlist.
+- Phone approvals and user questions on the new host: the plugin answers the `approval/request` and `user-questions/request` waterfalls itself (prepended registration so a forwarded desktop answerer cannot claim the ask first), races the phone against the composed chain, replays still-pending cards after a reconnect, and settles an abandoned ask 30 s after the last phone subscriber leaves.
+- Live session-list state on the new host: `api-session/added|removed|status|error` mirror into the existing `host.event` pushes.
+- Compatibility diagnostics report `sessionController` next to `apiProxy`; `healthy` no longer requires the legacy service, and the settings panel names whichever backend is active.
+
+### Changed
+
+- History on the new host reads a cold page through the persisted cursor (`inspect`), so opening a session does not activate an agent; the live feed starts on subscribe and a per-session delivered-sequence watermark keeps a phone that already pulled history from replaying the opening window.
+- The mobile transcript folds an `assistant/message` that settles a live stream into the streamed bubble instead of appending a second copy of the reply.
+- The mobile draft/approval recovery paths keep their existing behaviour across both backends; approval cards now also replay to a reconnecting phone.
+
+### Verified
+
+- Runtime E2E against a real DSH `0.1.5-rc.2` host (Windows, isolated profile, single plugin and Hub + Subscription co-install): compatibility reports `sessionController: available` and `status: healthy`; E2EE pairing; session list and real history; prompt answered by OpenCode Go; assistant streaming; an approval card decided on the phone with the host recording `allowed-once` and the escalated tool call really executing; an abandoned approval settling to `cancelled`; co-install keeping exactly one account entry and one remote entry.
+- Native OpenCode Go calls on the new host fail with `400 MissingSessionID` without `x-opencode-session`; Hub/Subscription inject the header per DSH session through `llm/stream` (verified live), and a static provider `headers` entry remains a documented fallback for standalone installs.
+
+### Documentation
+
+- `compatibility/dsh-bom.json` records `dsh-0.1.5-rc.2` as a runtime-verified candidate with `sessionBackend: sessionController`; the exact build pin stays on the `0.1.1-rc.2` platform contract.
+- `INSTALL.md` and the README set (9 locales) document the dual-host support, the `0.6.0 → 0.7.0` upgrade path, and the unchanged restart-by-operator rule.
+
 ## v0.6.0 - 2026-09-10
 
 ### Added

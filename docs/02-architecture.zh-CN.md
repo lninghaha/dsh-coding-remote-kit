@@ -52,7 +52,7 @@ src/server
   ├─ MobileDataPlane    HTTP + ws
   ├─ CloudflareQuickTunnel   只暴露数据面（永不 3080）
   ├─ RendezvousClient   出站 WSS 连自建 Worker（永不 3080）
-  └─ UpstreamHub        apiProxy 会话 / 审批 / 提问
+  └─ UpstreamHub        apiProxy（0.1.1）/ sessionController（0.1.5+）会话 RPC
 ```
 
 未认证的 WebSocket **只处理握手**。业务 RPC 在 `e2ee_auth` 之后才开始。
@@ -67,14 +67,17 @@ src/server
 
 - `index.ts`：插件 `apply`。存储、服务端密钥、数据面监听、管理面路由、隧道与会合中继 disposer。
 - `config.ts`：Zod：`enabled` / `bind` / `port` / `offerTtlMs` / fail-closed `ownerRequest`；旧 `trustedHosts` 不再授予访问权限。
-- `context.ts`：宿主 `apiProxy` + `webServer` 类型。
+- `context.ts`：宿主 `apiProxy` / `sessionController` / `webServer` 类型与能力诊断（两个会话服务任一可用即可，`healthy` 不再要求旧的 `apiProxy`）。
 - `routes.ts`：每个 path 只 `webServer.register` 一次（DSH 按 path 去重、不认 HTTP method）。GET/POST 在 handler 内分支。
 - `security.ts`：宿主 owner policy 优先；fallback 校验 loopback/SSH 或受信 HTTPS peer + Origin/Host + owner proof + Fetch Metadata + 独立 CSRF，并提供有界 JSON body。宿主策略异常或畸形时 fail closed。
 - `dataplane.ts`：数据面端口上的独立 `node:http` + `ws`；静态 `/m`；`/m/claim`；`/m/ws`。
 - `connection.ts`：`acceptMobileSocket` — `/m/ws` 与会合中继 accept 共用的 E2EE + RPC 会话。
 - `e2ee.ts` / `crypto.ts`：服务端握手、token 查找、tweetnacl secretbox。
 - `rpc.ts`：白名单分发；未知方法 → `forbidden`。
-- `upstream.ts`：宿主 `apiProxy` 会话/审批/提问桥。
+- `upstream.ts`：旧宿主 `apiProxy` 会话/审批/提问桥（保留给 `0.1.1-rc.2`）。
+- `session-controller-upstream.ts`：DSH `0.1.5+` `sessionController` 后端——冷读 `list` / `page` 历史、每个订阅会话一个 `follow` 迭代器、`prompt` / `cancel` / `create`，以及 `api-session/*` 会话列表镜像。
+- `interactions.ts`：共享的待处理审批/提问注册表——面向手机的 `rpcId` 卡片、重连重放，以及最后一个订阅者离开后的结算。
+- `approval-bridge.ts`：以 `prepend` 注册 `approval/request` 与 `user-questions/request` 应答者，让手机与宿主既有应答链竞速，无人应答时按失败关闭处理。
 - `registry.ts`：设备、内存 offer、JSONL 审计。
 - `keys.ts` / `storage.ts`：`$DSH_HOME/storages/mobile-remote/`（目录 0700、文件 0600、原子写）。
 - `net.ts`：二维码广告用的 LAN 候选地址。

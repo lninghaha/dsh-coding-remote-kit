@@ -14,6 +14,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { HostApiProxy, HostRpcResult, MobileRemoteLogger } from "./context.js";
+import type { InteractionRegistry } from "./interactions.js";
 
 export type PushKind =
 	| "session.event"
@@ -103,6 +104,16 @@ export interface UpstreamHub {
 	create(params: { cwd?: string }): Promise<FoldedResult<{ sessionId: string }>>;
 	respond(input: RespondInput): Promise<FoldedResult<unknown>>;
 	stop(): void;
+	/**
+	 * Present only on hosts where the plugin answers approvals and user
+	 * questions itself (sessionController backend). The legacy apiProxy
+	 * backend forwards them through the host mux instead.
+	 */
+	readonly interactions?: InteractionRegistry | undefined;
+	/** True while at least one phone watches the Session (approval gate). */
+	hasSessionSubscriber?(sessionId: string): boolean;
+	/** Broadcast one push to every phone subscribed to the Session. */
+	broadcastToSession?(sessionId: string, push: PushEnvelope): void;
 }
 
 const INITIAL_BACKOFF_MS = 500;
@@ -552,7 +563,7 @@ export function stripHugeData(value: unknown, depth = 0): unknown {
 	return output;
 }
 
-async function runIterator(
+export async function runIterator(
 	name: string,
 	signal: AbortSignal,
 	logger: MobileRemoteLogger,

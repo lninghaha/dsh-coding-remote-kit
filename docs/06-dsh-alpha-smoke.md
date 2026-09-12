@@ -2,7 +2,7 @@
 
 Tracker: [#12](https://github.com/lninghaha/dsh-coding-remote-kit/issues/12)
 
-Use this cadence for hosts listed under `compatibility/dsh-bom.json` → `candidates[]` (today: `0.1.2-alpha.*`, `0.1.5-rc.1`). A candidate is **not** the production pin.
+Use this cadence for hosts listed under `compatibility/dsh-bom.json` → `candidates[]` (today: `0.1.2-alpha.*` and `0.1.5-rc.1` unverified; `0.1.5-rc.2` was verified by runtime E2E on 2026-09-12). A candidate is **not** the production pin.
 
 ## Rules
 
@@ -33,4 +33,4 @@ DSH_ALPHA_VERSION=0.1.2-alpha.5 WEB_PORT=18382 pnpm run smoke:dsh-alpha
 7. Assert WS auth limiter still trips after repeated bad auth
 8. Kill only the smoke PID; leave operator services alone
 
-Production BOM `verified` stays on `0.1.1-rc.2` until deliberately promoted. Listing `0.1.5-rc.1` under `candidates[]` does not change that pin.
+Production BOM `verified` stays on `0.1.1-rc.2` until deliberately promoted. Listing candidates under `candidates[]` — including the runtime-verified `0.1.5-rc.2` — does not change that build pin.
