@@ -51,6 +51,7 @@ export function registerInteractionAnswerers(deps: InteractionAnswererDeps): () 
 	const interactions = deps.hub.interactions;
 	if (typeof on !== "function" || interactions === undefined) return () => undefined;
 	const disposers: Array<() => void> = [];
+	const lifetime = new AbortController();
 	const listen = (name: string, handler: (...args: unknown[]) => unknown): void => {
 		try {
 			disposers.push(asDisposer(on.call(deps.host, name, handler, { global: true, prepend: true })));
@@ -60,13 +61,20 @@ export function registerInteractionAnswerers(deps: InteractionAnswererDeps): () 
 	};
 	const watched = (sessionId: string): boolean => deps.hub.hasSessionSubscriber?.(sessionId) === true;
 
-	listen("approval/request", (request, next) =>
-		handleApproval(request, next as () => Promise<unknown>, interactions, watched, deps.logger),
-	);
-	listen("user-questions/request", (request, next) =>
-		handleQuestion(request, next as () => Promise<unknown>, interactions, watched, deps.logger),
-	);
+	const answer = (request: unknown, next: unknown, approval: boolean): unknown => {
+		const record = asRecord(request);
+		const sessionId = sessionIdOfAgent(record?.agent);
+		const continuation = next as () => Promise<unknown>;
+		if (sessionId === null || !watched(sessionId)) return continuation();
+		if (!approval && (!Array.isArray(record?.questions) || record.questions.length === 0)) return continuation();
+		return withLifetime(request, lifetime.signal, interactions.signal, approval, continuation, (forward) =>
+			(approval ? handleApproval : handleQuestion)(request, forward, interactions, watched, deps.logger),
+		);
+	};
+	listen("approval/request", (request, next) => answer(request, next, true));
+	listen("user-questions/request", (request, next) => answer(request, next, false));
 	return () => {
+		lifetime.abort();
 		for (const dispose of disposers.splice(0)) {
 			try {
 				dispose();
@@ -100,16 +108,26 @@ async function handleApproval(
 		ask.settled.then((decision) => ({ source: "phone" as const, decision })),
 		chain.then((outcome) => ({ source: "chain" as const, outcome })),
 	]);
-	if (first.source === "phone") return first.decision;
+	if (first.source === "phone") {
+		if (first.decision !== "withdrawn") return first.decision;
+		const result = await chain;
+		if (result.kind === "error") throw result.error;
+		return result.value === undefined || result.value === "unavailable" ? "cancelled" : result.value;
+	}
 	const outcome = first.outcome;
-	if (typeof outcome === "string" && APPROVAL_OUTCOMES.has(outcome) && outcome !== "unavailable") {
+	if (outcome.kind === "error") {
 		ask.abandon();
-		return outcome;
+		throw outcome.error;
+	}
+	if (typeof outcome.value === "string" && APPROVAL_OUTCOMES.has(outcome.value) && outcome.value !== "unavailable") {
+		ask.abandon();
+		return outcome.value;
 	}
 	// Nobody was available to answer through the composed chain; the phone is
 	// the only interactive answerer this deployment has right now.
 	logger.debug("mobile-remote: approval delegated by the host chain; awaiting the phone");
-	return ask.settled;
+	const decision = await ask.settled;
+	return decision === "withdrawn" ? "cancelled" : decision;
 }
 
 async function handleQuestion(
@@ -129,23 +147,88 @@ async function handleQuestion(
 		ask.settled.then((answer) => ({ source: "phone" as const, answer })),
 		chain.then((answer) => ({ source: "chain" as const, answer })),
 	]);
-	if (first.source === "phone") return first.answer;
-	if (first.answer !== undefined && first.answer !== null) {
+	if (first.source === "phone") {
+		if (first.answer !== "withdrawn") return first.answer;
+		const result = await chain;
+		if (result.kind === "error") throw result.error;
+		if (result.value !== undefined && result.value !== null) return result.value;
+		throw new Error("mobile-remote: no answerer remains for the question");
+	}
+	if (first.answer.kind === "error") {
 		ask.abandon();
-		return first.answer;
+		throw first.answer.error;
+	}
+	if (first.answer.value !== undefined && first.answer.value !== null) {
+		ask.abandon();
+		return first.answer.value;
 	}
 	logger.debug("mobile-remote: question delegated by the host chain; awaiting the phone");
-	return ask.settled;
+	const answer = await ask.settled;
+	if (answer === "withdrawn") throw new Error("mobile-remote: no answerer remains for the question");
+	return answer;
 }
 
 /**
- * Normalize one chain continuation: a rejection means the composed answerers
- * had nobody to ask, which the caller treats as "keep waiting for the phone".
+ * 只有宿主明确的 NO_PROVIDER 才表示无人应答，其他异常保留原意。
  */
-function settleChain(next: () => Promise<unknown>): Promise<unknown> {
+function settleChain(
+	next: () => Promise<unknown>,
+): Promise<{ kind: "value"; value: unknown } | { kind: "error"; error: unknown }> {
 	return Promise.resolve()
 		.then(() => next())
-		.catch(() => undefined);
+		.then(
+			(value) => ({ kind: "value" as const, value }),
+			(error) =>
+				asRecord(error)?.code === "NO_PROVIDER"
+					? { kind: "value" as const, value: undefined }
+					: { kind: "error" as const, error },
+		);
+}
+
+async function withLifetime(
+	request: unknown,
+	lifetime: AbortSignal,
+	registry: AbortSignal,
+	approval: boolean,
+	next: () => Promise<unknown>,
+	work: (forward: () => Promise<unknown>) => Promise<unknown>,
+): Promise<unknown> {
+	const requestSignal = abortSignalOf(asRecord(request)?.signal);
+	const completed = new AbortController();
+	const signal = AbortSignal.any([completed.signal, lifetime, registry, ...(requestSignal ? [requestSignal] : [])]);
+	const record = asRecord(request);
+	const originalSignal = record === null ? undefined : Object.getOwnPropertyDescriptor(record, "signal");
+	let forwarded: Promise<unknown> | undefined;
+	let onAbort = () => {};
+	try {
+		// Cordis next() 不接受替代参数。给同一请求借用一个子生命周期，
+		// 让手机先答后能撤回已经转发到桌面的卡片，不取消原始宿主 signal。
+		if (record !== null) record.signal = signal;
+		const cancelled = new Promise<unknown>((resolve, reject) => {
+			onAbort = () => (approval ? resolve("cancelled") : reject(new Error("mobile-remote: question cancelled")));
+			if (signal.aborted) onAbort();
+			else signal.addEventListener("abort", onAbort, { once: true });
+		});
+		if (signal.aborted) return await cancelled;
+		return await Promise.race([
+			work(() => {
+				forwarded = Promise.resolve().then(next);
+				return forwarded;
+			}),
+			cancelled,
+		]);
+	} finally {
+		signal.removeEventListener("abort", onAbort);
+		completed.abort();
+		const restore = () => {
+			if (record?.signal !== signal) return;
+			if (originalSignal === undefined) delete record.signal;
+			else Object.defineProperty(record, "signal", originalSignal);
+		};
+		// 转发队列可能尚未序列化请求，不能提前还原为未取消的原 signal。
+		if (forwarded === undefined) restore();
+		else void forwarded.then(restore, restore);
+	}
 }
 
 function sessionIdOfAgent(agent: unknown): string | null {

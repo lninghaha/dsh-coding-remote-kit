@@ -5,7 +5,7 @@
  * Never changes versions, commits, tags, pushes, publishes, or restarts DSH Web.
  */
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,7 +46,26 @@ function fail(message) {
 }
 
 function run(command, commandArgs, options = {}) {
-	const result = spawnSync(command, commandArgs, {
+	let executable = command;
+	let executableArgs = commandArgs;
+	if (process.platform === "win32" && command === "pnpm") {
+		const pnpmCli =
+			process.env.npm_execpath !== undefined && /pnpm/i.test(process.env.npm_execpath)
+				? process.env.npm_execpath
+				: process.env.APPDATA === undefined
+					? undefined
+					: join(process.env.APPDATA, "npm/node_modules/pnpm/bin/pnpm.cjs");
+		if (pnpmCli === undefined || !existsSync(pnpmCli)) fail("pnpm CLI path is unavailable on Windows");
+		executable = process.execPath;
+		executableArgs = [pnpmCli, ...commandArgs];
+	} else if (process.platform === "win32" && command === "npm") {
+		const npmCli = join(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js");
+		if (existsSync(npmCli)) {
+			executable = process.execPath;
+			executableArgs = [npmCli, ...commandArgs];
+		}
+	}
+	const result = spawnSync(executable, executableArgs, {
 		cwd: root,
 		encoding: "utf8",
 		stdio: options.capture === true ? ["ignore", "pipe", "pipe"] : "inherit",

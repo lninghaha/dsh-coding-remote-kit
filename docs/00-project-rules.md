@@ -124,7 +124,7 @@ Never change user-facing docs without syncing README. Never tag from a dirty tre
 
 Installable artifacts are produced with `pnpm pack`. Copy the tarball **out of this repository** before `dsh plugin add` — pnpm 11 resolves `file:.../output/*.tgz` as a `link:` source tree, and a failed plugin `import` fail-fasts the whole `dsh web` tree.
 
-There is no `scripts/release.mjs` yet. When one is added it must:
+The repository provides `scripts/release.mjs` through `release:inspect` and `release:pack`, plus the maintainer-only `release:publish` handoff. The inspection helper must:
 
 - validate changelog / version / packed file list;
 - refuse local-only paths (`docs/local/`, `reference/`, credentials);

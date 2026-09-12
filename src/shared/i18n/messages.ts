@@ -4,6 +4,7 @@ export type MessageKey = keyof typeof MESSAGES;
 
 /** Flat bilingual catalog. Keys are stable; values are zh-CN / en. */
 export const MESSAGES = {
+	"app.planIncomplete": { "zh-CN": "计划内容不完整，请在桌面查看后处理。", en: "The plan is incomplete. Review it on desktop before deciding." },
 	"common.loading": { "zh-CN": "加载中…", en: "Loading…" },
 	"common.cancel": { "zh-CN": "取消", en: "Cancel" },
 	"common.close": { "zh-CN": "关闭", en: "Close" },

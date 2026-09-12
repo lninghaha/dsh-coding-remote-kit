@@ -4,7 +4,7 @@
 
 npm 包名是 **`dsh-coding-remote-kit`**。GitHub：[`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit)。npm 上的 `dsh-mobile-remote` 是另一个微信插件，不要装那个。
 
-当前版本 **`0.7.0`**。
+当前版本 **`0.7.1`**。
 
 ## 前置条件
 
@@ -17,28 +17,29 @@ npm 包名是 **`dsh-coding-remote-kit`**。GitHub：[`lninghaha/dsh-coding-remo
 
 ```bash
 # 普通用户：当前 npm 发布版
-dsh plugin --profile web add dsh-coding-remote-kit@0.7.0
+dsh plugin --profile web add dsh-coding-remote-kit@0.7.1
 
 # 开发者：先过 Docker 沙箱门禁（不碰本机 3080 / $DSH_HOME）
 pnpm test:sandbox
 pnpm pack
 mkdir -p "$HOME/.dsh/packages"
-cp dsh-coding-remote-kit-0.7.0.tgz "$HOME/.dsh/packages/"
-dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.7.0.tgz"
+cp dsh-coding-remote-kit-0.7.1.tgz "$HOME/.dsh/packages/"
+dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.7.1.tgz"
 ```
 
 ## 升级注意事项
 
 - 本版按已验证的 DSH BOM `@deepseek-ai/dsh@0.1.1-rc.2` 发布，并额外支持 `@deepseek-ai/dsh@0.1.5-rc.2`：插件在运行时探测宿主能力，优先使用 `sessionController`，缺失时回退到旧 `apiProxy`，两者共用同一套手机协议与 RPC 白名单。`0.1.2-alpha` 与 `0.1.5-rc.1` 仍是未验证候选。升级前先确认宿主版本，不要用 `*` 或未验证的宽泛范围替代精确版本。
 - 从钉在 `0.1.0-rc.6` 的旧包升级：先把宿主升到 `0.1.1-rc.2`，再安装本插件；`status.get` 的 `dshVersion` 现在与 BOM 一致。不重置配对设备、存储或凭据。
-- 从 `0.6.0` 升级到 `0.7.0`：新增 DSH `0.1.5-rc.2` 适配（`sessionController`：会话列表、历史分页、发送、取消、实时事件与助手流式回复），手机端审批与提问改由插件直接应答宿主瀑布流（含断线重放与 30 秒宽限结算），`0.1.1-rc.2` 的 `apiProxy` 路径保持不变。不重置配对设备、存储或凭据；升级后只需重启一次现有 DSH Web 进程。
+- 从 `0.7.0` 升级到 `0.7.1`：修复多设备历史同步，完整展示计划审批正文，并在手机退出或先行作答时正确处理桌面应答。无需迁移配对或凭据。回退时安装原 `0.7.0` 包并保留原 profile 与存储；旧版本的上述问题会随回退恢复。
+- 从 `0.6.0` 升级到 `0.7.x`：新增 DSH `0.1.5-rc.2` 适配（`sessionController`：会话列表、历史分页、发送、取消、实时事件与助手流式回复），手机端审批与提问改由插件直接应答宿主瀑布流（含断线重放与 30 秒断线宽限期；手机退出不取消仍在等待的桌面审批），`0.1.1-rc.2` 的 `apiProxy` 路径保持不变。不重置配对设备、存储或凭据；升级后只需重启一次现有 DSH Web 进程。
 - 从 `0.5.2` 升级到 `0.6.0`：手机 Queue/Steer、活动条、历史游标分页、可选离线推送；BOM 记录候选 `0.1.5-rc.1`（verified 仍为 `0.1.1-rc.2`）。不重置配对设备、存储或凭据。
 - 从 `0.5.1` 升级到 `0.5.2`：DSH pin 对齐 `0.1.1-rc.2`；`/m` 增加 CSP；配对 PIN 一次性 claim；WS 认证失败按 IP 熔断；空闲设备 30 天过期；手机密钥/offer 改 sessionStorage。不重置已配对设备（需在同一标签页内恢复会话）。
 - 从 `0.5.0` 升级到 `0.5.1`：每次 Start 会重新解析 `cloudflared`，`binaryOk` 按实时钉死校验；Settings 安装二进制后无需重载即可 Start。不重置配对设备、存储或凭据。
 - 从 `0.4.x` 升到 `0.5.x`：`0.5.0` 新增连接诊断、公网隧道免责勾选与 cloudflared 钉死校验。当前请装 `0.5.1`（含上述能力）。不重置配对设备、存储或凭据。若仍在 `0.4.0`，请先经 `0.4.1`（或直接装 `0.5.1`）以避开严格 Cordis 注入检查下的启动失败。
-- 在现有 **web profile** 中安装 `dsh-coding-remote-kit@0.7.0`（或对应 tarball），不要把 git checkout 直接作为插件源；这样可以避免 `link:` 源码树和旧包并存。
+- 在现有 **web profile** 中安装 `dsh-coding-remote-kit@0.7.1`（或对应 tarball），不要把 git checkout 直接作为插件源；这样可以避免 `link:` 源码树和旧包并存。
 - 升级不会重置 `$DSH_HOME/storages/mobile-remote/`、已配对设备或凭据。安装完成后由操作者在维护窗口重启一次现有 DSH Web 进程，不要另起第二个实例。
-- 如果同时升级 Hub 与 Subscription，先确保共享的 `dsh-coding-oauth-core` 已可解析，再依次安装 Hub `1.13.1` 与 Subscription `0.8.1`；三包都更新后只重启一次。Core 是共享的 npm 依赖，不是需要单独 `dsh plugin add` 的 DSH 插件。共装时 Hub 负责完整的「账户与模型」界面，Subscription 收敛为状态入口，Remote Kit 提供手机端。
+- 如果同时升级 Hub 与 Subscription，先确保共享的 `dsh-coding-oauth-core@0.1.2` 已可解析，再依次安装 Hub `1.13.2-rc.1` 与 Subscription `0.8.2-rc.1`；三包都更新后只重启一次。Core 是共享的 npm 依赖，不是需要单独 `dsh plugin add` 的 DSH 插件。共装时 Hub 负责完整的「账户与模型」界面，Subscription 收敛为状态入口，Remote Kit 提供手机端。
 - 回滚时只替换插件包版本，保留 profile、存储和凭据；先查看设置页兼容性诊断，只有诊断明确要求时才重新配对。不要为回滚删除 `storages/mobile-remote`。
 - 远程 Settings 仍只能通过 SSH 隧道或完成属主鉴权的 HTTPS 反向代理访问；升级不会把 DSH 或数据面改为 `0.0.0.0`。
 

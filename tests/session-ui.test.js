@@ -6,7 +6,17 @@ import {
 	eventSeq,
 	historyCursorFromResult,
 	mergeHistoryPage,
+	mergeSubscribedHistory,
 } from "../lib/mobile/session-ui.js";
+
+test("subscription buffer deduplicates durable events but preserves same-seq chunks", () => {
+	const history = [{ seq: 3, type: "user/message" }];
+	const chunks = ["hello", " world"].map(text => ({ event: { seq: 3, type: "assistant/chunk", data: { text } } }));
+	const merged = mergeSubscribedHistory(history, [history[0], ...chunks, { event: { seq: 4, type: "assistant/message" } }]);
+	assert.equal(merged.length, 4);
+	assert.equal(mergeHistoryPage(merged, [{ seq: 2, type: "user/message" }]).length, 5);
+	assert.equal(mergeSubscribedHistory([{ seq: 4, type: "assistant/message" }], chunks).length, 1);
+});
 
 test("eventSeq reads top-level and nested seq", () => {
 	assert.equal(eventSeq({ seq: 12, event: { type: "user/message" } }), 12);

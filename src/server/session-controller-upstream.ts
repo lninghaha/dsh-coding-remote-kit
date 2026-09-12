@@ -116,6 +116,8 @@ interface FeedState {
 	readonly abort: AbortController;
 	cursor: number | null;
 	watermark: number;
+	readonly ready: Promise<void>;
+	readonly opened: () => void;
 }
 
 /**
@@ -215,6 +217,8 @@ export function createSessionControllerUpstream(
 		const seq = typeof event.seq === "number" ? event.seq : null;
 		if (seq === null || seq <= feed.watermark) return;
 		feed.watermark = seq;
+		feed.cursor = seq;
+		cursors.set(feed.sessionId, seq);
 		watermarks.set(feed.sessionId, seq);
 		broadcastToSession(feed.sessionId, {
 			push: "session.event",
@@ -255,6 +259,7 @@ export function createSessionControllerUpstream(
 			if (feed.watermark < 0 && feed.cursor !== null) feed.watermark = feed.cursor;
 			const records = Array.isArray(record.records) ? record.records : [];
 			for (const entry of records) deliverEvent(feed, entry);
+			feed.opened();
 			return;
 		}
 		if (record.type === "event") {
@@ -292,11 +297,21 @@ export function createSessionControllerUpstream(
 			abort: new AbortController(),
 			cursor: null,
 			watermark: watermarks.get(sessionId) ?? -1,
+			...opening(),
 		};
 		feeds.set(sessionId, feed);
 		void runFeed(feed);
 		return feed;
 	};
+
+	// 订阅确认必须晚于快照，超时与卸载也必须结束等待。
+	function opening(): Pick<FeedState, "ready" | "opened"> {
+		let opened = () => {};
+		const ready = new Promise<void>((resolve) => {
+			opened = resolve;
+		});
+		return { ready, opened: () => opened() };
+	}
 
 	const registerHostEvents = (): void => {
 		const source = options.hostEvents;
@@ -352,11 +367,30 @@ export function createSessionControllerUpstream(
 		}
 	};
 
-	const subscribeSession = (subscriber: Subscriber, sessionId: string): void => {
+	const subscribeSession = async (subscriber: Subscriber, sessionId: string): Promise<void> => {
 		cancelSettle(sessionId);
 		subscriber.sessionIds.add(sessionId);
-		ensureFeed(sessionId);
-		interactions.replay(sessionId, (push) => subscriber.send(push));
+		const feed = ensureFeed(sessionId);
+		const scoped = scopedSignal(readTimeoutMs);
+		const signal = AbortSignal.any([scoped.signal, feed.abort.signal]);
+		let onAbort = () => {};
+		try {
+			await Promise.race([
+				feed.ready,
+				new Promise<never>((_, reject) => {
+					onAbort = () => reject(new Error("session subscription interrupted or timed out"));
+					if (signal.aborted) onAbort();
+					else signal.addEventListener("abort", onAbort, { once: true });
+				}),
+			]);
+			interactions.replay(sessionId, (push) => subscriber.send(push));
+		} catch (error) {
+			unsubscribeSession(subscriber, sessionId);
+			throw error;
+		} finally {
+			signal.removeEventListener("abort", onAbort);
+			scoped.dispose();
+		}
 	};
 
 	const unsubscribeSession = (subscriber: Subscriber, sessionId: string): void => {
@@ -464,18 +498,11 @@ export function createSessionControllerUpstream(
 			);
 			const records = Array.isArray(page?.records) ? page.records : [];
 			const events: unknown[] = [];
-			let maxSeq: number | null = null;
 			for (const entry of records) {
 				const record = asRecord(entry);
 				const event = record?.event;
 				if (event === undefined) continue;
 				events.push(stripHugeData(event));
-				const seq = asRecord(event)?.seq;
-				if (typeof seq === "number" && (maxSeq === null || seq > maxSeq)) maxSeq = seq;
-			}
-			if (maxSeq !== null) {
-				const current = watermarks.get(params.sessionId) ?? -1;
-				if (maxSeq > current) watermarks.set(params.sessionId, maxSeq);
 			}
 			return { ok: true, value: { events, hasMore: page?.hasMore === true } };
 		} catch (error) {

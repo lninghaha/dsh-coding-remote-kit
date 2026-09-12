@@ -44,14 +44,14 @@ export interface QuestionAnswer {
 /** One in-flight approval ask: the card identity plus its settlement. */
 export interface ApprovalHandle {
 	readonly rpcId: string;
-	readonly settled: Promise<ApprovalDecision>;
+	readonly settled: Promise<ApprovalDecision | "withdrawn">;
 	/** Retire the phone card because another answerer already decided. */
 	abandon(): void;
 }
 
 export interface QuestionHandle {
 	readonly rpcId: string;
-	readonly settled: Promise<QuestionAnswer>;
+	readonly settled: Promise<QuestionAnswer | "withdrawn">;
 	/** Retire the phone card because another answerer already answered. */
 	abandon(): void;
 }
@@ -64,6 +64,7 @@ export interface InteractionRegistryOptions {
 type PendingOutcome =
 	| { readonly kind: "approval"; readonly decision: ApprovalDecision }
 	| { readonly kind: "question"; readonly answers: readonly QuestionAnswerItem[] }
+	| { readonly kind: "withdrawn" | "superseded" }
 	| { readonly kind: "aborted" };
 
 interface PendingEntry {
@@ -82,6 +83,10 @@ interface PendingEntry {
  * keyed by the phone-visible `rpcId`; nothing here stores prompt text.
  */
 export class InteractionRegistry {
+	readonly #lifetime = new AbortController();
+	get signal(): AbortSignal {
+		return this.#lifetime.signal;
+	}
 	readonly #entries = new Map<string, PendingEntry>();
 	readonly #emit: (sessionId: string, push: PushEnvelope) => void;
 
@@ -124,9 +129,11 @@ export class InteractionRegistry {
 		}
 		return {
 			rpcId: entry.rpcId,
-			settled: entry.settled.then((outcome) => (outcome.kind === "approval" ? outcome.decision : "cancelled")),
+			settled: entry.settled.then((outcome) =>
+				outcome.kind === "withdrawn" ? "withdrawn" : outcome.kind === "approval" ? outcome.decision : "cancelled",
+			),
 			abandon: () => {
-				entry.settle({ kind: "aborted" });
+				entry.settle({ kind: "superseded" });
 			},
 		};
 	}
@@ -154,11 +161,12 @@ export class InteractionRegistry {
 		return {
 			rpcId: entry.rpcId,
 			settled: entry.settled.then((outcome) => {
+				if (outcome.kind === "withdrawn") return "withdrawn";
 				if (outcome.kind === "question") return { answers: outcome.answers };
 				throw new Error("mobile-remote: the phone did not answer the question");
 			}),
 			abandon: () => {
-				entry.settle({ kind: "aborted" });
+				entry.settle({ kind: "superseded" });
 			},
 		};
 	}
@@ -189,18 +197,18 @@ export class InteractionRegistry {
 	}
 
 	/**
-	 * Fail every pending card of one Session after its last phone subscriber
-	 * left (a temporary disconnect is absorbed by the caller's grace window).
+	 * 最后一个手机订阅者离开宽限期后退出手机分支，不取消桌面等待。
 	 */
-	settleSession(sessionId: string, decision: ApprovalDecision = "cancelled"): void {
+	settleSession(sessionId: string): void {
 		for (const entry of [...this.#entries.values()]) {
 			if (entry.sessionId !== sessionId) continue;
-			this.#settle(entry, entry.kind === "approval" ? { kind: "approval", decision } : { kind: "aborted" });
+			this.#settle(entry, { kind: "withdrawn" });
 		}
 	}
 
 	/** Fail every pending entry closed (plugin unload, host iteration death). */
 	stop(): void {
+		this.#lifetime.abort();
 		for (const entry of [...this.#entries.values()]) {
 			this.#settle(entry, { kind: "aborted" });
 		}
@@ -213,7 +221,7 @@ export class InteractionRegistry {
 		readonly request: (rpcId: string) => PushEnvelope;
 		readonly signal: AbortSignal | undefined;
 	}): PendingEntry | null {
-		if (input.signal?.aborted === true) return null;
+		if (input.signal?.aborted === true || this.signal.aborted) return null;
 		const rpcId = randomUUID();
 		const request = input.request(rpcId);
 		let resolveSettled: (outcome: PendingOutcome) => void = () => undefined;
@@ -229,18 +237,14 @@ export class InteractionRegistry {
 			settled,
 			settle: (outcome) => {
 				if (!this.#entries.delete(rpcId)) return;
+				input.signal?.removeEventListener("abort", onAbort);
 				resolveSettled(outcome);
 				this.#emitResolved(entry, outcome);
 			},
 		};
 		this.#entries.set(rpcId, entry);
-		input.signal?.addEventListener(
-			"abort",
-			() => {
-				entry.settle({ kind: "aborted" });
-			},
-			{ once: true },
-		);
+		const onAbort = () => entry.settle({ kind: "aborted" });
+		input.signal?.addEventListener("abort", onAbort, { once: true });
 		this.#emit(input.sessionId, request);
 		return entry;
 	}

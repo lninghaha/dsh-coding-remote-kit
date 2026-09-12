@@ -4,6 +4,17 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+## v0.7.1 - 2026-09-12
+
+- 修复多设备历史游标停留在首次快照的问题；订阅确认后读取历史，并合并加载期间的实时事件。
+- 手机完整展示计划审批正文；不完整的计划禁止提交，提示转到桌面处理。
+- 手机断线超出宽限期只退出手机应答，保留桌面审批与问题等待；区分宿主故障和无人应答。
+- 保留现有配对、凭据和 RPC 格式；无需数据迁移。回退使用上一版本包，不删除用户存储。
+
+### Fixed
+
+- Windows 发布检查正确解析 pnpm CLI；维护者发布脚本按稳定版或预发布版本选择 npm dist-tag，并在发布后核对 registry。
+
 ## v0.7.0 - 2026-09-12
 
 ### Added

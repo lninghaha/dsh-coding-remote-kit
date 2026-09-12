@@ -77,7 +77,7 @@ export const DEVICE_SCOPE = "mobile";
  * Version stamps reported by `status.get`. `DSH_VERSION` is the verified host
  * pin and must match `compatibility/dsh-bom.json` (`tests/bom.test.js`).
  */
-export const PLUGIN_VERSION = "0.7.0";
+export const PLUGIN_VERSION = "0.7.1";
 export const DSH_VERSION = "0.1.1-rc.2";
 
 /** Idle devices older than this are treated as expired (auto-revoked on auth/touch). */

@@ -146,9 +146,9 @@ class MobileConnection implements MobileConnectionHandle {
 		if (this.#admitted) this.#deps.release();
 	}
 
-	subscribeSession(sessionId: string): void {
+	subscribeSession(sessionId: string): void | Promise<void> {
 		if (this.#subscriber === null) return;
-		this.#deps.upstream.subscribeSession(this.#subscriber, sessionId);
+		return this.#deps.upstream.subscribeSession(this.#subscriber, sessionId);
 	}
 
 	unsubscribeSession(sessionId: string): void {

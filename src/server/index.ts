@@ -229,7 +229,7 @@ async function applyRuntime(ctx: MobileRemoteHostContext, rawConfig: unknown): P
 			hubFor.delete(subscriber);
 		},
 		subscribeSession: (subscriber, sessionId) => {
-			upstreamFor(subscriber).subscribeSession(subscriber, sessionId);
+			return upstreamFor(subscriber).subscribeSession(subscriber, sessionId);
 		},
 		unsubscribeSession: (subscriber, sessionId) => {
 			upstreamFor(subscriber).unsubscribeSession(subscriber, sessionId);

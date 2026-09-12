@@ -168,3 +168,5 @@ Honest v0 boundary: the **first HTTP download of `/m`** on a raw LAN is MITM-abl
 - Config defaults: `enabled: true`, `bind: "127.0.0.1"`, `port: 6879`.
 - Pairing widens the data plane to `0.0.0.0` when advertising LAN candidates and no public tunnel / rendezvous is running.
 - Wire protocol version: `MOBILE_PROTOCOL_VERSION = 1` (`src/shared/constants.ts`).
+
+When a phone answers first, the bridge ends the forwarded child lifetime to retire the desktop card without aborting the host request. Disconnect grace expiry withdraws only the phone branch while the host answerer remains pending. Mobile history is read after subscription snapshot acknowledgement and merged with buffered live events.

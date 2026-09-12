@@ -10,6 +10,9 @@ import {
 	historyCursorFromResult,
 	historyPageSize,
 	mergeHistoryPage,
+	mergeSubscribedHistory,
+	eventSeq,
+	unwrapEvent,
 } from "./session-ui.js";
 
 export interface SessionRow {
@@ -52,6 +55,8 @@ interface QuestionItem {
 	id: string;
 	question: string;
 	header?: string;
+	detail?: string;
+	intent?: { kind: string; approve?: string };
 	options: Array<{ label: string; description?: string }>;
 	multiSelect: boolean;
 }
@@ -127,6 +132,7 @@ export function startConnectedApp(
 	};
 
 	let disposed = false;
+	let loadingSession: { sessionId: string; events: unknown[] } | null = null;
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
 	let searchTimer: ReturnType<typeof setTimeout> | null = null;
 	let sheetTriggerKey: string | null = null;
@@ -700,13 +706,20 @@ export function startConnectedApp(
 		const key = `question:${question.rpcId}`;
 		const pending = state.pendingActions.has(key);
 		const unknown = recovery.unknownActions.has(key);
+		const invalid = question.questions.some(invalidPlanReview);
 		const card = el("form", { className: "card", "aria-busy": String(pending) });
 		const ctx = sessionContext(question.sessionId);
 		card.appendChild(el("p", { className: "ctx" }, `${ctx.workspace} · ${ctx.title}`));
 		if (unknown) card.appendChild(el("p", { className: "muted", role: "status" }, t("app.actionResultUnknown")));
+		if (invalid) card.appendChild(el("p", { role: "alert" }, t("app.planIncomplete")));
 		for (const item of question.questions) {
 			card.appendChild(el("strong", {}, item.header ?? item.question));
 			if (item.header !== undefined) card.appendChild(el("p", {}, item.question));
+			if (item.detail !== undefined) {
+				const detail = el("div", { className: "question-detail" });
+				appendMarkdown(detail, item.detail);
+				card.appendChild(detail);
+			}
 			if (item.options.length === 0) {
 				const other = el("textarea") as HTMLTextAreaElement;
 				other.placeholder = t("app.answer");
@@ -735,7 +748,7 @@ export function startConnectedApp(
 			}
 		}
 		const submit = el("button", { type: "submit" }, pending ? t("app.submitting") : t("app.submit"));
-		submit.disabled = pending || unknown;
+		submit.disabled = pending || unknown || invalid;
 		card.addEventListener("submit", (event) => {
 			event.preventDefault();
 			void answerQuestion(question, card);
@@ -759,6 +772,7 @@ export function startConnectedApp(
 	};
 
 	const answerQuestion = async (question: PendingQuestion, form: HTMLElement): Promise<void> => {
+		if (question.questions.some(invalidPlanReview)) return;
 		await runAction(`question:${question.rpcId}`, async () => {
 			const answers = question.questions.map((item) => {
 				const selected: string[] = [];
@@ -808,23 +822,28 @@ export function startConnectedApp(
 
 	const loadSession = async (sessionId: string): Promise<void> => {
 		const current = state.view;
-		if (current.name === "session" && current.sessionId !== sessionId) {
-			await rpc.request("session.unsubscribe", { sessionId: current.sessionId }).catch(() => undefined);
+		const loading = { sessionId, events: [] as unknown[] };
+		loadingSession = loading;
+		try {
+			await rpc.request("session.subscribe", { sessionId });
+			if (disposed || loadingSession !== loading) return;
+			const history = asRecord(await rpc.request("session.history", { sessionId, maxMessages: historyPageSize() }));
+			if (disposed || loadingSession !== loading) return;
+			if (!Array.isArray(history?.events)) throw new Error(t("app.requestFailed"));
+			state.events = mergeSubscribedHistory(history.events, loading.events);
+			state.historyHasMore = historyCursorFromResult(history.events, history.hasMore === true).hasMore;
+			state.historyLoadingOlder = false;
+			state.view = { name: "session", sessionId };
+			state.scrollSessionToEnd = true;
+			if (current.name === "session" && current.sessionId !== sessionId) {
+				await rpc.request("session.unsubscribe", { sessionId: current.sessionId }).catch(() => undefined);
+			}
+		} finally {
+			if (loadingSession === loading) loadingSession = null;
+			if (!disposed && (state.view.name !== "session" || state.view.sessionId !== sessionId) && loadingSession?.sessionId !== sessionId) {
+				await rpc.request("session.unsubscribe", { sessionId }).catch(() => undefined);
+			}
 		}
-		const history = asRecord(
-			await rpc.request("session.history", {
-				sessionId,
-				maxMessages: historyPageSize(),
-			}),
-		);
-		const events = Array.isArray(history?.events) ? history.events : [];
-		state.events = events;
-		const cursor = historyCursorFromResult(events, history?.hasMore === true);
-		state.historyHasMore = cursor.hasMore;
-		state.historyLoadingOlder = false;
-		await rpc.request("session.subscribe", { sessionId });
-		state.view = { name: "session", sessionId };
-		state.scrollSessionToEnd = true;
 	};
 
 	const loadOlderHistory = async (sessionId: string): Promise<void> => {
@@ -835,6 +854,7 @@ export function startConnectedApp(
 			render();
 			return;
 		}
+		const openingView = state.view;
 		const scroller = root.querySelector(".transcript");
 		const previousHeight = scroller instanceof HTMLElement ? scroller.scrollHeight : 0;
 		const previousTop = scroller instanceof HTMLElement ? scroller.scrollTop : 0;
@@ -848,15 +868,15 @@ export function startConnectedApp(
 					maxMessages: historyPageSize(),
 				}),
 			);
-			if (disposed) return;
+			if (disposed || state.view !== openingView) return;
 			const older = Array.isArray(history?.events) ? history.events : [];
 			state.events = mergeHistoryPage(state.events, older);
 			state.historyHasMore = history?.hasMore === true && older.length > 0;
 		} catch (error) {
-			if (disposed) return;
+			if (disposed || state.view !== openingView) return;
 			state.error = error instanceof Error ? error.message : t("app.requestFailed");
 		} finally {
-			if (disposed) return;
+			if (disposed || state.view !== openingView) return;
 			state.historyLoadingOlder = false;
 			render();
 			const next = root.querySelector(".transcript");
@@ -873,6 +893,7 @@ export function startConnectedApp(
 	};
 
 	const leaveSession = async (): Promise<void> => {
+		loadingSession = null;
 		const current = state.view;
 		if (current.name === "session") {
 			await rpc.request("session.unsubscribe", { sessionId: current.sessionId }).catch(() => undefined);
@@ -971,9 +992,15 @@ export function startConnectedApp(
 			return;
 		}
 		const view = state.view;
+		if (push.push === "session.event" && loadingSession !== null) {
+			const record = asRecord(push.data);
+			if (record?.sessionId === loadingSession.sessionId) loadingSession.events.push(record);
+		}
 		if (push.push === "session.event" && view.name === "session") {
 			const record = asRecord(push.data);
 			if (typeof record?.sessionId === "string" && record.sessionId === view.sessionId) {
+				const seq = eventSeq(record);
+				if (unwrapEvent(record)?.type !== "assistant/chunk" && seq !== null && state.events.some(e => unwrapEvent(e)?.type !== "assistant/chunk" && eventSeq(e) === seq)) return;
 				state.events = [...state.events, record];
 				const scroller = root.querySelector(".transcript");
 				if (scroller instanceof HTMLElement && appendTranscriptLine(scroller, state.events)) return;
@@ -1101,6 +1128,7 @@ function parseQuestion(rpcId: string, data: unknown): PendingQuestion | null {
 	for (const item of record.questions) {
 		const row = asRecord(item);
 		if (row === null || typeof row.id !== "string" || typeof row.question !== "string") continue;
+		const intent = asRecord(row.intent);
 		const options: Array<{ label: string; description?: string }> = [];
 		if (Array.isArray(row.options)) {
 			for (const option of row.options) {
@@ -1116,6 +1144,8 @@ function parseQuestion(rpcId: string, data: unknown): PendingQuestion | null {
 		questions.push({
 			id: row.id,
 			question: row.question,
+			...(typeof row.detail === "string" ? { detail: row.detail } : {}),
+			...(typeof intent?.kind === "string" ? { intent: { kind: intent.kind, ...(typeof intent.approve === "string" ? { approve: intent.approve } : {}) } } : {}),
 			...(typeof row.header === "string" ? { header: row.header } : {}),
 			options,
 			multiSelect: row.multiSelect === true,
@@ -1250,6 +1280,12 @@ function appendTranscriptLine(scroller: HTMLElement, events: unknown[]): boolean
 	}
 	if (stick) scroller.scrollTop = scroller.scrollHeight;
 	return true;
+}
+
+function invalidPlanReview(item: QuestionItem): boolean {
+	return item.intent?.kind === "plan-review" && (
+		!item.detail?.trim() || !item.options.some(option => option.label === item.intent?.approve)
+	);
 }
 
 function previousTranscriptEventType(events: unknown[]): string | null {

@@ -105,6 +105,7 @@ export function mergeHistoryPage(
 	if (existing.length === 0) return [...older];
 	const seen = new Set<string>();
 	const keyOf = (entry: unknown, index: number): string => {
+		if (unwrapEvent(entry)?.type === "assistant/chunk") return `chunk:${index}`;
 		const seq = eventSeq(entry);
 		if (seq !== null) return `seq:${String(seq)}`;
 		const event = unwrapEvent(entry);
@@ -124,6 +125,23 @@ export function mergeHistoryPage(
 		if (seen.has(key)) continue;
 		seen.add(key);
 		merged.push(entry);
+	}
+	return merged;
+}
+
+/** 合并订阅期间暂存的消息；已结算回复之前的临时片段不再显示。 */
+export function mergeSubscribedHistory(history: readonly unknown[], buffered: readonly unknown[]): unknown[] {
+	const seen = new Set(history.filter(e => unwrapEvent(e)?.type !== "assistant/chunk").map(eventSeq));
+	const tail = Math.max(-1, ...history.map(e => eventSeq(e) ?? -1));
+	const merged = [...history];
+	for (const entry of buffered) {
+		const seq = eventSeq(entry);
+		if (unwrapEvent(entry)?.type === "assistant/chunk") {
+			if (seq === null || seq >= tail) merged.push(entry);
+		} else if (seq === null || !seen.has(seq)) {
+			merged.push(entry);
+			if (seq !== null) seen.add(seq);
+		}
 	}
 	return merged;
 }

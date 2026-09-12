@@ -22,7 +22,7 @@ export interface RpcError {
 }
 
 export interface RpcConnection {
-	subscribeSession(sessionId: string): void;
+	subscribeSession(sessionId: string): void | Promise<void>;
 	unsubscribeSession(sessionId: string): void;
 	subscribeHost(): void;
 }
@@ -122,7 +122,11 @@ async function dispatchAllowed(
 		case "session.subscribe": {
 			const sessionId = readSessionId(params);
 			if (sessionId === null) return error(id, "invalid_params", "sessionId is required");
-			ctx.connection?.subscribeSession(sessionId);
+			try {
+				await ctx.connection?.subscribeSession(sessionId);
+			} catch {
+				return error(id, "upstream_error", "session subscription failed; retry opening the task");
+			}
 			return ok(id, { accepted: true });
 		}
 		case "session.unsubscribe": {

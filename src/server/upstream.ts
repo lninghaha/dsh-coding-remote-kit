@@ -94,7 +94,7 @@ export type RespondInput =
 export interface UpstreamHub {
 	addSubscriber(subscriber: Subscriber): void;
 	removeSubscriber(subscriber: Subscriber): void;
-	subscribeSession(subscriber: Subscriber, sessionId: string): void;
+	subscribeSession(subscriber: Subscriber, sessionId: string): void | Promise<void>;
 	unsubscribeSession(subscriber: Subscriber, sessionId: string): void;
 	subscribeHost(subscriber: Subscriber): void;
 	list(): Promise<FoldedResult<SessionListResult>>;

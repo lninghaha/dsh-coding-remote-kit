@@ -125,7 +125,7 @@ function rpcContext(hub, subscriber) {
 		upstream: hub,
 		connection: {
 			subscribeSession(sessionId) {
-				hub.subscribeSession(subscriber, sessionId);
+				return hub.subscribeSession(subscriber, sessionId);
 			},
 			unsubscribeSession(sessionId) {
 				hub.unsubscribeSession(subscriber, sessionId);
@@ -143,6 +143,54 @@ test("sessionController detection accepts the 0.1.5 service and rejects partial 
 	assert.equal(isSessionController({ ...controller, follow: undefined }), false);
 	assert.equal(isSessionController(undefined), false);
 	assert.equal(isSessionController({}), false);
+});
+
+test("second phone history includes events received after the opening snapshot", async () => {
+	const controller = createFakeController();
+	const hub = createSessionControllerUpstream(controller, silentLogger());
+	const pushes = [];
+	const subscriber = subscriberOf(pushes);
+	hub.addSubscriber(subscriber);
+	try {
+		await hub.subscribeSession(subscriber, "sess-1");
+		await waitUntil(() => controller.calls.follow.length === 1);
+		controller.push({ type: "event", event: eventOf(6) });
+		await waitUntil(() => pushes.some((p) => p.data?.event?.seq === 6));
+		await hub.history({ sessionId: "sess-1" });
+		assert.equal(controller.calls.page.at(-1).throughSeq, 6);
+	} finally {
+		hub.stop();
+	}
+});
+
+test("phone withdrawal does not cancel a pending desktop approval", async () => {
+	const hub = createSessionControllerUpstream(createFakeController(), silentLogger());
+	const listeners = new Map();
+	registerInteractionAnswerers({
+		host: {
+			on(n, f) {
+				listeners.set(n, f);
+			},
+		},
+		hub,
+		logger: silentLogger(),
+	});
+	const subscriber = subscriberOf([]);
+	hub.addSubscriber(subscriber);
+	await hub.subscribeSession(subscriber, "sess-1");
+	let desktopAnswer;
+	const desktop = new Promise((resolve) => {
+		desktopAnswer = resolve;
+	});
+	try {
+		const result = listeners.get("approval/request")({ agent: { id: "sess-1" }, toolName: "write" }, () => desktop);
+		hub.interactions.settleSession("sess-1");
+		await new Promise(setImmediate);
+		desktopAnswer("allowed-once");
+		assert.equal(await result, "allowed-once");
+	} finally {
+		hub.stop();
+	}
 });
 
 test("session list maps summaries and hides blank sessions", async () => {
@@ -204,7 +252,10 @@ test("live events reach a subscriber exactly once across history and subscribe",
 		{ id: 1, method: "session.history", params: { sessionId: "sess-1", maxMessages: 20 } },
 		rpcContext(hub, subscriber),
 	);
-	await dispatchRpc({ id: 2, method: "session.subscribe", params: { sessionId: "sess-1" } }, rpcContext(hub, subscriber));
+	await dispatchRpc(
+		{ id: 2, method: "session.subscribe", params: { sessionId: "sess-1" } },
+		rpcContext(hub, subscriber),
+	);
 	await waitUntil(() => controller.calls.follow.length === 1);
 	assert.equal(pushes.filter((push) => push.push === "session.event").length, 0);
 	controller.push({ type: "event", event: eventOf(6) });
@@ -222,7 +273,10 @@ test("subscribing without history starts from the snapshot cursor", async () => 
 	const pushes = [];
 	const subscriber = subscriberOf(pushes);
 	hub.addSubscriber(subscriber);
-	await dispatchRpc({ id: 1, method: "session.subscribe", params: { sessionId: "sess-1" } }, rpcContext(hub, subscriber));
+	await dispatchRpc(
+		{ id: 1, method: "session.subscribe", params: { sessionId: "sess-1" } },
+		rpcContext(hub, subscriber),
+	);
 	await waitUntil(() => controller.calls.follow.length === 1);
 	assert.equal(pushes.filter((push) => push.push === "session.event").length, 0);
 	controller.push({ type: "event", event: eventOf(7) });
@@ -237,11 +291,21 @@ test("assistant text deltas stream as assistant/chunk pushes", async () => {
 	const pushes = [];
 	const subscriber = subscriberOf(pushes);
 	hub.addSubscriber(subscriber);
-	await dispatchRpc({ id: 1, method: "session.subscribe", params: { sessionId: "sess-1" } }, rpcContext(hub, subscriber));
+	await dispatchRpc(
+		{ id: 1, method: "session.subscribe", params: { sessionId: "sess-1" } },
+		rpcContext(hub, subscriber),
+	);
 	await waitUntil(() => controller.calls.follow.length === 1);
 	controller.push({
 		type: "assistant-stream",
-		frame: { type: "chunk", attemptId: "a-1", revision: 1, index: 3, time: 42, chunk: { type: "text-delta", index: 0, text: "hello" } },
+		frame: {
+			type: "chunk",
+			attemptId: "a-1",
+			revision: 1,
+			index: 3,
+			time: 42,
+			chunk: { type: "text-delta", index: 0, text: "hello" },
+		},
 	});
 	await waitUntil(() => pushes.some((push) => push.push === "session.event"));
 	const streamed = pushes.find((push) => push.push === "session.event");
@@ -278,7 +342,10 @@ test("approval asks reach the phone and settle through respond", async () => {
 	);
 	assert.equal(answered.ok, true);
 	assert.equal(await handle.settled, "allowed-once");
-	assert.equal(pushes.some((push) => push.push === "approval.resolved"), true);
+	assert.equal(
+		pushes.some((push) => push.push === "approval.resolved"),
+		true,
+	);
 	hub.stop();
 });
 
@@ -318,7 +385,7 @@ test("pending cards replay to a reconnecting subscriber", async () => {
 	const pushes = [];
 	const reconnected = subscriberOf(pushes);
 	hub.addSubscriber(reconnected);
-	hub.subscribeSession(reconnected, "sess-1");
+	await hub.subscribeSession(reconnected, "sess-1");
 	assert.equal(pushes.filter((push) => push.push === "approval.requested").length, 1);
 	handle.abandon();
 	await handle.settled;
@@ -352,7 +419,10 @@ test("the approval bridge delegates without a watching phone", async () => {
 		},
 	};
 	const dispose = registerInteractionAnswerers({ host, hub, logger: silentLogger() });
-	const answer = await listeners.get("approval/request")({ agent: { id: "sess-1" }, toolName: "bash" }, async () => "unavailable");
+	const answer = await listeners.get("approval/request")(
+		{ agent: { id: "sess-1" }, toolName: "bash" },
+		async () => "unavailable",
+	);
 	assert.equal(answer, "unavailable");
 	assert.equal(hub.interactions.size, 0);
 	dispose();
@@ -374,14 +444,22 @@ test("the approval bridge claims a request while a phone watches", async () => {
 	const subscriber = subscriberOf(pushes);
 	hub.addSubscriber(subscriber);
 	hub.subscribeSession(subscriber, "sess-1");
-	const answered = listeners.get("approval/request")({ agent: { id: "sess-1" }, toolName: "bash" }, async () => "unavailable");
+	const answered = listeners.get("approval/request")(
+		{ agent: { id: "sess-1" }, toolName: "bash" },
+		async () => "unavailable",
+	);
 	await waitUntil(() => pushes.some((push) => push.push === "approval.requested"));
 	const request = pushes.find((push) => push.push === "approval.requested");
 	const receipt = await dispatchRpc(
 		{
 			id: 5,
 			method: "respond",
-			params: { rpcId: request.rpcId, sessionId: "sess-1", approvalId: request.data.approvalId, outcome: "allowed-once" },
+			params: {
+				rpcId: request.rpcId,
+				sessionId: "sess-1",
+				approvalId: request.data.approvalId,
+				outcome: "allowed-once",
+			},
 		},
 		{ upstream: hub },
 	);
@@ -405,9 +483,15 @@ test("the approval bridge prefers a composed chain decision and retires the card
 	const subscriber = subscriberOf(pushes);
 	hub.addSubscriber(subscriber);
 	hub.subscribeSession(subscriber, "sess-1");
-	const answer = await listeners.get("approval/request")({ agent: { id: "sess-1" }, toolName: "bash" }, async () => "rejected");
+	const answer = await listeners.get("approval/request")(
+		{ agent: { id: "sess-1" }, toolName: "bash" },
+		async () => "rejected",
+	);
 	assert.equal(answer, "rejected");
-	assert.equal(pushes.some((push) => push.push === "approval.resolved"), true);
+	assert.equal(
+		pushes.some((push) => push.push === "approval.resolved"),
+		true,
+	);
 	assert.equal(hub.interactions.size, 0);
 	hub.stop();
 });
@@ -428,9 +512,12 @@ test("user questions are answered through the phone", async () => {
 	hub.addSubscriber(subscriber);
 	hub.subscribeSession(subscriber, "sess-1");
 	const answered = listeners.get("user-questions/request")(
-		{ agent: { id: "sess-1" }, questions: [{ id: "q1", question: "Pick one", options: [{ label: "A" }, { label: "B" }] }] },
+		{
+			agent: { id: "sess-1" },
+			questions: [{ id: "q1", question: "Pick one", options: [{ label: "A" }, { label: "B" }] }],
+		},
 		async () => {
-			throw new Error("no answerer");
+			throw Object.assign(new Error("no answerer"), { code: "NO_PROVIDER" });
 		},
 	);
 	await waitUntil(() => pushes.some((push) => push.push === "question.requested"));
@@ -520,4 +607,280 @@ test("a hub without the controller reports the backend as unavailable", async ()
 	assert.equal(listed.ok, false);
 	assert.equal(listed.error.message, "sessionController is unavailable");
 	hub.stop();
+});
+
+for (const kind of ["approval", "question"]) {
+	test(`${kind}: grace expiry withdraws phone but leaves desktop answer valid`, async (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout"] });
+		const hub = createSessionControllerUpstream(createFakeController(), silentLogger());
+		const handlers = new Map();
+		registerInteractionAnswerers({
+			host: {
+				on(n, f) {
+					handlers.set(n, f);
+				},
+			},
+			hub,
+			logger: silentLogger(),
+		});
+		const phone = subscriberOf([]);
+		hub.addSubscriber(phone);
+		await hub.subscribeSession(phone, "sess-1");
+		let answer;
+		const chain = new Promise((r) => (answer = r));
+		const payload = { agent: { id: "sess-1" }, toolName: "write", questions: [{ id: "q", question: "Choose" }] };
+		const pending = handlers.get(kind === "approval" ? "approval/request" : "user-questions/request")(
+			payload,
+			() => chain,
+		);
+		let settled = false;
+		pending.finally(() => (settled = true));
+		hub.removeSubscriber(phone);
+		t.mock.timers.tick(30_000);
+		await new Promise(setImmediate);
+		assert.equal(hub.interactions.size, 0);
+		assert.equal(settled, false);
+		const outcome = kind === "approval" ? "allowed-once" : { answers: [{ id: "q", selected: [], custom: "yes" }] };
+		answer(outcome);
+		assert.deepEqual(await pending, outcome);
+		hub.stop();
+	});
+}
+
+test("reconnect within grace and another watching phone retain the original card", async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+	const hub = createSessionControllerUpstream(createFakeController(), silentLogger());
+	const a = subscriberOf([]);
+	hub.addSubscriber(a);
+	await hub.subscribeSession(a, "sess-1");
+	const ask = hub.interactions.askApproval({ sessionId: "sess-1", approvalId: "ap", toolName: "write" });
+	const b = subscriberOf([]);
+	hub.addSubscriber(b);
+	await hub.subscribeSession(b, "sess-1");
+	hub.removeSubscriber(a);
+	t.mock.timers.tick(30_000);
+	assert.equal(hub.interactions.size, 1);
+	hub.removeSubscriber(b);
+	const pushes = [];
+	const c = subscriberOf(pushes);
+	hub.addSubscriber(c);
+	await hub.subscribeSession(c, "sess-1");
+	t.mock.timers.tick(30_000);
+	assert.equal(hub.interactions.size, 1);
+	assert.equal(pushes.find((p) => p.push === "approval.requested").rpcId, ask.rpcId);
+	ask.abandon();
+	hub.stop();
+});
+
+test("withdrawn phone with no host answerer finishes; late responses are rejected", async () => {
+	const hub = createSessionControllerUpstream(createFakeController(), silentLogger());
+	const handlers = new Map();
+	registerInteractionAnswerers({
+		host: {
+			on(n, f) {
+				handlers.set(n, f);
+			},
+		},
+		hub,
+		logger: silentLogger(),
+	});
+	const pushes = [];
+	const s = subscriberOf(pushes);
+	hub.addSubscriber(s);
+	await hub.subscribeSession(s, "sess-1");
+	const pending = handlers.get("approval/request")(
+		{ agent: { id: "sess-1" }, toolName: "write" },
+		async () => "unavailable",
+	);
+	const card = pushes.find((p) => p.push === "approval.requested");
+	hub.interactions.settleSession("sess-1");
+	assert.equal(await pending, "cancelled");
+	assert.equal(
+		hub.interactions.complete({
+			kind: "approval",
+			rpcId: card.rpcId,
+			sessionId: "sess-1",
+			approvalId: card.data.approvalId,
+			outcome: "allowed-once",
+		}),
+		false,
+	);
+	hub.stop();
+});
+
+test("host faults propagate, and unload releases a withdrawn request still awaiting desktop", async () => {
+	const hub = createSessionControllerUpstream(createFakeController(), silentLogger());
+	const handlers = new Map();
+	registerInteractionAnswerers({
+		host: {
+			on(n, f) {
+				handlers.set(n, f);
+			},
+		},
+		hub,
+		logger: silentLogger(),
+	});
+	const s = subscriberOf([]);
+	hub.addSubscriber(s);
+	await hub.subscribeSession(s, "sess-1");
+	const req = { agent: { id: "sess-1" }, toolName: "write" };
+	await assert.rejects(
+		handlers.get("approval/request")(req, async () => {
+			throw new Error("storage failure");
+		}),
+		/storage failure/,
+	);
+	assert.equal(hub.interactions.size, 0);
+	const pending = handlers.get("approval/request")(req, () => new Promise(() => {}));
+	hub.interactions.settleSession("sess-1");
+	await new Promise(setImmediate);
+	hub.stop();
+	assert.equal(await pending, "cancelled");
+});
+
+test("subscription RPC waits for the snapshot and reports interrupted setup", async () => {
+	let release;
+	const controller = {
+		...createFakeController(),
+		async *follow(_r, signal) {
+			await new Promise((r) => (release = r));
+			if (signal.aborted) return;
+			yield { type: "snapshot", cursor: 5, records: [] };
+			await abortWait(signal);
+		},
+	};
+	const hub = createSessionControllerUpstream(controller, silentLogger());
+	const s = subscriberOf([]);
+	hub.addSubscriber(s);
+	let settled = false;
+	const pending = dispatchRpc(
+		{ id: 1, method: "session.subscribe", params: { sessionId: "sess-1" } },
+		rpcContext(hub, s),
+	).then((r) => {
+		settled = true;
+		return r;
+	});
+	await new Promise(setImmediate);
+	assert.equal(settled, false);
+	release();
+	assert.equal((await pending).ok, true);
+	hub.stop();
+	const hub2 = createSessionControllerUpstream(controller, silentLogger());
+	const s2 = subscriberOf([]);
+	hub2.addSubscriber(s2);
+	const interrupted = dispatchRpc(
+		{ id: 2, method: "session.subscribe", params: { sessionId: "sess-1" } },
+		rpcContext(hub2, s2),
+	);
+	hub2.stop();
+	assert.equal((await interrupted).ok, false);
+	release();
+});
+
+test("phone decision cancels only the forwarded desktop lifetime and restores the request", async () => {
+	const hub = createSessionControllerUpstream(createFakeController(), silentLogger());
+	const handlers = new Map();
+	registerInteractionAnswerers({
+		host: {
+			on(n, f) {
+				handlers.set(n, f);
+			},
+		},
+		hub,
+		logger: silentLogger(),
+	});
+	const pushes = [];
+	const s = subscriberOf(pushes);
+	hub.addSubscriber(s);
+	await hub.subscribeSession(s, "sess-1");
+	const original = new AbortController();
+	const req = { agent: { id: "sess-1" }, toolName: "write", signal: original.signal };
+	let forwarded;
+	const pending = handlers.get("approval/request")(req, () => {
+		forwarded = req.signal;
+		return new Promise((resolve) => forwarded.addEventListener("abort", () => resolve("cancelled"), { once: true }));
+	});
+	await new Promise(setImmediate);
+	const card = pushes.find((p) => p.push === "approval.requested");
+	hub.interactions.complete({
+		kind: "approval",
+		rpcId: card.rpcId,
+		sessionId: "sess-1",
+		approvalId: card.data.approvalId,
+		outcome: "allowed-once",
+	});
+	assert.equal(await pending, "allowed-once");
+	assert.equal(forwarded.aborted, true);
+	assert.equal(original.signal.aborted, false);
+	await new Promise(setImmediate);
+	assert.equal(req.signal, original.signal);
+	hub.stop();
+});
+
+test("queued desktop forward observes cancellation even when phone answers before serialization", async () => {
+	const hub = createSessionControllerUpstream(createFakeController(), silentLogger());
+	const handlers = new Map();
+	registerInteractionAnswerers({
+		host: {
+			on(n, f) {
+				handlers.set(n, f);
+			},
+		},
+		hub,
+		logger: silentLogger(),
+	});
+	const pushes = [];
+	const s = subscriberOf(pushes);
+	hub.addSubscriber(s);
+	await hub.subscribeSession(s, "sess-1");
+	const req = { agent: { id: "sess-1" }, toolName: "write" };
+	let serialize;
+	let observed;
+	const pending = handlers.get("approval/request")(
+		req,
+		() =>
+			new Promise((resolve) => {
+				serialize = () => {
+					observed = req.signal.aborted;
+					resolve("cancelled");
+				};
+			}),
+	);
+	await new Promise(setImmediate);
+	const card = pushes.find((p) => p.push === "approval.requested");
+	hub.interactions.complete({
+		kind: "approval",
+		rpcId: card.rpcId,
+		sessionId: "sess-1",
+		approvalId: card.data.approvalId,
+		outcome: "allowed-once",
+	});
+	assert.equal(await pending, "allowed-once");
+	serialize();
+	await new Promise(setImmediate);
+	assert.equal(observed, true);
+	assert.equal("signal" in req, false);
+	hub.stop();
+});
+
+test("without a watching phone unloading the plugin does not affect a desktop request", async () => {
+	const hub = createSessionControllerUpstream(createFakeController(), silentLogger());
+	const handlers = new Map();
+	const dispose = registerInteractionAnswerers({
+		host: {
+			on(n, f) {
+				handlers.set(n, f);
+			},
+		},
+		hub,
+		logger: silentLogger(),
+	});
+	const req = { agent: { id: "sess-1" }, toolName: "write" };
+	let answer;
+	const pending = handlers.get("approval/request")(req, () => new Promise((r) => (answer = r)));
+	dispose();
+	hub.stop();
+	assert.equal("signal" in req, false);
+	answer("allowed-once");
+	assert.equal(await pending, "allowed-once");
 });
