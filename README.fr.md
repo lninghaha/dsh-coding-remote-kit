@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.7.1** · DeepSeek Harness `0.1.1-rc.2` / `0.1.5-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.7.2** · DeepSeek Harness install `>=0.1.1-rc.2 <0.3.0` · verified build `0.1.1-rc.2` / runtime `0.1.5-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **Accès distant par téléphone pour [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Appariez un téléphone au bureau qui exécute déjà `dsh web`, observez les sessions et effectuez un ensemble restreint d'écritures — sans exposer l'API Web complète.
 
@@ -31,7 +31,7 @@ Développé d'abord sous le nom GitHub `dsh-mobile-remote`. Le nom npm **`dsh-mo
 
 | | Utilisez ceci | Notes |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.7.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.7.1` |
+| npm | `dsh-coding-remote-kit@0.7.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.7.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | ancien nom de checkout `dsh-mobile-remote` |
 | id du plugin Cordis | `mobile-remote` | inchangé |
 | HTTP de la page Réglages | `/api/mobile-remote/*` | inchangé |
@@ -88,7 +88,7 @@ Ne faites **pas** `dsh plugin add dsh-mobile-remote` — cela installe le plugin
 ## Démarrage rapide
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.7.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.7.2
 ```
 
 Ensuite l'**opérateur** redémarre le processus `dsh web` existant dans sa propre fenêtre. Ouvrez **Settings → 移動远程**, créez une offre d'appariement, scannez le QR (ou saisissez le PIN) sur le téléphone.
@@ -127,7 +127,7 @@ Ne faites pas `dsh plugin add ./` depuis cet arbre de travail. pnpm 11 traite ce
 
 ## Installation
 
-Nécessite DeepSeek Harness `0.1.1-rc.2` (épinglé) et Node.js 22.19+. Étapes complètes, appariement et notes de tunnel : [INSTALL.md](INSTALL.md).
+Porte d'installation : DeepSeek Harness `>=0.1.1-rc.2 <0.3.0` (`engines.dsh`) ; le BOM de build vérifié reste `0.1.1-rc.2`. Node.js 22.19+. Étapes complètes, appariement et notes de tunnel : [INSTALL.md](INSTALL.md).
 
 Développement :
 

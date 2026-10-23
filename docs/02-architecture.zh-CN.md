@@ -4,7 +4,7 @@
 
 本文描述 `dsh-coding-remote-kit` 的内部架构，是 `README.md` 技术说明的来源，面向贡献者与维护者。
 
-宿主钉死：`@deepseek-ai/dsh@0.1.1-rc.2`。升级需另开 ADR（`docs/01-mvp-scope.md`）。`0.1.2-alpha` 与 `0.1.5-rc.1` 仍是未验证候选。
+Verified 构建钉：`@deepseek-ai/dsh@0.1.1-rc.2`。安装闸门：`engines.dsh` `>=0.1.1-rc.2 <0.3.0`（覆盖 `0.2.x` 安装，如 `0.2.1-rc.2`）。升级 verified 构建钉需另开 ADR（`docs/01-mvp-scope.md`）。`0.1.2-alpha`、`0.1.5-rc.1` 与 `0.2.1-rc.2` 仍是未验证运行时候选。
 
 ## 1. 双平面
 

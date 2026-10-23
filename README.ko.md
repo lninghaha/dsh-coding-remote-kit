@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.7.1** · DeepSeek Harness `0.1.1-rc.2` / `0.1.5-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.7.2** · DeepSeek Harness install `>=0.1.1-rc.2 <0.3.0` · verified build `0.1.1-rc.2` / runtime `0.1.5-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **[DeepSeek Harness](https://github.com/deepseek-ai/dsh)용 원격 휴대폰 접근.** 이미 `dsh web`을 실행 중인 데스크톱에 휴대폰을 페어링한 뒤, 세션을 관찰하고 좁은 범위의 쓰기만 수행합니다. 전체 Web API는 노출하지 않습니다.
 
@@ -31,7 +31,7 @@
 
 | | 이것을 사용 | 설명 |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.7.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.7.1` |
+| npm | `dsh-coding-remote-kit@0.7.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.7.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | 이전 checkout 이름 `dsh-mobile-remote` |
 | Cordis 플러그인 id | `mobile-remote` | 변경 없음 |
 | 설정 페이지 HTTP | `/api/mobile-remote/*` | 변경 없음 |
@@ -88,7 +88,7 @@
 ## 빠른 시작
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.7.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.7.2
 ```
 
 그다음 **운영자**가 자신의 시간창에서 기존 `dsh web`을 재시작합니다. **Settings → 移動远程**를 열고 페어링 offer를 만든 뒤, 휴대폰에서 QR을 스캔(또는 PIN 입력)합니다.
@@ -127,7 +127,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.7.1.tg
 
 ## 설치
 
-DeepSeek Harness `0.1.1-rc.2`(고정)과 Node.js 22.19+가 필요합니다. 전체 단계, 페어링, 터널 설명은 [INSTALL.md](INSTALL.md)를 보세요.
+설치 범위는 DeepSeek Harness `>=0.1.1-rc.2 <0.3.0`(`engines.dsh`)입니다. 검증된 빌드 BOM은 `0.1.1-rc.2`입니다. Node.js 22.19+가 필요합니다. 전체 단계, 페어링, 터널 설명은 [INSTALL.md](INSTALL.md)를 보세요.
 
 개발:
 

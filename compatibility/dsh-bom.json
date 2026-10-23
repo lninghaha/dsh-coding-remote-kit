@@ -35,6 +35,13 @@
       "verifiedBy": "runtime-e2e-2026-09-12",
       "sessionBackend": "sessionController",
       "note": "Session RPC and live approvals were verified end to end against a real 0.1.5-rc.2 host (phone pairing, list, history paging, prompt, cancel, assistant streaming, approval allow/deny, abandoned-approval settlement). Build pins stay on the 0.1.1-rc.2 platform contract; the plugin selects apiProxy or sessionController at runtime."
+    },
+    {
+      "id": "dsh-0.2.1-rc.2",
+      "dshVersion": "0.2.1-rc.2",
+      "releaseLine": "0.2.1-rc",
+      "status": "unverified",
+      "note": "Install gate covers this runtime via engines.dsh (>=0.1.1-rc.2 <0.3.0). Build and verified BOM stay on 0.1.1-rc.2 until an isolated smoke promotes this candidate."
     }
   ]
 }

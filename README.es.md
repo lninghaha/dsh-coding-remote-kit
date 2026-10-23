@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.7.1** · DeepSeek Harness `0.1.1-rc.2` / `0.1.5-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.7.2** · DeepSeek Harness install `>=0.1.1-rc.2 <0.3.0` · verified build `0.1.1-rc.2` / runtime `0.1.5-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **Acceso remoto por teléfono a [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Empareja un teléfono con el escritorio que ya ejecuta `dsh web`, observa sesiones y realiza un conjunto limitado de escrituras — sin exponer la API Web completa.
 
@@ -31,7 +31,7 @@ Se desarrolló primero como GitHub `dsh-mobile-remote`. El nombre npm **`dsh-mob
 
 | | Usa esto | Notas |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.7.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.7.1` |
+| npm | `dsh-coding-remote-kit@0.7.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.7.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | nombre anterior del checkout `dsh-mobile-remote` |
 | id del plugin Cordis | `mobile-remote` | sin cambios |
 | HTTP de la página de ajustes | `/api/mobile-remote/*` | sin cambios |
@@ -88,7 +88,7 @@ Se desarrolló primero como GitHub `dsh-mobile-remote`. El nombre npm **`dsh-mob
 ## Inicio rápido
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.7.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.7.2
 ```
 
 Después el **operador** reinicia el proceso `dsh web` existente en su propia ventana. Abre **Settings → 移動远程**, crea una oferta de emparejamiento, escanea el QR (o escribe el PIN) en el teléfono.
@@ -127,7 +127,7 @@ No ejecutes `dsh plugin add ./` en este árbol de trabajo. pnpm 11 trata algunas
 
 ## Instalación
 
-Requiere DeepSeek Harness `0.1.1-rc.2` (fijado) y Node.js 22.19+. Pasos completos, emparejamiento y notas de túnel: [INSTALL.md](INSTALL.md).
+Puerta de instalación: DeepSeek Harness `>=0.1.1-rc.2 <0.3.0` (`engines.dsh`); el BOM verificado de build sigue en `0.1.1-rc.2`. Node.js 22.19+. Pasos completos, emparejamiento y notas de túnel: [INSTALL.md](INSTALL.md).
 
 Desarrollo:
 

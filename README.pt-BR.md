@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.7.1** · DeepSeek Harness `0.1.1-rc.2` / `0.1.5-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.7.2** · DeepSeek Harness install `>=0.1.1-rc.2 <0.3.0` · verified build `0.1.1-rc.2` / runtime `0.1.5-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **Acesso remoto pelo celular ao [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Emparelhe um celular ao desktop que já executa `dsh web`, observe sessões e faça um conjunto restrito de escritas — sem expor a API Web completa.
 
@@ -31,7 +31,7 @@ Desenvolvido primeiro como GitHub `dsh-mobile-remote`. O nome npm **`dsh-mobile-
 
 | | Use isto | Notas |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.7.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.7.1` |
+| npm | `dsh-coding-remote-kit@0.7.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.7.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | nome anterior do checkout `dsh-mobile-remote` |
 | id do plugin Cordis | `mobile-remote` | inalterado |
 | HTTP da página de configurações | `/api/mobile-remote/*` | inalterado |
@@ -88,7 +88,7 @@ Desenvolvido primeiro como GitHub `dsh-mobile-remote`. O nome npm **`dsh-mobile-
 ## Início rápido
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.7.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.7.2
 ```
 
 Depois o **operador** reinicia o processo `dsh web` existente na própria janela. Abra **Settings → 移動远程**, crie uma oferta de emparelhamento, escaneie o QR (ou digite o PIN) no celular.
@@ -127,7 +127,7 @@ Não execute `dsh plugin add ./` nesta árvore de trabalho. O pnpm 11 trata algu
 
 ## Instalação
 
-Requer DeepSeek Harness `0.1.1-rc.2` (fixado) e Node.js 22.19+. Passos completos, emparelhamento e notas de túnel: [INSTALL.md](INSTALL.md).
+Porta de instalação: DeepSeek Harness `>=0.1.1-rc.2 <0.3.0` (`engines.dsh`); o BOM verificado de build permanece `0.1.1-rc.2`. Node.js 22.19+. Passos completos, emparelhamento e notas de túnel: [INSTALL.md](INSTALL.md).
 
 Desenvolvimento:
 

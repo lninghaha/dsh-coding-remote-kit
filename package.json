@@ -1,7 +1,7 @@
 {
   "name": "dsh-coding-remote-kit",
   "description": "DeepSeek Harness mobile pairing remote plugin: E2EE companion over a dual-plane allowlisted RPC (LAN / Tailscale / optional Cloudflare Quick Tunnel or self-hosted rendezvous).",
-	"version": "0.7.1",
+	"version": "0.7.2",
   "private": false,
   "publishConfig": {
     "access": "public",
@@ -11,7 +11,8 @@
   "type": "module",
   "packageManager": "pnpm@11.21.0",
   "engines": {
-    "node": "^22.19.0 || >=24.0.0"
+    "node": "^22.19.0 || >=24.0.0",
+    "dsh": ">=0.1.1-rc.2 <0.3.0"
   },
   "repository": {
     "type": "git",
@@ -107,7 +108,7 @@
     "js-sha256": "^1.0.0",
     "qrcode-generator": "^2.0.4",
     "tweetnacl": "^1.0.3",
-    "ws": "^8.21.3",
+    "ws": "8.21.3",
     "zod": "4.4.3"
   },
   "devDependencies": {
@@ -122,13 +123,14 @@
     "esbuild": "^0.28.2",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "semver": "^7.8.5",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-client-ui-settings": "0.1.1-rc.2",
-    "@deepseek-ai/dsh-client-ui-slots": "0.1.1-rc.2",
-    "@deepseek-ai/dsh-host-webserver": "0.1.1-rc.2",
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-ui-settings": ">=0.1.1-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.1.1-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-host-webserver": ">=0.1.1-rc.2 <0.3.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   }
