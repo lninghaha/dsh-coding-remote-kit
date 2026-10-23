@@ -4,6 +4,12 @@ All notable changes to `dsh-coding-remote-kit` are documented here, following th
 
 ## Unreleased
 
+## v0.7.2 - 2026-10-23
+
+### Fixed
+
+- DSH `0.2.x` install compatibility: declare `engines.dsh` as `>=0.1.1-rc.2 <0.3.0` and widen `@deepseek-ai/dsh-*` peers to the same range (Cordis peer `^4.0.1`) so the host `evaluatePluginCompatibility` gate accepts runtimes such as `0.2.1-rc.2` instead of rejecting exact `0.1.1-rc.2` peers. Verified build BOM and `devDependencies` stay on `0.1.1-rc.2`; `0.2.1-rc.2` is recorded as an unverified BOM candidate until isolated smoke promotes it.
+
 ## v0.7.1 - 2026-09-12
 
 - 修复多设备历史游标停留在首次快照的问题；订阅确认后读取历史，并合并加载期间的实时事件。

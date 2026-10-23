@@ -19,5 +19,9 @@ test("DSH compatibility manifest declares the exact verified BOM and statused ca
 	const runtimeVerified = bom.candidates.find((candidate) => candidate.id === "dsh-0.1.5-rc.2");
 	assert.equal(runtimeVerified?.status, "verified");
 	assert.equal(runtimeVerified?.sessionBackend, "sessionController");
+	const installCandidate = bom.candidates.find((candidate) => candidate.id === "dsh-0.2.1-rc.2");
+	assert.equal(installCandidate?.status, "unverified");
+	assert.equal(installCandidate?.dshVersion, "0.2.1-rc.2");
+	assert.equal(typeof pkg.engines?.dsh, "string");
 	for (const version of Object.values(bom.verified.packages)) assert.equal(String(version).includes("*"), false);
 });

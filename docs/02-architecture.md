@@ -4,7 +4,7 @@
 
 This document describes the internal architecture of `dsh-coding-remote-kit`. It is the source for the technical notes in `README.md` and is intended for contributors and maintainers.
 
-Host pin: `@deepseek-ai/dsh@0.1.1-rc.2`. Changing the pin requires a new ADR (`docs/01-mvp-scope.md`). `0.1.2-alpha` and `0.1.5-rc.1` remain unverified candidates.
+Verified build pin: `@deepseek-ai/dsh@0.1.1-rc.2`. Install gate: `engines.dsh` `>=0.1.1-rc.2 <0.3.0` (covers `0.2.x` installs such as `0.2.1-rc.2`). Changing the verified build pin requires a new ADR (`docs/01-mvp-scope.md`). `0.1.2-alpha`, `0.1.5-rc.1`, and `0.2.1-rc.2` remain unverified candidates for runtime promotion.
 
 ## 1. Dual plane
 

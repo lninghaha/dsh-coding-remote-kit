@@ -2,7 +2,7 @@
 
 Tracker: [#12](https://github.com/lninghaha/dsh-coding-remote-kit/issues/12)
 
-Use this cadence for hosts listed under `compatibility/dsh-bom.json` → `candidates[]` (today: `0.1.2-alpha.*` and `0.1.5-rc.1` unverified; `0.1.5-rc.2` was verified by runtime E2E on 2026-09-12). A candidate is **not** the production pin.
+Use this cadence for hosts listed under `compatibility/dsh-bom.json` → `candidates[]` (today: `0.1.2-alpha.*`, `0.1.5-rc.1`, and `0.2.1-rc.2` unverified; `0.1.5-rc.2` was verified by runtime E2E on 2026-09-12). A candidate is **not** the production verified build pin. Install already accepts `0.2.x` via `engines.dsh`; this smoke is what promotes a candidate.
 
 ## Rules
 

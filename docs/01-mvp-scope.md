@@ -3,8 +3,8 @@
 - 状态：已接受
 - 日期：2026-08-19
 - 决策者：本仓库维护者
-- 宿主版本：`@deepseek-ai/dsh@0.1.1-rc.2`（钉死；升级需另开 ADR）
-- 修订：2026-09-02 将宿主钉从 `0.1.0-rc.6` 迁到已验证的 `0.1.1-rc.2`，并消除正文里误写的 `rc.7`。`0.1.2-alpha` 与 `0.1.5-rc.1` 仍是未验证候选。
+- 宿主版本：verified 构建钉 `@deepseek-ai/dsh@0.1.1-rc.2`（升级构建钉需另开 ADR）；安装闸门 `engines.dsh` 为 `>=0.1.1-rc.2 <0.3.0`
+- 修订：2026-09-02 将宿主钉从 `0.1.0-rc.6` 迁到已验证的 `0.1.1-rc.2`，并消除正文里误写的 `rc.7`。`0.1.2-alpha` 与 `0.1.5-rc.1` 仍是未验证候选。2026-10-23：安装闸门放宽以接受 `0.2.x`（含 `0.2.1-rc.2` 未验证候选）；verified 构建钉不变。
 
 ## 背景
 
@@ -39,7 +39,7 @@ DSH Web 的安全模型以回环绑定、Host 校验与浏览器上下文为前�
 - 必须自建鉴权（`deviceToken` 只存 SHA-256）与会话 E2EE（服务端 X25519 私钥 0600）。细节见 [`04-threat-model.md`](04-threat-model.md)。
 - 手机端为浏览器页，存在 **LAN MITM 投递层边界**：E2EE 管不到页面首次 HTTP 下发。这是相对签名原生 App 的固有差距，不是实现疏漏。缓解见威胁模型（推荐 Tailscale / WireGuard；M4 可选自签 HTTPS + QR 钉死证书哈希）。
 - 不得修改、不得削弱 `dsh web` `/api` 围栏与绑定；不得抢 `api-proxy` 的审批/提问 provider。
-- 宿主版本钉死 **0.1.1-rc.2**。Cordis 插件契约（`name` / `inject` / `Config` / `apply`、`dsh.bundle.patch`、classic-script 客户端）以该版本的类型与加载器为准。`status.get` 上报的 `dshVersion` 必须与 `compatibility/dsh-bom.json` 的 `verified.dshVersion` 一致。
+- **Verified 构建**钉死 **0.1.1-rc.2**；**安装**由 `engines.dsh` 覆盖 `0.1.x`–`0.2.x`。Cordis 插件契约（`name` / `inject` / `Config` / `apply`、`dsh.bundle.patch`、classic-script 客户端）以 verified 版本的类型与加载器为准。`status.get` 上报的 `dshVersion` 必须与 `compatibility/dsh-bom.json` 的 `verified.dshVersion` 一致。
 
 ## 里程碑对齐
 

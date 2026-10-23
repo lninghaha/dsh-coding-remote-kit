@@ -3,7 +3,7 @@
 
 # dsh-coding-remote-kit
 
-**v0.7.1** · DeepSeek Harness `0.1.1-rc.2` / `0.1.5-rc.2` · GitHub `dsh-coding-remote-kit`
+**v0.7.2** · DeepSeek Harness install `>=0.1.1-rc.2 <0.3.0` · verified build `0.1.1-rc.2` / runtime `0.1.5-rc.2` · GitHub `dsh-coding-remote-kit`
 
 **Удалённый доступ с телефона к [DeepSeek Harness](https://github.com/deepseek-ai/dsh).** Сопрягите телефон с компьютером, где уже работает `dsh web`, наблюдайте сессии и выполняйте узкий набор записей — не открывая полный Web API.
 
@@ -31,7 +31,7 @@
 
 | | Используйте это | Примечания |
 |---|---|---|
-| npm | `dsh-coding-remote-kit@0.7.1` | `dsh plugin --profile web add dsh-coding-remote-kit@0.7.1` |
+| npm | `dsh-coding-remote-kit@0.7.2` | `dsh plugin --profile web add dsh-coding-remote-kit@0.7.2` |
 | GitHub | [`lninghaha/dsh-coding-remote-kit`](https://github.com/lninghaha/dsh-coding-remote-kit) | прежнее имя checkout `dsh-mobile-remote` |
 | id плагина Cordis | `mobile-remote` | без изменений |
 | HTTP страницы настроек | `/api/mobile-remote/*` | без изменений |
@@ -88,7 +88,7 @@
 ## Быстрый старт
 
 ```bash
-dsh plugin --profile web add dsh-coding-remote-kit@0.7.1
+dsh plugin --profile web add dsh-coding-remote-kit@0.7.2
 ```
 
 Затем **оператор** перезапускает существующий процесс `dsh web` в своём окне. Откройте **Settings → 移動远程**, создайте предложение сопряжения, отсканируйте QR (или введите PIN) на телефоне.
@@ -127,7 +127,7 @@ dsh plugin --profile web add "$HOME/.dsh/packages/dsh-coding-remote-kit-0.7.1.tg
 
 ## Установка
 
-Нужны DeepSeek Harness `0.1.1-rc.2` (закреплён) и Node.js 22.19+. Полные шаги, сопряжение и заметки о туннеле: [INSTALL.md](INSTALL.md).
+Диапазон установки: DeepSeek Harness `>=0.1.1-rc.2 <0.3.0` (`engines.dsh`); проверенный build BOM остаётся `0.1.1-rc.2`. Нужен Node.js 22.19+. Полные шаги, сопряжение и заметки о туннеле: [INSTALL.md](INSTALL.md).
 
 Разработка:
 
