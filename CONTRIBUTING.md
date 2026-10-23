@@ -12,13 +12,13 @@ Welcome! `dsh-coding-remote-kit` is an open-source DeepSeek Harness plugin for p
 Verification runs in an isolated Docker build sandbox. Do not run installs, builds, or tests directly against a shared host that already serves production `dsh web`. The tracked `Dockerfile` copies filtered source (never credentials), downloads dependencies in a dedicated stage, then runs project code with `--network=none`. Do not use privileged mode, credential or host-directory bind mounts, or the Docker socket. Tests use no published ports.
 
 ```bash
-docker build --target check --build-arg NODE_VERSION=22.19.0 \
+docker build --target check --build-arg NODE_VERSION=22.23.4 \
   --tag test-dsh-mobile-remote:check .
 
-docker build --target isolated-install --build-arg NODE_VERSION=22.19.0 \
+docker build --target isolated-install --build-arg NODE_VERSION=22.23.4 \
   --tag test-dsh-mobile-remote:isolated-install .
 
-docker build --target verify --build-arg NODE_VERSION=22.19.0 \
+docker build --target verify --build-arg NODE_VERSION=22.23.4 \
   --tag test-dsh-mobile-remote:verify .
 ```
 
